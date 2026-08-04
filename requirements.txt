@@ -1,0 +1,8 @@
+torch
+huggingface_hub
+transformers>=5.5
+numpy
+
+# Optional, for local testing and development
+pytest
+datasets
