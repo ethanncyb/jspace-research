@@ -74,6 +74,50 @@ for layer, logits in sorted(lens_logits.items()):
     print(layer, [tok.decode([t]) for t in logits[0].topk(5).indices])
 ```
 
+### Steer a next token
+
+J-space steering adds the target token's unit J-lens vector at selected
+residual-stream sites. The strength is multiplied by the clean activation norm
+at each site. On Qwen3.5-4B the default band is layers 10–26 and the default
+position is the final prompt token.
+
+```python
+target_id = tok(" Italy", add_special_tokens=False).input_ids[0]
+result = lens.steer(
+    model,
+    "Fact: The currency used in the country shaped like a boot is",
+    target_token_id=target_id,
+    strength=0.1,
+)
+print("rank:", result.clean_target_ranks.item(), "->", result.steered_target_ranks.item())
+
+comparison = jlens.compute_steering_comparison(
+    model, lens, result, last_n_tokens=32
+)
+page = jlens.build_steering_comparison_page(comparison)
+```
+
+The comparison page shows clean and steered layer × position readouts followed
+by a heatmap of the target token's rank improvement. This is a causal
+intervention, not a guarantee that the model has reasoned correctly.
+
+### HumanEval and GSM8K controllability benchmark
+
+With the `dev` extra installed, the benchmark helpers select deterministic
+gold continuation tokens from teacher-forced reference solutions:
+
+```python
+cases = (
+    jlens.load_humaneval_cases(tok, n_examples=32)
+    + jlens.load_gsm8k_cases(tok, n_examples=32)
+)
+observations = jlens.run_gold_next_token_benchmark(model, lens, cases)
+summary = jlens.summarize_benchmark(observations)
+```
+
+The reported top-1 rate, target rank, logit lift, and KL divergence measure
+next-token controllability. They are not HumanEval pass@1 or GSM8K accuracy.
+
 ### Fit
 
 To fit a lens on your own model:
@@ -92,8 +136,9 @@ slices and combining with `JacobianLens.merge()`.
 ## Walkthrough
 
 [`walkthrough.ipynb`](walkthrough.ipynb) is the end-to-end notebook: load a
-model, load (or fit) a lens, apply it at a few layers, and render a slice page
-like the one above.
+model and lens, inspect layer × position slices, steer a gold next token,
+compare clean and intervened J-space activity, and optionally run the
+HumanEval/GSM8K benchmark.
 
 Reading a slice page:
 

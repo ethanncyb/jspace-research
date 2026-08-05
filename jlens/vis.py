@@ -25,7 +25,7 @@ import numpy as np
 import torch
 
 from jlens.hooks import ActivationRecorder
-from jlens.lens import JacobianLens
+from jlens.lens import JacobianLens, SteeringResult
 from jlens.protocol import LensModel
 
 PAGE_TEMPLATE = (files("jlens") / "data" / "slice_vis.html").read_text(encoding="utf-8")
@@ -190,6 +190,19 @@ class SliceData:
     ctx_offset: int = 0
 
 
+@dataclass
+class SteeringComparisonData:
+    """Baseline and steered slices plus the selected target's rank change."""
+
+    clean: SliceData
+    steered: SliceData
+    target_token_id: int
+    target_text: str
+    target_rank_delta: np.ndarray  # clean rank - steered rank; positive is better
+    strength: float
+    direction_mode: str
+
+
 @torch.no_grad()
 def compute_slice(
     model: LensModel,
@@ -333,6 +346,174 @@ def compute_slice(
         vocab_size=vocab_size,
         pinned_token_ids=sorted(pinned_token_ids),
         ctx_offset=start,
+    )
+
+
+def _slice_from_recorded_activations(
+    model: LensModel,
+    lens: JacobianLens,
+    input_ids: torch.Tensor,
+    activations: dict[int, torch.Tensor],
+    layers: list[int],
+    *,
+    top_n: int,
+    max_tracked: int | None,
+    pinned_token_ids: set[int],
+    last_n_tokens: int | None,
+    mask_display: bool,
+) -> SliceData:
+    """Build :class:`SliceData` from an already-recorded forward pass."""
+    tokenizer = model.tokenizer
+    full_len = input_ids.shape[1]
+    start = 0 if last_n_tokens is None else max(0, full_len - last_n_tokens)
+    seq_len = full_len - start
+    context_token_ids = input_ids[0].detach().cpu().tolist()
+    context_token_strs = [
+        tokenizer.decode([token_id], clean_up_tokenization_spaces=False)
+        for token_id in context_token_ids
+    ]
+
+    def layer_logits(layer: int) -> torch.Tensor:
+        residual = activations[layer][0, start:].float()
+        if layer in lens.jacobians:
+            residual = lens.transport(residual, layer)
+        return model.unembed(residual).float().detach()
+
+    n_layers = len(layers)
+    top_ids = np.zeros((seq_len, n_layers, top_n), dtype=np.int32)
+    top_ranks = np.zeros((seq_len, n_layers, top_n), dtype=np.int32)
+    display_mask: torch.Tensor | None = None
+    vocab_size = 0
+    for layer_index, layer in enumerate(layers):
+        logits = layer_logits(layer)
+        vocab_size = int(logits.shape[-1])
+        if mask_display:
+            if display_mask is None:
+                display_mask = _meaningful_token_mask(
+                    tokenizer, vocab_size, logits.device
+                )
+            top_idx = (
+                logits.masked_fill(~display_mask, float("-inf"))
+                .topk(top_n, dim=-1)
+                .indices
+            )
+            top_ids[:, layer_index] = top_idx.cpu().numpy()
+            top_ranks[:, layer_index] = _ranks_of(logits, top_idx).cpu().numpy()
+        else:
+            top_idx = logits.topk(top_n, dim=-1).indices
+            top_ids[:, layer_index] = top_idx.cpu().numpy()
+            top_ranks[:, layer_index] = np.arange(top_n, dtype=np.int32)
+        del logits
+
+    flat_ids = top_ids.ravel()
+    flat_ranks = top_ranks.ravel()
+    score_by_token: dict[int, float] = {}
+    for token_id, rank in zip(flat_ids, flat_ranks, strict=True):
+        score_by_token[int(token_id)] = score_by_token.get(int(token_id), 0) + 1 / (
+            int(rank) + 1
+        )
+    by_score = sorted(score_by_token, key=score_by_token.__getitem__, reverse=True)
+    tracked = sorted(set(by_score[:max_tracked]) | pinned_token_ids)
+    rank_tensor = np.full((seq_len, n_layers, len(tracked)), -1, dtype=np.int32)
+    if tracked:
+        tracked_tensor = torch.tensor(tracked, dtype=torch.long)
+        for layer_index, layer in enumerate(layers):
+            logits = layer_logits(layer)
+            rank_tensor[:, layer_index] = (
+                _ranks_of(logits, tracked_tensor.to(logits.device)).cpu().numpy()
+            )
+            del logits
+    vocab_ids = (
+        set(int(token_id) for token_id in np.unique(flat_ids))
+        | set(tracked)
+        | set(context_token_ids)
+    )
+    vocab_fragment = {
+        token_id: tokenizer.decode(
+            [token_id], clean_up_tokenization_spaces=False
+        )
+        for token_id in vocab_ids
+    }
+    return SliceData(
+        seq_len=seq_len,
+        layers=layers,
+        context_token_ids=context_token_ids,
+        context_token_strs=context_token_strs,
+        top_ids=top_ids,
+        top_ranks=top_ranks,
+        tracked_token_ids=tracked,
+        rank_tensor=rank_tensor,
+        vocab_fragment=vocab_fragment,
+        vocab_size=vocab_size,
+        pinned_token_ids=sorted(pinned_token_ids),
+        ctx_offset=start,
+    )
+
+
+@torch.no_grad()
+def compute_steering_comparison(
+    model: LensModel,
+    lens: JacobianLens,
+    result: SteeringResult,
+    *,
+    top_n: int = 10,
+    max_tracked: int | None = 128,
+    layer_stride: int = 1,
+    last_n_tokens: int | None = None,
+    mask_display: bool = False,
+) -> SteeringComparisonData:
+    """Convert a :class:`SteeringResult` into clean/steered slice data."""
+    if layer_stride <= 0:
+        raise ValueError("layer_stride must be positive")
+    available = sorted(
+        set(result.clean_activations) & set(result.steered_activations)
+    )
+    layers = available[::layer_stride]
+    if available and available[-1] not in layers:
+        layers.append(available[-1])
+    if not layers:
+        raise ValueError("steering result has no shared recorded layers")
+    pinned = {result.target_token_id}
+    kwargs = dict(
+        top_n=top_n,
+        max_tracked=max_tracked,
+        pinned_token_ids=pinned,
+        last_n_tokens=last_n_tokens,
+        mask_display=mask_display,
+    )
+    clean = _slice_from_recorded_activations(
+        model,
+        lens,
+        result.input_ids,
+        result.clean_activations,
+        layers,
+        **kwargs,
+    )
+    steered = _slice_from_recorded_activations(
+        model,
+        lens,
+        result.input_ids,
+        result.steered_activations,
+        layers,
+        **kwargs,
+    )
+    clean_column = clean.tracked_token_ids.index(result.target_token_id)
+    steered_column = steered.tracked_token_ids.index(result.target_token_id)
+    delta = (
+        clean.rank_tensor[:, :, clean_column]
+        - steered.rank_tensor[:, :, steered_column]
+    )
+    target_text = model.tokenizer.decode(
+        [result.target_token_id], clean_up_tokenization_spaces=False
+    )
+    return SteeringComparisonData(
+        clean=clean,
+        steered=steered,
+        target_token_id=result.target_token_id,
+        target_text=target_text,
+        target_rank_delta=delta,
+        strength=result.strength,
+        direction_mode=result.direction_mode,
     )
 
 
@@ -513,3 +694,83 @@ def build_page(
         .replace("__BOOTSTRAP__", bootstrap_json)
     )
     return page, raw_bytes, payload_bytes
+
+
+def build_steering_comparison_page(
+    comparison: SteeringComparisonData,
+    *,
+    title: str = "JSpace steering comparison",
+    description: str = "Baseline and steered Jacobian-lens readouts.",
+) -> str:
+    """Render clean, steered, and target-rank-delta layer × position grids."""
+    clean = comparison.clean
+    steered = comparison.steered
+    if clean.layers != steered.layers or clean.seq_len != steered.seq_len:
+        raise ValueError("clean and steered slices must have matching grids")
+    clean_target_column = clean.tracked_token_ids.index(comparison.target_token_id)
+    steered_target_column = steered.tracked_token_ids.index(
+        comparison.target_token_id
+    )
+
+    def top_text(slice_data: SliceData) -> list[list[str]]:
+        return [
+            [
+                slice_data.vocab_fragment.get(
+                    int(slice_data.top_ids[position, layer, 0]),
+                    str(int(slice_data.top_ids[position, layer, 0])),
+                )
+                for layer in range(len(slice_data.layers))
+            ]
+            for position in range(slice_data.seq_len)
+        ]
+
+    positions = [
+        {
+            "index": index + clean.ctx_offset,
+            "token": clean.context_token_strs[index + clean.ctx_offset],
+        }
+        for index in range(clean.seq_len)
+    ]
+    payload = {
+        "layers": clean.layers,
+        "positions": positions,
+        "target_id": comparison.target_token_id,
+        "target": comparison.target_text,
+        "strength": comparison.strength,
+        "direction_mode": comparison.direction_mode,
+        "clean_top": top_text(clean),
+        "steered_top": top_text(steered),
+        "clean_rank": clean.rank_tensor[:, :, clean_target_column].tolist(),
+        "steered_rank": steered.rank_tensor[:, :, steered_target_column].tolist(),
+        "rank_delta": comparison.target_rank_delta.tolist(),
+    }
+    payload_json = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{html.escape(title)}</title><style>
+:root {{ color-scheme:dark; font-family:ui-sans-serif,system-ui,sans-serif }}
+body {{ margin:18px;background:#0d1117;color:#e6edf3 }} h1 {{ margin:0 0 6px;font-size:22px }}
+.desc,.meta {{ color:#9da7b3;margin-bottom:10px }} .panels {{ display:grid;grid-template-columns:1fr;gap:18px }}
+.wrap {{ overflow:auto;max-height:62vh;border:1px solid #30363d;border-radius:8px }}
+table {{ border-collapse:separate;border-spacing:0;font-size:10px }} th,td {{ padding:5px 7px;min-width:68px;max-width:105px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid #30363d;border-bottom:1px solid #30363d }}
+th {{ position:sticky;top:0;background:#161b22;z-index:2 }} th:first-child,td:first-child {{ position:sticky;left:0;background:#161b22;z-index:1;min-width:115px }} th:first-child {{ z-index:3 }}
+.rank {{ display:block;color:#8b949e;font-size:9px }} .positive {{ color:#7ee787 }} .negative {{ color:#ff7b72 }}
+</style></head><body><h1>{html.escape(title)}</h1><div class="desc">{html.escape(description)}</div>
+<div id="meta" class="meta"></div><div id="panels" class="panels"></div>
+<script id="comparison-data" type="application/json">{payload_json}</script><script>
+const d=JSON.parse(document.getElementById('comparison-data').textContent);
+document.getElementById('meta').textContent=`Target: ${{JSON.stringify(d.target)}} (token ${{d.target_id}}) · strength ${{d.strength}} · ${{d.direction_mode}} direction`;
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c]));
+function panel(name,top,ranks,delta=false) {{
+ const section=document.createElement('section'); section.innerHTML=`<h2>${{name}}</h2><div class="wrap"><table></table></div>`;
+ const table=section.querySelector('table'); const head=document.createElement('tr');
+ head.innerHTML='<th>position / token</th>'+d.layers.map(l=>`<th>L${{l}}</th>`).join(''); table.appendChild(head);
+ const maxDelta=Math.max(1,...d.rank_delta.flat().map(Math.abs));
+ d.positions.forEach((p,pi)=>{{ const row=document.createElement('tr'); row.innerHTML=`<td>${{p.index}}: ${{esc(p.token)}}</td>`;
+  d.layers.forEach((_,li)=>{{ const td=document.createElement('td');
+   if(delta){{ const v=d.rank_delta[pi][li]; const intensity=Math.min(0.85,Math.abs(v)/maxDelta); td.style.background=v>=0?`rgba(35,134,54,${{intensity}})`:`rgba(218,54,51,${{intensity}})`; td.className=v>0?'positive':v<0?'negative':''; td.innerHTML=`${{v>0?'+':''}}${{v}}<span class="rank">${{d.clean_rank[pi][li]+1}} → ${{d.steered_rank[pi][li]+1}}</span>`; }}
+   else td.innerHTML=`${{esc(top[pi][li])}}<span class="rank">target rank ${{ranks[pi][li]+1}}</span>`;
+   row.appendChild(td); }}); table.appendChild(row); }}); return section;
+}}
+const panels=document.getElementById('panels'); panels.append(panel('Clean J-lens readout',d.clean_top,d.clean_rank)); panels.append(panel('Steered J-lens readout',d.steered_top,d.steered_rank)); panels.append(panel('Target-rank improvement (clean − steered)',null,null,true));
+</script></body></html>"""

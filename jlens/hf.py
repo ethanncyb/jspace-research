@@ -154,6 +154,11 @@ class HFLensModel:
     def input_device(self) -> torch.device:
         return self._embed_tokens.weight.device
 
+    @property
+    def unembedding_weight(self) -> torch.Tensor:
+        """The LM head matrix ``W_U`` used by J-space steering."""
+        return self._lm_head.weight
+
     def encode(self, text: str, *, max_length: int = 512) -> torch.Tensor:
         encoded = self.tokenizer(
             text, return_tensors="pt", truncation=True, max_length=max_length

@@ -34,6 +34,16 @@ class LensModel(Protocol):
     layers: Sequence[nn.Module]
     tokenizer: Any
 
+    @property
+    def unembedding_weight(self) -> torch.Tensor:
+        """The unembedding matrix with shape ``[vocab_size, d_model]``.
+
+        Steering uses its rows to construct the per-token Jacobian-lens
+        vectors ``W_U[token] @ J_l``.  Implementations should return the
+        underlying parameter rather than a copy.
+        """
+        ...
+
     def encode(self, text: str, *, max_length: int = ...) -> torch.Tensor:
         """Tokenize ``text`` to ``input_ids`` of shape ``[1, seq_len]`` on the
         model's input device."""

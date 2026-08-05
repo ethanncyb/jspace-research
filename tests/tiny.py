@@ -72,6 +72,10 @@ class TinyDecoder(nn.Module):
     def input_device(self) -> torch.device:
         return self.embed_tokens.weight.device
 
+    @property
+    def unembedding_weight(self) -> torch.Tensor:
+        return self.lm_head.weight
+
     def encode(self, text: str, *, max_length: int = 128) -> torch.Tensor:
         return self.tokenizer(text, max_length=max_length).input_ids.to(
             self.input_device

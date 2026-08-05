@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>__TITLE__</title>
+  __D3__
+  <style>
+    :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, sans-serif; }
+    body { margin: 20px; background: #0d1117; color: #e6edf3; }
+    h1 { margin: 0 0 6px; font-size: 22px; }
+    .what { color: #9da7b3; margin-bottom: 14px; }
+    .prompt { white-space: pre-wrap; padding: 12px; background: #161b22; border-radius: 8px; max-height: 160px; overflow: auto; }
+    .status { margin: 12px 0; color: #9da7b3; }
+    .grid-wrap { overflow: auto; max-height: 58vh; border: 1px solid #30363d; border-radius: 8px; }
+    table { border-collapse: separate; border-spacing: 0; font-size: 11px; }
+    th, td { min-width: 72px; max-width: 120px; padding: 5px 7px; border-right: 1px solid #30363d; border-bottom: 1px solid #30363d; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    th { position: sticky; top: 0; z-index: 2; background: #161b22; }
+    th:first-child, td:first-child { position: sticky; left: 0; z-index: 1; background: #161b22; min-width: 120px; }
+    th:first-child { z-index: 3; }
+    td.cell { cursor: pointer; background: color-mix(in srgb, #238636 calc(var(--score) * 100%), #161b22); }
+    td.cell:hover { outline: 1px solid #58a6ff; }
+    sup { color: #8b949e; }
+  </style>
+</head>
+<body>
+  <h1>__TITLE__</h1>
+  <div class="what">__WHAT__</div>
+  <div id="prompt" class="prompt"></div>
+  <div id="status" class="status">Loading layer × position slice…</div>
+  <div class="grid-wrap"><table id="grid"></table></div>
+  <script id="bootstrap" type="application/json">__BOOTSTRAP__</script>
+  <script>
+  (() => {
+    const boot = JSON.parse(document.getElementById('bootstrap').textContent);
+    const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+    async function gunzip(bytes) {
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+    async function file(name) {
+      if (boot.mode === 'embed') return gunzip(fromB64(boot.files[name]));
+      return gunzip(new Uint8Array(await (await fetch(name)).arrayBuffer()));
+    }
+    async function main() {
+      const meta = boot.mode === 'embed' ? boot.meta : await (await fetch('meta.json')).json();
+      const raw = await file('slice.bin');
+      const count = meta.T * meta.layers.length * meta.top_n;
+      const ids = new Int32Array(raw.buffer, raw.byteOffset, count);
+      const ranks = new Int32Array(raw.buffer, raw.byteOffset + count * 4, count);
+      document.getElementById('prompt').textContent = meta.prompt;
+      const table = document.getElementById('grid');
+      const head = document.createElement('tr');
+      head.innerHTML = '<th>position / token</th>' + meta.layers.map(l => `<th>L${l}</th>`).join('');
+      table.appendChild(head);
+      for (let p = 0; p < meta.T; p++) {
+        const row = document.createElement('tr');
+        const absolute = p + (meta.ctx_offset || 0);
+        const token = meta.ctx_strs[absolute] || '';
+        row.innerHTML = `<td>${absolute}: ${escapeHtml(token)}</td>`;
+        for (let li = 0; li < meta.layers.length; li++) {
+          const offset = (p * meta.layers.length + li) * meta.top_n;
+          const id = ids[offset], rank = ranks[offset];
+          const cell = document.createElement('td');
+          cell.className = 'cell';
+          cell.style.setProperty('--score', String(1 / Math.max(1, rank + 1)));
+          cell.innerHTML = `${escapeHtml(meta.vocab[String(id)] || String(id))}<sup>${rank + 1}</sup>`;
+          cell.title = `position ${absolute}, layer ${meta.layers[li]}, token ${id}, rank ${rank + 1}`;
+          cell.onclick = () => document.getElementById('status').textContent = cell.title;
+          row.appendChild(cell);
+        }
+        table.appendChild(row);
+      }
+      document.getElementById('status').textContent = 'Click a cell to inspect its layer, position, token, and full-vocabulary rank.';
+    }
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    main().catch(error => { document.getElementById('status').textContent = `Could not load slice: ${error}`; });
+  })();
+  </script>
+</body>
+</html>

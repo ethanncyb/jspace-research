@@ -12,11 +12,43 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Literal
 
 import torch
+import torch.nn.functional as F
 
-from jlens.hooks import ActivationRecorder
+from jlens.hooks import ActivationRecorder, ActivationSteerer
 from jlens.protocol import LensModel
+
+
+@dataclass
+class SteeringResult:
+    """Clean and intervened outputs from :meth:`JacobianLens.steer`.
+
+    Activations retain the full sequence at each recorded layer so callers can
+    construct the same layer-by-position slices used by the regular lens
+    visualizer. Logits and summary diagnostics cover only ``positions``.
+    Ranks are zero-based.
+    """
+
+    input_ids: torch.Tensor
+    target_token_id: int
+    layers: list[int]
+    positions: list[int]
+    strength: float
+    direction_mode: Literal["jspace", "random"]
+    clean_activations: dict[int, torch.Tensor]
+    steered_activations: dict[int, torch.Tensor]
+    clean_norms: dict[int, torch.Tensor]
+    clean_logits: torch.Tensor
+    steered_logits: torch.Tensor
+    clean_target_ranks: torch.Tensor
+    steered_target_ranks: torch.Tensor
+    clean_top_token_ids: torch.Tensor
+    steered_top_token_ids: torch.Tensor
+    target_logit_lift: torch.Tensor
+    kl_divergence: torch.Tensor
 
 
 class JacobianLens:
@@ -141,6 +173,217 @@ class JacobianLens:
         """
         J_bar = self.jacobians[layer].to(residual.device)
         return residual @ J_bar.T
+
+    @torch.no_grad()
+    def direction(
+        self,
+        model: LensModel,
+        layer: int,
+        token_id: int,
+    ) -> torch.Tensor:
+        """Return the unit J-lens vector for ``token_id`` at ``layer``.
+
+        With row-vector activations, lens logits are approximately
+        ``h @ J_l.T @ W_U.T``.  The residual-stream direction associated with
+        one vocabulary token is therefore the corresponding row of
+        ``W_U @ J_l``.
+        """
+        if layer not in self.jacobians:
+            raise ValueError(
+                f"layer {layer} not in source_layers; fitted layers are "
+                f"{self.source_layers}"
+            )
+        weight = model.unembedding_weight
+        if weight.ndim != 2 or weight.shape[1] != self.d_model:
+            raise ValueError(
+                "unembedding_weight must have shape [vocab_size, d_model]; "
+                f"got {tuple(weight.shape)}"
+            )
+        if not 0 <= token_id < weight.shape[0]:
+            raise ValueError(
+                f"token_id {token_id} out of range for vocabulary size "
+                f"{weight.shape[0]}"
+            )
+        J_bar = self.jacobians[layer].to(weight.device, dtype=torch.float32)
+        vector = weight[token_id].float() @ J_bar
+        norm = torch.linalg.vector_norm(vector)
+        if not torch.isfinite(vector).all() or not torch.isfinite(norm) or norm <= 0:
+            raise ValueError(
+                f"J-lens direction for token {token_id} at layer {layer} "
+                "is zero or non-finite"
+            )
+        return vector / norm
+
+    def _default_steering_layers(self, model: LensModel) -> list[int]:
+        if model.n_layers == 32:
+            preferred = range(10, 27)
+        else:
+            start = model.n_layers // 3
+            stop = max(start + 1, model.n_layers - max(2, model.n_layers // 6))
+            preferred = range(start, stop)
+        layers = [layer for layer in preferred if layer in self.jacobians]
+        if not layers:
+            raise ValueError("no fitted layers fall in the default steering band")
+        return layers
+
+    @staticmethod
+    def _normalise_positions(
+        positions: Sequence[int], seq_len: int
+    ) -> list[int]:
+        normalised: list[int] = []
+        for position in positions:
+            resolved = position + seq_len if position < 0 else position
+            if not 0 <= resolved < seq_len:
+                raise ValueError(
+                    f"position {position} out of range for sequence length {seq_len}"
+                )
+            normalised.append(resolved)
+        if not normalised:
+            raise ValueError("positions must not be empty")
+        if len(set(normalised)) != len(normalised):
+            raise ValueError("positions resolve to duplicate indices")
+        return normalised
+
+    @torch.no_grad()
+    def steer(
+        self,
+        model: LensModel,
+        prompt: str | torch.Tensor,
+        *,
+        target_token_id: int,
+        layers: Sequence[int] | None = None,
+        positions: Sequence[int] = (-1,),
+        strength: float = 0.1,
+        max_seq_len: int = 512,
+        direction_mode: Literal["jspace", "random"] = "jspace",
+        random_seed: int = 0,
+    ) -> SteeringResult:
+        """Run clean and steered passes for a single target vocabulary token.
+
+        The intervention at every selected site is
+        ``strength * ||h_clean|| * unit_direction``.  ``direction_mode`` can
+        be ``"random"`` for a deterministic matched-norm control.
+        """
+        if not isinstance(strength, (int, float)) or not torch.isfinite(
+            torch.tensor(float(strength))
+        ):
+            raise ValueError("strength must be a finite number")
+        if direction_mode not in ("jspace", "random"):
+            raise ValueError("direction_mode must be 'jspace' or 'random'")
+        if layers is None:
+            layers = self._default_steering_layers(model)
+        layers = list(layers)
+        if not layers:
+            raise ValueError("layers must not be empty")
+        unknown = sorted(set(layers) - set(self.source_layers))
+        out_of_range = sorted(l for l in set(layers) if not 0 <= l < model.n_layers)
+        if out_of_range:
+            raise ValueError(
+                f"layers {out_of_range} out of range for a {model.n_layers}-layer model"
+            )
+        if unknown:
+            raise ValueError(
+                f"layers {unknown} not in source_layers; fitted layers are "
+                f"{self.source_layers}"
+            )
+        if len(set(layers)) != len(layers):
+            raise ValueError("layers must not contain duplicates")
+        layers = sorted(layers)
+
+        if isinstance(prompt, str):
+            input_ids = model.encode(prompt, max_length=max_seq_len)
+        elif torch.is_tensor(prompt):
+            input_ids = prompt
+        else:
+            raise TypeError("prompt must be text or an input_ids tensor")
+        if input_ids.ndim != 2 or input_ids.shape[0] != 1:
+            raise ValueError("steer currently requires input_ids shape [1, seq_len]")
+        resolved_positions = self._normalise_positions(positions, input_ids.shape[1])
+
+        final_layer = model.n_layers - 1
+        record_at = sorted(set(layers) | {final_layer})
+        with ActivationRecorder(model.layers, at=record_at) as clean_recorder:
+            model.forward(input_ids)
+        clean = {
+            layer: clean_recorder.activations[layer].detach() for layer in record_at
+        }
+        clean_norms = {
+            layer: torch.linalg.vector_norm(
+                clean[layer][0, resolved_positions].float(), dim=-1
+            )
+            for layer in layers
+        }
+
+        directions: dict[int, torch.Tensor] = {}
+        for layer in layers:
+            if direction_mode == "jspace":
+                directions[layer] = self.direction(model, layer, target_token_id)
+            else:
+                generator = torch.Generator(device="cpu").manual_seed(
+                    int(random_seed) + layer * 1_000_003
+                )
+                vector = torch.randn(self.d_model, generator=generator)
+                directions[layer] = vector / torch.linalg.vector_norm(vector)
+        deltas = {
+            layer: float(strength)
+            * clean_norms[layer].to(directions[layer].device).unsqueeze(-1)
+            * directions[layer].unsqueeze(0)
+            for layer in layers
+        }
+
+        # Register the modifying hooks first. Recorder hooks then observe and
+        # retain the post-intervention activations.
+        with ActivationSteerer(
+            model.layers, deltas=deltas, positions=resolved_positions
+        ), ActivationRecorder(model.layers, at=record_at) as steered_recorder:
+            model.forward(input_ids)
+        steered = {
+            layer: steered_recorder.activations[layer].detach()
+            for layer in record_at
+        }
+
+        def output_logits(activations: dict[int, torch.Tensor]) -> torch.Tensor:
+            residual = activations[final_layer][0, resolved_positions].float()
+            return model.unembed(residual).float()
+
+        clean_logits_device = output_logits(clean)
+        steered_logits_device = output_logits(steered)
+
+        def target_rank(logits: torch.Tensor) -> torch.Tensor:
+            target = logits[:, target_token_id].unsqueeze(-1)
+            return (logits > target).sum(dim=-1)
+
+        clean_ranks = target_rank(clean_logits_device)
+        steered_ranks = target_rank(steered_logits_device)
+        target_lift = (
+            steered_logits_device[:, target_token_id]
+            - clean_logits_device[:, target_token_id]
+        )
+        kl = F.kl_div(
+            F.log_softmax(steered_logits_device, dim=-1),
+            F.softmax(clean_logits_device, dim=-1),
+            reduction="none",
+        ).sum(dim=-1)
+
+        return SteeringResult(
+            input_ids=input_ids.detach(),
+            target_token_id=target_token_id,
+            layers=layers,
+            positions=resolved_positions,
+            strength=float(strength),
+            direction_mode=direction_mode,
+            clean_activations=clean,
+            steered_activations=steered,
+            clean_norms={k: v.detach().cpu() for k, v in clean_norms.items()},
+            clean_logits=clean_logits_device.detach().cpu(),
+            steered_logits=steered_logits_device.detach().cpu(),
+            clean_target_ranks=clean_ranks.detach().cpu(),
+            steered_target_ranks=steered_ranks.detach().cpu(),
+            clean_top_token_ids=clean_logits_device.argmax(dim=-1).detach().cpu(),
+            steered_top_token_ids=steered_logits_device.argmax(dim=-1).detach().cpu(),
+            target_logit_lift=target_lift.detach().cpu(),
+            kl_divergence=kl.detach().cpu(),
+        )
 
     @torch.no_grad()
     def apply(

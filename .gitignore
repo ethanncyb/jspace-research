@@ -11,5 +11,6 @@ dist/
 # jlens outputs
 *.pt
 slice*.html
+!jlens/data/slice_vis.html
 slices/
 .DS_Store

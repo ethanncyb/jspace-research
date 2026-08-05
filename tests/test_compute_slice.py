@@ -11,7 +11,13 @@ import pytest
 import torch
 
 from jlens.fitting import fit
-from jlens.vis import _ranks_of, build_page, compute_slice
+from jlens.vis import (
+    _ranks_of,
+    build_page,
+    build_steering_comparison_page,
+    compute_slice,
+    compute_steering_comparison,
+)
 
 from .tiny import TinyDecoder
 
@@ -96,3 +102,29 @@ def test_pinned_token_ids_flow_to_the_page_by_default(model, lens, tmp_path):
     meta = json.loads((tmp_path / "meta.json").read_text())
     assert meta["pinned"] == [pin]
     assert (tmp_path / "ranks" / f"{pin}.bin").exists()
+
+
+def test_steering_comparison_reuses_layer_position_layout(model, lens):
+    target = 7
+    result = lens.steer(
+        model,
+        PROMPT,
+        target_token_id=target,
+        layers=[1, 2],
+        positions=[-1],
+        strength=0.1,
+    )
+    comparison = compute_steering_comparison(
+        model, lens, result, last_n_tokens=5, top_n=3
+    )
+    assert comparison.clean.layers == [1, 2, model.n_layers - 1]
+    assert comparison.clean.seq_len == 5
+    assert comparison.target_rank_delta.shape == (5, 3)
+    assert target in comparison.clean.tracked_token_ids
+    page = build_steering_comparison_page(comparison)
+    assert 'id="comparison-data"' in page
+    payload = json.loads(
+        page.split('id="comparison-data"')[1].split(">", 1)[1].split("</script>")[0]
+    )
+    assert payload["target_id"] == target
+    assert set(payload) >= {"clean_top", "steered_top", "rank_delta"}
