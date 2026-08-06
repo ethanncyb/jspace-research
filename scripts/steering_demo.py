@@ -1,14 +1,15 @@
-# J-space steering demo on Qwen3.5-4B.
+# J-space steering demo.
+# Model + lens are selected in scripts/_common.py (MODEL_NAME toggle).
 #
 # Loads the Neuronpedia n=1000 Jacobian lens, steers a single concept token's
-# J-space direction into the residual stream (default band layers 10-26, final
+# J-space direction into the residual stream (default band for the model's depth,
 # prompt token), and records:
 #   1. target-token rank / logit lift / KL across strengths, jspace vs random
 #      matched-norm controls (via JacobianLens.steer);
 #   2. greedy continuations with vs without the intervention active during
 #      the prompt pass.
 #
-# Artifacts: results/steering_demo_qwen3.5-4b.txt (+ .svg rank chart).
+# Artifacts: results/steering_demo_<model-tag>.txt (+ .svg rank chart).
 from __future__ import annotations
 
 import argparse
@@ -22,7 +23,14 @@ import jlens
 from jlens.examples import EXAMPLES, resolve_prompt
 from jlens.hooks import ActivationRecorder
 
-from _common import LENS_REPO, LENS_REVISION, load_model_and_lens
+from _common import (
+    LENS_FILE,
+    LENS_REPO,
+    LENS_REVISION,
+    MODEL_NAME,
+    MODEL_TAG,
+    load_model_and_lens,
+)
 
 RESULTS = Path("results")
 STRENGTHS = (0.0, 0.1, 0.2)
@@ -142,7 +150,7 @@ def write_svg(path: Path, rows: list[dict]) -> None:
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
         f'style="background:white;font:12px sans-serif">',
         f'<text x="{width/2}" y="24" text-anchor="middle" font-size="14">'
-        f"J-space steering on Qwen3.5-4B: steered target rank vs strength</text>",
+        f"J-space steering on {MODEL_NAME}: steered target rank vs strength</text>",
         f'<line x1="{pad}" y1="{height-pad}" x2="{width-pad}" y2="{height-pad}" stroke="black"/>',
         f'<line x1="{pad}" y1="{pad}" x2="{pad}" y2="{height-pad}" stroke="black"/>',
         f'<text x="{width/2}" y="{height-18}" text-anchor="middle">strength</text>',
@@ -239,17 +247,17 @@ def main() -> None:
         )
 
     RESULTS.mkdir(exist_ok=True)
-    txt_path = RESULTS / "steering_demo_qwen3.5-4b.txt"
-    svg_path = RESULTS / "steering_demo_qwen3.5-4b.svg"
+    txt_path = RESULTS / f"steering_demo_{MODEL_TAG}.txt"
+    svg_path = RESULTS / f"steering_demo_{MODEL_TAG}.svg"
     write_svg(svg_path, rows)
 
     lines = [
-        "J-space steering demo — Qwen3.5-4B + Neuronpedia Jacobian lens (n=1000)",
+        f"J-space steering demo — {MODEL_NAME} + Neuronpedia Jacobian lens",
         f"date: {datetime.datetime.now().isoformat(timespec='seconds')}",
         "",
         f"example slug : {example.slug} ({example.section})",
         f"prompt       : {prompt!r}",
-        f"lens         : {LENS_REPO} rev {LENS_REVISION} file qwen3.5-4b n1000 "
+        f"lens         : {LENS_REPO} rev {LENS_REVISION} file {LENS_FILE} "
         f"(n_prompts={lens.n_prompts}, source_layers {lens.source_layers[0]}..{lens.source_layers[-1]})",
         f"target token : {target_text!r} (id={target_id}, clean rank={rows[0]['clean_rank']})",
         f"band         : layers {band[0]}..{band[-1]}, position = final prompt token",

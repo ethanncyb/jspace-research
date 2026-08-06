@@ -1,15 +1,17 @@
-# Anthropic-style probe-swap (two-hop coordinate swap) on Qwen3.5-4B.
+# Anthropic-style probe-swap (two-hop coordinate swap).
+# Model + lens are selected in scripts/_common.py (MODEL_NAME toggle).
 #
 # Implements data/experiments/README.md "probe-swap" with J-space directions:
 #   - baseline: greedy next-token == item.answer (the experiment's own filter);
-#   - swap: at every band layer (10-26) and every prompt token position, add
+#   - swap: at every band layer (lens default for the model's depth) and every
+#     prompt token position, add
 #       strength * ||h_clean|| * (unit J-dir(swap_to) - unit J-dir(intermediate))
 #     i.e. remove the intermediate concept's J-space direction and write the
 #     replacement's, leaving the rest of the activation unchanged;
 #   - score: greedy next-token == item.swap_answer ("intended flip");
 #   - control: same construction with matched-norm random unit vectors.
 #
-# Artifacts: results/probe_swap_qwen3.5-4b.json, results/probe_swap_qwen3.5-4b.txt
+# Artifacts: results/probe_swap_<model-tag>.json, results/probe_swap_<model-tag>.txt
 from __future__ import annotations
 
 import datetime
@@ -21,7 +23,14 @@ import torch
 
 from jlens.hooks import ActivationRecorder, ActivationSteerer
 
-from _common import load_model_and_lens
+from _common import (
+    LENS_FILE,
+    LENS_REPO,
+    LENS_REVISION,
+    MODEL_NAME,
+    MODEL_TAG,
+    load_model_and_lens,
+)
 
 RESULTS = Path("results")
 STRENGTHS = (0.1, 0.2, 0.4)
@@ -181,9 +190,8 @@ def main() -> None:
     out = {
         "experiment": "probe-swap (two-hop J-space coordinate swap)",
         "date": datetime.datetime.now().isoformat(timespec="seconds"),
-        "model": "Qwen/Qwen3.5-4B",
-        "lens": "neuronpedia/jacobian-lens qwen-n1000 "
-        "qwen3.5-4b/jlens/Salesforce-wikitext/Qwen3.5-4B_jacobian_lens_n1000.pt",
+        "model": MODEL_NAME,
+        "lens": f"{LENS_REPO} {LENS_REVISION} {LENS_FILE}",
         "config": {
             "band_layers": [band[0], band[-1]],
             "positions": "all prompt token positions",
@@ -201,11 +209,11 @@ def main() -> None:
         "items": records,
     }
     RESULTS.mkdir(exist_ok=True)
-    json_path = RESULTS / "probe_swap_qwen3.5-4b.json"
+    json_path = RESULTS / f"probe_swap_{MODEL_TAG}.json"
     json_path.write_text(json.dumps(out, indent=2))
 
     lines = [
-        "probe-swap summary — Qwen3.5-4B + J-space coordinate swap",
+        f"probe-swap summary — {MODEL_NAME} + J-space coordinate swap",
         f"items: {len(items)}, baseline-ok: {len(usable)}, skipped (multi-token): {len(skipped)}",
         f"band: layers {band[0]}..{band[-1]}, every prompt position",
         "",
@@ -217,7 +225,7 @@ def main() -> None:
             f"{row['flip_rate']:>10.3f} {row['still_answer_rate']:>12.3f} "
             f"{row['median_swap_answer_rank']:>12.1f}"
         )
-    txt_path = RESULTS / "probe_swap_qwen3.5-4b.txt"
+    txt_path = RESULTS / f"probe_swap_{MODEL_TAG}.txt"
     txt_path.write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
     print(f"\nwrote {json_path}\nwrote {txt_path}")
