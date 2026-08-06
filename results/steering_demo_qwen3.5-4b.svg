@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" style="background:white;font:12px sans-serif">
+<text x="320.0" y="24" text-anchor="middle" font-size="14">J-space steering on Qwen3.5-4B: steered target rank vs strength</text>
+<line x1="60" y1="340" x2="580" y2="340" stroke="black"/>
+<line x1="60" y1="60" x2="60" y2="340" stroke="black"/>
+<text x="320.0" y="382" text-anchor="middle">strength</text>
+<text x="16" y="200.0" transform="rotate(-90 16 200.0)" text-anchor="middle">target rank (log)</text>
+<text x="60.0" y="356" text-anchor="middle">0.0</text>
+<text x="320.0" y="356" text-anchor="middle">0.1</text>
+<text x="580.0" y="356" text-anchor="middle">0.2</text>
+<text x="54" y="344.0" text-anchor="end">0</text><line x1="57" y1="340.0" x2="60" y2="340.0" stroke="black"/>
+<text x="54" y="289.57158564145885" text-anchor="end">9</text><line x1="57" y1="285.57158564145885" x2="60" y2="285.57158564145885" stroke="black"/>
+<text x="54" y="235.1431712829177" text-anchor="end">99</text><line x1="57" y1="231.1431712829177" x2="60" y2="231.1431712829177" stroke="black"/>
+<text x="54" y="180.71475692437653" text-anchor="end">999</text><line x1="57" y1="176.71475692437653" x2="60" y2="176.71475692437653" stroke="black"/>
+<line x1="60" y1="79.83294772564818" x2="580" y2="79.83294772564818" stroke="#2b6cb0" stroke-dasharray="6 4"/><text x="576" y="73.83294772564818" text-anchor="end" fill="#2b6cb0">clean rank 60253</text>
+<polyline points="60.0,79.83294772564818 320.0,239.91435974652603 580.0,314.03104664885115" fill="none" stroke="#c23b22" stroke-width="2"/>
+<circle cx="60.0" cy="79.83294772564818" r="4" fill="#c23b22"/>
+<circle cx="320.0" cy="239.91435974652603" r="4" fill="#c23b22"/>
+<circle cx="580.0" cy="314.03104664885115" r="4" fill="#c23b22"/>
+<text x="588.0" y="318.03104664885115" fill="#c23b22">jspace</text>
+<polyline points="320.0,65.79247140272378 580.0,60.0" fill="none" stroke="#555555" stroke-width="2"/>
+<circle cx="320.0" cy="65.79247140272378" r="4" fill="#555555"/>
+<circle cx="580.0" cy="60.0" r="4" fill="#555555"/>
+<text x="588.0" y="64.0" fill="#555555">random</text>
+</svg>

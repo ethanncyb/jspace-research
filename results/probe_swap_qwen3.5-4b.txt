@@ -1,0 +1,13 @@
+probe-swap summary — Qwen3.5-4B + J-space coordinate swap
+items: 90, baseline-ok: 51, skipped (multi-token): 2
+band: layers 10..26, every prompt position
+
+strength  control    n   flip@1  still_ans  concept_sub  med_sa_rank
+     0.1   jspace   51    0.118      0.000        0.726       4039.0
+     0.1   random   51    0.020      0.824        0.000       5241.0
+     0.2   jspace   51    0.059      0.000        0.882       4109.0
+     0.2   random   51    0.020      0.235        0.000      11513.0
+     0.4   jspace   51    0.000      0.000        1.000       6490.0
+     0.4   random   51    0.000      0.000        0.000      30340.0
+
+interpretation: At strength 0.1 jspace: original answer fully erased (still_answer 0.000 vs 0.824 random), the swap_to concept itself becomes the argmax in 73% of items (concept substitution), and the full two-hop flip (answer about the swapped concept) completes in 12% of items. Random matched-norm controls leave the answer intact (82%) and rarely substitute (<=2% flip). Qualitatively consistent with the global-workspace picture: the mid-layer band (10-26) hosts a rewritable representation of the intermediate concept; the second hop re-reads it only partially at these strengths. Strength 0.4 collapses both jspace and random conditions (non-specific destruction).
