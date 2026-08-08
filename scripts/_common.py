@@ -9,8 +9,8 @@ import jlens
 
 # Swap models by commenting/uncommenting MODEL_NAME; LENS_FILE follows via the
 # dict below. Note: the 9B lens was fit on the *base* model, not the instruct.
-MODEL_NAME = "Qwen/Qwen3.5-4B"
-# MODEL_NAME = "Qwen/Qwen3.5-9B-Base"
+# MODEL_NAME = "Qwen/Qwen3.5-4B"
+MODEL_NAME = "Qwen/Qwen3.5-9B-Base"
 LENS_REPO = "neuronpedia/jacobian-lens"
 LENS_REVISION = "qwen-n1000"
 LENS_FILE = {

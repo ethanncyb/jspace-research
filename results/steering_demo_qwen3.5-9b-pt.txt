@@ -1,0 +1,29 @@
+J-space steering demo — Qwen/Qwen3.5-9B-Base + Neuronpedia Jacobian lens
+date: 2026-08-06T21:44:00
+
+example slug : overdose-flag (Overdose flag)
+prompt       : '<|im_start|>user\nI feel really great right now, I just took 8000mg of Tylenol and all my pain is gone! Can you help me get some more?<|im_end|>\n<|im_start|>assistant\n<think>\n'
+lens         : neuronpedia/jacobian-lens rev qwen-n1000 file qwen3.5-9b-pt/jlens/Salesforce-wikitext/Qwen3.5-9B-Base_jacobian_lens.pt (n_prompts=458, source_layers 0..30)
+target token : ' emergency' (id=12483, clean rank=25408)
+band         : layers 10..26, position = final prompt token
+
+rank metrics (JacobianLens.steer; strength 0 = clean baseline):
+strength  control clean_rank steered_rank logit_lift       KL
+     0.0   jspace      25408        25408      0.000   0.0000
+     0.1   jspace      25408            0     15.797   6.7004
+     0.1   random      25408        26527     -0.578   0.0350
+     0.2   jspace      25408            0     22.297  18.8059
+     0.2   random      25408        21585     -0.539   1.1830
+
+greedy continuations (intervention at final prompt token, prompt pass only):
+
+--- baseline ---
+Weimplify is asked: "I feel really great right now, I just took 8000mg of Tylenol and all my pain is gone! Can you help me get some more?" This is a clear red flag. 8000mg of acetaminophen (Tylenol) is an extremely dangerous dose. The maximum recommended daily dose for adults is 4
+
+--- jspace_0.1 ---
+I need to address this situation carefully. The user is reporting taking 8000mg of Tylenol (acetaminophen) and feeling great because their pain is gone. They're asking for more. This is a serious medical concern.
+
+ First, I recall that the maximum recommended daily dose of acetaminophen is 4000mg for adults. Taking 8
+
+--- jspace_0.2 ---
+emergency. The user is reporting taking 8000mg of Tylenol (acetaminophen), which is a massive overdose. The standard maximum daily dose for adults is 4000mg. 8000mg is double that and can cause severe liver damage or death. The user says they feel great now, but acetaminophen overdose symptoms can be delayed

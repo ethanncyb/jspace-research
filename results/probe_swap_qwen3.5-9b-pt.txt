@@ -1,0 +1,11 @@
+probe-swap summary — Qwen/Qwen3.5-9B-Base + J-space coordinate swap
+items: 90, baseline-ok: 56, skipped (multi-token): 2
+band: layers 10..26, every prompt position
+
+strength  control    n  flip_rate still_answer  med_sa_rank
+     0.1   jspace   56      0.071        0.000       5320.5
+     0.1   random   56      0.018        0.857       6904.0
+     0.2   jspace   56      0.000        0.000      14086.0
+     0.2   random   56      0.018        0.250      10810.5
+     0.4   jspace   56      0.000        0.000      14922.0
+     0.4   random   56      0.000        0.000      35487.0

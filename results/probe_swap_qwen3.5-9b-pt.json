@@ -1,0 +1,3835 @@
+{
+  "experiment": "probe-swap (two-hop J-space coordinate swap)",
+  "date": "2026-08-06T21:43:15",
+  "model": "Qwen/Qwen3.5-9B-Base",
+  "lens": "neuronpedia/jacobian-lens qwen-n1000 qwen3.5-9b-pt/jlens/Salesforce-wikitext/Qwen3.5-9B-Base_jacobian_lens.pt",
+  "config": {
+    "band_layers": [
+      10,
+      26
+    ],
+    "positions": "all prompt token positions",
+    "strengths": [
+      0.1,
+      0.2,
+      0.4
+    ],
+    "direction": "strength * ||h_clean|| * (unit J-dir(swap_to) - unit J-dir(intermediate))",
+    "control": "matched-norm random unit-vector pairs",
+    "baseline_filter": "greedy next-token == answer"
+  },
+  "n_items": 90,
+  "n_baseline_ok": 56,
+  "n_skipped_multitoken": 2,
+  "per_strength": [
+    {
+      "strength": 0.1,
+      "control": "jspace",
+      "n": 56,
+      "flip_rate": 0.07142857142857142,
+      "still_answer_rate": 0.0,
+      "median_swap_answer_rank": 5320.5
+    },
+    {
+      "strength": 0.1,
+      "control": "random",
+      "n": 56,
+      "flip_rate": 0.017857142857142856,
+      "still_answer_rate": 0.8571428571428571,
+      "median_swap_answer_rank": 6904.0
+    },
+    {
+      "strength": 0.2,
+      "control": "jspace",
+      "n": 56,
+      "flip_rate": 0.0,
+      "still_answer_rate": 0.0,
+      "median_swap_answer_rank": 14086.0
+    },
+    {
+      "strength": 0.2,
+      "control": "random",
+      "n": 56,
+      "flip_rate": 0.017857142857142856,
+      "still_answer_rate": 0.25,
+      "median_swap_answer_rank": 10810.5
+    },
+    {
+      "strength": 0.4,
+      "control": "jspace",
+      "n": 56,
+      "flip_rate": 0.0,
+      "still_answer_rate": 0.0,
+      "median_swap_answer_rank": 14922.0
+    },
+    {
+      "strength": 0.4,
+      "control": "random",
+      "n": 56,
+      "flip_rate": 0.0,
+      "still_answer_rate": 0.0,
+      "median_swap_answer_rank": 35487.0
+    }
+  ],
+  "per_category_at_max_strength": {
+    "multihop": {
+      "n": 10,
+      "flips": 0,
+      "flip_rate": 0.0
+    },
+    "city-capital": {
+      "n": 6,
+      "flips": 0,
+      "flip_rate": 0.0
+    },
+    "person-firstname": {
+      "n": 5,
+      "flips": 0,
+      "flip_rate": 0.0
+    },
+    "language-capital": {
+      "n": 4,
+      "flips": 0,
+      "flip_rate": 0.0
+    },
+    "city-continent": {
+      "n": 3,
+      "flips": 0,
+      "flip_rate": 0.0
+    },
+    "city-language": {
+      "n": 3,
+      "flips": 0,
+      "flip_rate": 0.0
+    },
+    "element-state": {
+      "n": 3,
+      "flips": 0,
+      "flip_rate": 0.0
+    }
+  },
+  "skipped": [
+    {
+      "name": "bird-color-swan",
+      "reason": "multi-token concept"
+    },
+    {
+      "name": "bird-country-eagle",
+      "reason": "multi-token concept"
+    }
+  ],
+  "items": [
+    {
+      "name": "amazon-language",
+      "category": "multihop",
+      "intermediate": "Brazil",
+      "answer": "Portuguese",
+      "swap_to": "Mexico",
+      "swap_answer": "Spanish",
+      "baseline_argmax": "1",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "animal-cover-turtle",
+      "category": "animal-cover",
+      "intermediate": "turtle",
+      "answer": "shell",
+      "swap_to": "snake",
+      "swap_answer": "scale",
+      "baseline_argmax": " shell",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "snake",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 16284
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " shell",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 1981
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "snake",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 14024
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " sc",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 19019
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "snake",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 10562
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " **",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 99005
+        }
+      ]
+    },
+    {
+      "name": "animal-legs-buffalo2",
+      "category": "animal-legs",
+      "intermediate": "buffalo",
+      "answer": "four",
+      "swap_to": "spider",
+      "swap_answer": "eight",
+      "baseline_argmax": " ",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "animal-nose-elephant",
+      "category": "animal-nose",
+      "intermediate": "elephant",
+      "answer": "trunk",
+      "swap_to": "snake",
+      "swap_answer": "tongue",
+      "baseline_argmax": " trunk",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "snake",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 2927
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " trunk",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 2844
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "snake",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 16872
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " \"",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 6724
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "snake",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 15189
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": ":",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 192
+        }
+      ]
+    },
+    {
+      "name": "atomic-80-state",
+      "category": "multihop",
+      "intermediate": "mercury",
+      "answer": "liquid",
+      "swap_to": "iron",
+      "swap_answer": "solid",
+      "baseline_argmax": "1",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "basketball-players",
+      "category": "multihop",
+      "intermediate": "basketball",
+      "answer": "5",
+      "swap_to": "baseball",
+      "swap_answer": "9",
+      "baseline_argmax": "1",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "beverage-source-wine",
+      "category": "beverage-source",
+      "intermediate": "wine",
+      "answer": "grape",
+      "swap_to": "beer",
+      "swap_answer": "barley",
+      "baseline_argmax": " same",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "bird-time-owl",
+      "category": "bird-time",
+      "intermediate": "owl",
+      "answer": "night",
+      "swap_to": "eagle",
+      "swap_answer": "day",
+      "baseline_argmax": " the",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "birthstone-emerald-month",
+      "category": "multihop",
+      "intermediate": "May",
+      "answer": "5",
+      "swap_to": "July",
+      "swap_answer": "7",
+      "baseline_argmax": "5",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "7",
+          "flip_to_swap_answer": true,
+          "still_answer": false,
+          "swap_answer_token_rank": 0
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": "5",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 7
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "July",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 14148
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": "1",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 2
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "July",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 66720
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "3",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 9
+        }
+      ]
+    },
+    {
+      "name": "chem-atmosphere-Z",
+      "category": "multihop",
+      "intermediate": "nitrogen",
+      "answer": "7",
+      "swap_to": "oxygen",
+      "swap_answer": "8",
+      "baseline_argmax": "7",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "1",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 3
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": "7",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 2
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "\u6c27",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 19
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": "2",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 4
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " oxygen",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 2128
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "1",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 31
+        }
+      ]
+    },
+    {
+      "name": "chem-bones-Z",
+      "category": "multihop",
+      "intermediate": "calcium",
+      "answer": "20",
+      "swap_to": "iron",
+      "swap_answer": "26",
+      "baseline_argmax": "2",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "chem-organic-Z",
+      "category": "multihop",
+      "intermediate": "carbon",
+      "answer": "6",
+      "swap_to": "oxygen",
+      "swap_answer": "8",
+      "baseline_argmax": "6",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " oxygen",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 614
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": "6",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 2
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " oxygen",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 49135
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": "1",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 2
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " oxygen",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 164905
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " ",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 5006
+        }
+      ]
+    },
+    {
+      "name": "chem-photosynthesis-Z",
+      "category": "multihop",
+      "intermediate": "oxygen",
+      "answer": "8",
+      "swap_to": "nitrogen",
+      "swap_answer": "7",
+      "baseline_argmax": "8",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "2",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 1
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": "7",
+          "flip_to_swap_answer": true,
+          "still_answer": false,
+          "swap_answer_token_rank": 0
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " nitrogen",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 186
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": "6",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 3
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " nitrogen",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 20509
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "1",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 23
+        }
+      ]
+    },
+    {
+      "name": "christmas-season",
+      "category": "multihop",
+      "intermediate": "Christmas",
+      "answer": "winter",
+      "swap_to": "Easter",
+      "swap_answer": "spring",
+      "baseline_argmax": "1",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "city-state-Philadelphia",
+      "category": "city-state",
+      "intermediate": "Philadelphia",
+      "answer": "Pennsylvania",
+      "swap_to": "Seattle",
+      "swap_answer": "Washington",
+      "baseline_argmax": " Pennsylvania",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Seattle",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 39525
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " called",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 5066
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "Seattle",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 35656
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " not",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 8655
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "Seattle",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 1720
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " that",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 97718
+        }
+      ]
+    },
+    {
+      "name": "colosseum-currency",
+      "category": "multihop",
+      "intermediate": "Italy",
+      "answer": "Euro",
+      "swap_to": "Mexico",
+      "swap_answer": "peso",
+      "baseline_argmax": "1",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "element-color-gold2",
+      "category": "element-color",
+      "intermediate": "gold",
+      "answer": "yellow",
+      "swap_to": "silver",
+      "swap_answer": "gray",
+      "baseline_argmax": " yellow",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " silver",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 18366
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " yellow",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 3819
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "silver",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 113924
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " ",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 9467
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "silver",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 112494
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " ",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 131010
+        }
+      ]
+    },
+    {
+      "name": "etym-frigg-position",
+      "category": "multihop",
+      "intermediate": "Friday",
+      "answer": "5",
+      "swap_to": "Thursday",
+      "swap_answer": "4",
+      "baseline_argmax": "5",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "4",
+          "flip_to_swap_answer": true,
+          "still_answer": false,
+          "swap_answer_token_rank": 0
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": "5",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 4
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "1",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 1
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": "3",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 6
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "Thursday",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 66890
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "1",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 4
+        }
+      ]
+    },
+    {
+      "name": "etym-saturn-position",
+      "category": "multihop",
+      "intermediate": "Saturn",
+      "answer": "6",
+      "swap_to": "Jupiter",
+      "swap_answer": "5",
+      "baseline_argmax": "4",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "etym-wargod-month",
+      "category": "multihop",
+      "intermediate": "March",
+      "answer": "3",
+      "swap_to": "June",
+      "swap_answer": "6",
+      "baseline_argmax": "1",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "ex-city-capital-Barcelona-Toronto",
+      "category": "city-capital",
+      "intermediate": "Spain",
+      "answer": "Madrid",
+      "swap_to": "Canada",
+      "swap_answer": "Ottawa",
+      "baseline_argmax": " Madrid",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Canada",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 2854
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Madrid",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 10416
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "Canada",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 179
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " the",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 9451
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "Canada",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 7416
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "\n",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 1782
+        }
+      ]
+    },
+    {
+      "name": "ex-city-capital-Lyon-Naples",
+      "category": "city-capital",
+      "intermediate": "France",
+      "answer": "Paris",
+      "swap_to": "Italy",
+      "swap_answer": "Rome",
+      "baseline_argmax": " Paris",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " a",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 19664
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Paris",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 72808
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "\u6709\u610f",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 66380
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " Paris",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 48314
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "Italy",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 168052
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " the",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 17351
+        }
+      ]
+    },
+    {
+      "name": "ex-city-capital-Naples-Barcelona",
+      "category": "city-capital",
+      "intermediate": "Italy",
+      "answer": "Rome",
+      "swap_to": "Spain",
+      "swap_answer": "Madrid",
+      "baseline_argmax": " Rome",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " also",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 584
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Rome",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 1962
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": ":",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 1953
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " Rome",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 778
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "Spain",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 9
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "\n",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 35600
+        }
+      ]
+    },
+    {
+      "name": "ex-city-capital-Toronto-Lyon",
+      "category": "city-capital",
+      "intermediate": "Canada",
+      "answer": "Ottawa",
+      "swap_to": "France",
+      "swap_answer": "Paris",
+      "baseline_argmax": " Ottawa",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " France",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 590
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Ottawa",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 7694
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "France",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 2285
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " Ottawa",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 4566
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "France",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 23
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " -",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 79157
+        }
+      ]
+    },
+    {
+      "name": "ex-city-continent-Toronto-Lyon",
+      "category": "city-continent",
+      "intermediate": "Canada",
+      "answer": "North",
+      "swap_to": "France",
+      "swap_answer": "Europe",
+      "baseline_argmax": " North",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " France",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 5806
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Africa",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 702
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "France",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 22624
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " the",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 3357
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "France",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 6721
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "\n",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 52474
+        }
+      ]
+    },
+    {
+      "name": "ex-city-currency-Toronto-Beijing",
+      "category": "city-currency",
+      "intermediate": "Canada",
+      "answer": "Canadian",
+      "swap_to": "China",
+      "swap_answer": "yuan",
+      "baseline_argmax": " Canadian",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "China",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 326
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Canadian",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 4875
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "China",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 341
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " dollar",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 39677
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "China",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 8240
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " c",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 23155
+        }
+      ]
+    },
+    {
+      "name": "ex-city-currency-Toronto-Mumbai",
+      "category": "city-currency",
+      "intermediate": "Canada",
+      "answer": "Canadian",
+      "swap_to": "India",
+      "swap_answer": "rupee",
+      "baseline_argmax": " Canadian",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Indian",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 1540
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Canadian",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 15503
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "India",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 2345
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " Canadian",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 42586
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "India",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 11645
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " R",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 136148
+        }
+      ]
+    },
+    {
+      "name": "ex-city-language-Lyon-Naples",
+      "category": "city-language",
+      "intermediate": "France",
+      "answer": "French",
+      "swap_to": "Italy",
+      "swap_answer": "Italian",
+      "baseline_argmax": " French",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " the",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 339
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " French",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 5944
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "\u6709\u610f",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 599
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " not",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 13901
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "Italy",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 10
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "1",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 7629
+        }
+      ]
+    },
+    {
+      "name": "ex-element-state-26-8",
+      "category": "element-state",
+      "intermediate": "iron",
+      "answer": "solid",
+      "swap_to": "oxygen",
+      "swap_answer": "gas",
+      "baseline_argmax": " solid",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " oxygen",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 43032
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " solid",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 11012
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " oxygen",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 51788
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " a",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 61747
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " oxygen",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 9083
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "-",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 25977
+        }
+      ]
+    },
+    {
+      "name": "ex-element-state-26-80",
+      "category": "element-state",
+      "intermediate": "iron",
+      "answer": "solid",
+      "swap_to": "mercury",
+      "swap_answer": "liquid",
+      "baseline_argmax": " solid",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " mercury",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 13148
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " solid",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 986
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " mercury",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 31039
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " a",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 819
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " mercury",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 15969
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "/",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 36564
+        }
+      ]
+    },
+    {
+      "name": "ex-element-state-8-26",
+      "category": "element-state",
+      "intermediate": "oxygen",
+      "answer": "gas",
+      "swap_to": "iron",
+      "swap_answer": "solid",
+      "baseline_argmax": " solid",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "ex-element-state-8-80",
+      "category": "element-state",
+      "intermediate": "oxygen",
+      "answer": "gas",
+      "swap_to": "mercury",
+      "swap_answer": "liquid",
+      "baseline_argmax": " solid",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "ex-element-state-80-8",
+      "category": "element-state",
+      "intermediate": "mercury",
+      "answer": "liquid",
+      "swap_to": "oxygen",
+      "swap_answer": "gas",
+      "baseline_argmax": " liquid",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " oxygen",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 37308
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " solid",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 1755
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "\u4f9b",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 53425
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " a",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 2620
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "\u4f9b",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 34408
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": ";",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 51090
+        }
+      ]
+    },
+    {
+      "name": "ex-element-symbol-11-26",
+      "category": "element-symbol",
+      "intermediate": "sodium",
+      "answer": "Na",
+      "swap_to": "iron",
+      "swap_answer": "Fe",
+      "baseline_argmax": " Na",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "iron",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 503
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Na",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 21572
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "iron",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 560
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " used",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 102070
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "iron",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 625
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " ",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 11454
+        }
+      ]
+    },
+    {
+      "name": "ex-element-symbol-26-79",
+      "category": "element-symbol",
+      "intermediate": "iron",
+      "answer": "Fe",
+      "swap_to": "gold",
+      "swap_answer": "Au",
+      "baseline_argmax": " Fe",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "gold",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 95
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Fe",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 13137
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "gold",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 25
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " Fe",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 11288
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "gold",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 33
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "\n",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 40641
+        }
+      ]
+    },
+    {
+      "name": "ex-planet-color-third-fourth",
+      "category": "planet-color",
+      "intermediate": "Earth",
+      "answer": "blue",
+      "swap_to": "Mars",
+      "swap_answer": "red",
+      "baseline_argmax": " blue",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Mars",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 41771
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " blue",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 2773
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " Mars",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 125382
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " green",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 4690
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " Mars",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 124886
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "\u2019",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 3221
+        }
+      ]
+    },
+    {
+      "name": "ex2-city-capital-Munich",
+      "category": "city-capital",
+      "intermediate": "Germany",
+      "answer": "Berlin",
+      "swap_to": "Japan",
+      "swap_answer": "Tokyo",
+      "baseline_argmax": " Berlin",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " the",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 218
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Berlin",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 20736
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "Japan",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 14519
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " Berlin",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 15060
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "Japan",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 62889
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": ",",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 34987
+        }
+      ]
+    },
+    {
+      "name": "ex2-city-capital-Osaka",
+      "category": "city-capital",
+      "intermediate": "Japan",
+      "answer": "Tokyo",
+      "swap_to": "Germany",
+      "swap_answer": "Berlin",
+      "baseline_argmax": " Tokyo",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Germany",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 10015
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Tokyo",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 12065
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "\u5377",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 3767
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " Tokyo",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 16627
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "\u5377",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 630
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": ".",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 58960
+        }
+      ]
+    },
+    {
+      "name": "ex2-city-continent-Lima",
+      "category": "city-continent",
+      "intermediate": "Peru",
+      "answer": "South",
+      "swap_to": "Egypt",
+      "swap_answer": "Africa",
+      "baseline_argmax": " South",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "Egypt",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 228487
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " South",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 2656
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "Egypt",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 209137
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " the",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 9338
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "Egypt",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 100363
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": ",",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 103572
+        }
+      ]
+    },
+    {
+      "name": "ex2-city-continent-Sydney",
+      "category": "city-continent",
+      "intermediate": "Australia",
+      "answer": "Australia",
+      "swap_to": "Peru",
+      "swap_answer": "South",
+      "baseline_argmax": " Australia",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Peru",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 197611
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Australia",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 4618
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " Peru",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 240029
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " Europe",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 15103
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " Peru",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 221628
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "\n",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 23654
+        }
+      ]
+    },
+    {
+      "name": "ex2-city-language-Cairo",
+      "category": "city-language",
+      "intermediate": "Egypt",
+      "answer": "Arabic",
+      "swap_to": "Russia",
+      "swap_answer": "Russian",
+      "baseline_argmax": " Arabic",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Russia",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 5150
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Arabic",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 7237
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "Russia",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 22686
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " Arabic",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 54584
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "Russia",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 139
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " \"",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 101473
+        }
+      ]
+    },
+    {
+      "name": "ex2-city-language-Moscow",
+      "category": "city-language",
+      "intermediate": "Russia",
+      "answer": "Russian",
+      "swap_to": "Egypt",
+      "swap_answer": "Arabic",
+      "baseline_argmax": " Russian",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " called",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 2108
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Russian",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 8192
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "Egypt",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 12328
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " Russian",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 34154
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "Egypt",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 42234
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " a",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 99989
+        }
+      ]
+    },
+    {
+      "name": "ex2-language-capital-Greek",
+      "category": "language-capital",
+      "intermediate": "Greece",
+      "answer": "Athens",
+      "swap_to": "Sweden",
+      "swap_answer": "Stockholm",
+      "baseline_argmax": " Athens",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "Sweden",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 9573
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Athens",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 31932
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "Sweden",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 670
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " Athens",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 66961
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "Sweden",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 102
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " ",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 126811
+        }
+      ]
+    },
+    {
+      "name": "ex2-language-capital-Hungarian",
+      "category": "language-capital",
+      "intermediate": "Hungary",
+      "answer": "Budapest",
+      "swap_to": "Poland",
+      "swap_answer": "Warsaw",
+      "baseline_argmax": " Budapest",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Poland",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 1152
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Budapest",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 22211
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " Poland",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 7943
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " Budapest",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 23196
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " Poland",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 3006
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " [",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 96109
+        }
+      ]
+    },
+    {
+      "name": "ex2-language-capital-Polish",
+      "category": "language-capital",
+      "intermediate": "Poland",
+      "answer": "Warsaw",
+      "swap_to": "Greece",
+      "swap_answer": "Athens",
+      "baseline_argmax": " Warsaw",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Greece",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 2738
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Warsaw",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 9196
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " Greece",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 644
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " the",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 24113
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " Greece",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 298
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " in",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 35374
+        }
+      ]
+    },
+    {
+      "name": "ex2-language-capital-Swedish",
+      "category": "language-capital",
+      "intermediate": "Sweden",
+      "answer": "Stockholm",
+      "swap_to": "Hungary",
+      "swap_answer": "Budapest",
+      "baseline_argmax": " Stockholm",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Hungary",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 12038
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Stockholm",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 31476
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " Hungary",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 17616
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " Stockholm",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 20012
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " Hungary",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 1220
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " is",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 136974
+        }
+      ]
+    },
+    {
+      "name": "ex2-river-capital-Thames",
+      "category": "river-capital",
+      "intermediate": "England",
+      "answer": "London",
+      "swap_to": "Germany",
+      "swap_answer": "Berlin",
+      "baseline_argmax": " London",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Germany",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 5814
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " London",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 8299
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "\u5377",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 15046
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " named",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 10690
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "\u5377",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 14655
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "9",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 49289
+        }
+      ]
+    },
+    {
+      "name": "food-animal-butter",
+      "category": "food-animal",
+      "intermediate": "butter",
+      "answer": "cow",
+      "swap_to": "honey",
+      "swap_answer": "bee",
+      "baseline_argmax": " same",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "food-animal-honey",
+      "category": "food-animal",
+      "intermediate": "honey",
+      "answer": "bee",
+      "swap_to": "butter",
+      "swap_answer": "cow",
+      "baseline_argmax": " honey",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "fruit-grows-grape",
+      "category": "fruit-grows",
+      "intermediate": "grape",
+      "answer": "vine",
+      "swap_to": "apple",
+      "swap_answer": "tree",
+      "baseline_argmax": " vine",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "apple",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 11087
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " vine",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 4497
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "apple",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 22895
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " common",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 34578
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "apple",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 21280
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " deep",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 7084
+        }
+      ]
+    },
+    {
+      "name": "func-filters-count",
+      "category": "multihop",
+      "intermediate": "kidney",
+      "answer": "2",
+      "swap_to": "liver",
+      "swap_answer": "1",
+      "baseline_argmax": "2",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "1",
+          "flip_to_swap_answer": true,
+          "still_answer": false,
+          "swap_answer_token_rank": 0
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": "2",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 1
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " liver",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 342
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": "2",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 1
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " liver",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 104635
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": ".",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 9
+        }
+      ]
+    },
+    {
+      "name": "func-pumps-chambers",
+      "category": "multihop",
+      "intermediate": "heart",
+      "answer": "4",
+      "swap_to": "lung",
+      "swap_answer": "2",
+      "baseline_argmax": "4",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "lung",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 3569
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": "4",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 1
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "lung",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 11428
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": "1",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 4
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "lung",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 20223
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " \u2013",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 1
+        }
+      ]
+    },
+    {
+      "name": "gem-color-ruby",
+      "category": "gem-color",
+      "intermediate": "ruby",
+      "answer": "red",
+      "swap_to": "pearl",
+      "swap_answer": "white",
+      "baseline_argmax": " red",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " pearl",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 25161
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " red",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 9634
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " pearl",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 59700
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " known",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 7442
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " pearl",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 91446
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "\n",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 14669
+        }
+      ]
+    },
+    {
+      "name": "gem-source-pearl",
+      "category": "gem-source",
+      "intermediate": "pearl",
+      "answer": "oyster",
+      "swap_to": "diamond",
+      "swap_answer": "earth",
+      "baseline_argmax": " ab",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "greatwall-ocean",
+      "category": "multihop",
+      "intermediate": "China",
+      "answer": "Pacific",
+      "swap_to": "Brazil",
+      "swap_answer": "Atlantic",
+      "baseline_argmax": "2",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "holiday-month-christmas2",
+      "category": "holiday-month",
+      "intermediate": "Christmas",
+      "answer": "December",
+      "swap_to": "Easter",
+      "swap_answer": "April",
+      "baseline_argmax": " December",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Easter",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 24554
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " December",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 9420
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " Easter",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 83870
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " called",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 2976
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " Easter",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 22112
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "**",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 44919
+        }
+      ]
+    },
+    {
+      "name": "instr-body-trumpet",
+      "category": "instr-played",
+      "intermediate": "trumpet",
+      "answer": "lips",
+      "swap_to": "drums",
+      "swap_answer": "hands",
+      "baseline_argmax": " lips",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " drums",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 4023
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " __",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 22622
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " drums",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 627
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": ":",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 37283
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " drums",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 953
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "\u74dc",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 70100
+        }
+      ]
+    },
+    {
+      "name": "instr-hit-drums",
+      "category": "instr-played",
+      "intermediate": "drums",
+      "answer": "sticks",
+      "swap_to": "piano",
+      "swap_answer": "keys",
+      "baseline_argmax": " a",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "mars-color",
+      "category": "multihop",
+      "intermediate": "Mars",
+      "answer": "red",
+      "swap_to": "Earth",
+      "swap_answer": "blue",
+      "baseline_argmax": "1",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "month-3-godof",
+      "category": "multihop",
+      "intermediate": "Mars",
+      "answer": "war",
+      "swap_to": "Venus",
+      "swap_answer": "love",
+      "baseline_argmax": "2",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "organ-acid-stomach",
+      "category": "organ-function",
+      "intermediate": "stomach",
+      "answer": "acid",
+      "swap_to": "heart",
+      "swap_answer": "blood",
+      "baseline_argmax": " gastric",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "organ-count-kidney2",
+      "category": "organ-count",
+      "intermediate": "kidney",
+      "answer": "two",
+      "swap_to": "heart",
+      "swap_answer": "one",
+      "baseline_argmax": " two",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "heart",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 208
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " two",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 1232
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "heart",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 7189
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " ",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 3282
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "heart",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 19958
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "\n",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 80190
+        }
+      ]
+    },
+    {
+      "name": "organ-location-brain",
+      "category": "organ-location",
+      "intermediate": "brain",
+      "answer": "skull",
+      "swap_to": "heart",
+      "swap_answer": "ribcage",
+      "baseline_argmax": " skull",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "heart",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 8002
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " skull",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 9989
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "heart",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 11098
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " skull",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 4193
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "heart",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 201987
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "4",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 65865
+        }
+      ]
+    },
+    {
+      "name": "organ-location-heart",
+      "category": "organ-location",
+      "intermediate": "heart",
+      "answer": "chest",
+      "swap_to": "brain",
+      "swap_answer": "head",
+      "baseline_argmax": " chest",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "brain",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 240563
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " heart",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 6676
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "brain",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 248079
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " organ",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 31384
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "brain",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 247935
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": ".",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 106266
+        }
+      ]
+    },
+    {
+      "name": "osu-rival-mascot",
+      "category": "multihop",
+      "intermediate": "Michigan",
+      "answer": "wolverine",
+      "swap_to": "Wisconsin",
+      "swap_answer": "badger",
+      "baseline_argmax": "1",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "paper-continent",
+      "category": "multihop",
+      "intermediate": "China",
+      "answer": "Asia",
+      "swap_to": "France",
+      "swap_answer": "Europe",
+      "baseline_argmax": "1",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "person-century-lincoln",
+      "category": "person-century",
+      "intermediate": "Lincoln",
+      "answer": "Civil",
+      "swap_to": "Napoleon",
+      "swap_answer": "Napoleonic",
+      "baseline_argmax": " Civil",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Napoleon",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 13
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Civil",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 68706
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " Napoleon",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 3
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " American",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 54489
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " Napoleon",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 3
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " ",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 13437
+        }
+      ]
+    },
+    {
+      "name": "person-country-napoleon",
+      "category": "person-country",
+      "intermediate": "Napoleon",
+      "answer": "France",
+      "swap_to": "Lincoln",
+      "swap_answer": "America",
+      "baseline_argmax": " France",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Lincoln",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 19935
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " the",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 18270
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " Lincoln",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 9787
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " the",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 32715
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " Lincoln",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 4743
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "over",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 182487
+        }
+      ]
+    },
+    {
+      "name": "person-country-shakespeare",
+      "category": "person-country",
+      "intermediate": "Shakespeare",
+      "answer": "England",
+      "swap_to": "Einstein",
+      "swap_answer": "Germany",
+      "baseline_argmax": " the",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "person-firstname-darwin",
+      "category": "person-firstname",
+      "intermediate": "Darwin",
+      "answer": "Charles",
+      "swap_to": "Einstein",
+      "swap_answer": "Albert",
+      "baseline_argmax": " Charles",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Einstein",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 135
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Charles",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 16828
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " Einstein",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 60
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " published",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 39754
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " Einstein",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 13
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "-",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 1960
+        }
+      ]
+    },
+    {
+      "name": "person-firstname-einstein",
+      "category": "person-firstname",
+      "intermediate": "Einstein",
+      "answer": "Albert",
+      "swap_to": "Newton",
+      "swap_answer": "Isaac",
+      "baseline_argmax": " Albert",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "Newton",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 171273
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Albert",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 36102
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "Newton",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 93350
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " not",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 16923
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "Newton",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 72657
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "\u62db",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 125994
+        }
+      ]
+    },
+    {
+      "name": "person-firstname-mozart",
+      "category": "person-firstname",
+      "intermediate": "Mozart",
+      "answer": "Wolfgang",
+      "swap_to": "Darwin",
+      "swap_answer": "Charles",
+      "baseline_argmax": " Wolfgang",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Darwin",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 8427
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Wolfgang",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 31849
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " Darwin",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 3415
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " Mozart",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 36824
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " Darwin",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 33
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "\"",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 11534
+        }
+      ]
+    },
+    {
+      "name": "person-firstname-newton",
+      "category": "person-firstname",
+      "intermediate": "Newton",
+      "answer": "Isaac",
+      "swap_to": "Shakespeare",
+      "swap_answer": "William",
+      "baseline_argmax": " Isaac",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Shakespeare",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 11093
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " Isaac",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 23761
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " Shakespeare",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 14156
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " John",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 9625
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " Shakespeare",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 70195
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "\n",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 62428
+        }
+      ]
+    },
+    {
+      "name": "person-firstname-shakespeare",
+      "category": "person-firstname",
+      "intermediate": "Shakespeare",
+      "answer": "William",
+      "swap_to": "Mozart",
+      "swap_answer": "Wolfgang",
+      "baseline_argmax": " William",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Mozart",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 98873
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " William",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 2489
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " Mozart",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 69214
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": "\n",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 30408
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " Mozart",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 18150
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "2",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 226
+        }
+      ]
+    },
+    {
+      "name": "planet-3-moons",
+      "category": "multihop",
+      "intermediate": "Earth",
+      "answer": "1",
+      "swap_to": "Mars",
+      "swap_answer": "2",
+      "baseline_argmax": "1",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Mars",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 5491
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": "1",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 1
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " Mars",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 160087
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": "2",
+          "flip_to_swap_answer": true,
+          "still_answer": false,
+          "swap_answer_token_rank": 0
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " Mars",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 248117
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "3",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 3
+        }
+      ]
+    },
+    {
+      "name": "planet-rings-saturn2",
+      "category": "planet-feature",
+      "intermediate": "Saturn",
+      "answer": "rings",
+      "swap_to": "Jupiter",
+      "swap_answer": "spot",
+      "baseline_argmax": " rings",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " Jupiter",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 3273
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " rings",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 22310
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " Jupiter",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 18363
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " ",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 35781
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " Jupiter",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 10219
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " ",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 138194
+        }
+      ]
+    },
+    {
+      "name": "rhyme-chair-flag",
+      "category": "multihop",
+      "intermediate": "bear",
+      "answer": "California",
+      "swap_to": "buffalo",
+      "swap_answer": "Wyoming",
+      "baseline_argmax": "4",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "rhyme-rain-neighbor",
+      "category": "multihop",
+      "intermediate": "Spain",
+      "answer": "Portugal",
+      "swap_to": "Belgium",
+      "swap_answer": "France",
+      "baseline_argmax": "1",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "rhyme-spoon-orbit",
+      "category": "multihop",
+      "intermediate": "moon",
+      "answer": "Earth",
+      "swap_to": "Europa",
+      "swap_answer": "Jupiter",
+      "baseline_argmax": "3",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "season-next-winter",
+      "category": "season-next",
+      "intermediate": "winter",
+      "answer": "spring",
+      "swap_to": "summer",
+      "swap_answer": "autumn",
+      "baseline_argmax": " spring",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": " summer",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 106926
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " spring",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 1314
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "summer",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 239283
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " the",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 10931
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "summer",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 246008
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": " .",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 114425
+        }
+      ]
+    },
+    {
+      "name": "spaceneedle-border",
+      "category": "multihop",
+      "intermediate": "Seattle",
+      "answer": "Canada",
+      "swap_to": "Philadelphia",
+      "swap_answer": "New",
+      "baseline_argmax": "3",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "spider-legs",
+      "category": "multihop",
+      "intermediate": "spider",
+      "answer": "8",
+      "swap_to": "ant",
+      "swap_answer": "6",
+      "baseline_argmax": "8",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "ant",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 133
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": "8",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 2
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "ant",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 117
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": "0",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 1
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "ant",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 350
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "1",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 140
+        }
+      ]
+    },
+    {
+      "name": "sport-equip-tennis",
+      "category": "sport-equip",
+      "intermediate": "tennis",
+      "answer": "racket",
+      "swap_to": "golf",
+      "swap_answer": "club",
+      "baseline_argmax": " rac",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "super-populous-capital",
+      "category": "multihop",
+      "intermediate": "China",
+      "answer": "Beijing",
+      "swap_to": "India",
+      "swap_answer": "Delhi",
+      "baseline_argmax": "1",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "super-smallest-continent",
+      "category": "multihop",
+      "intermediate": "Vatican",
+      "answer": "Europe",
+      "swap_to": "Singapore",
+      "swap_answer": "Asia",
+      "baseline_argmax": "1",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "tree-product-oak",
+      "category": "tree-product",
+      "intermediate": "oak",
+      "answer": "acorn",
+      "swap_to": "pine",
+      "swap_answer": "cone",
+      "baseline_argmax": " ac",
+      "baseline_ok": false,
+      "trials": []
+    },
+    {
+      "name": "vehicle-power-bicycle",
+      "category": "vehicle-power",
+      "intermediate": "bicycle",
+      "answer": "legs",
+      "swap_to": "train",
+      "swap_answer": "engine",
+      "baseline_argmax": " legs",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "train",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 79030
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": " body",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 7132
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": "train",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 115108
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": " body",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 6559
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": "train",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 76747
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "**",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 28355
+        }
+      ]
+    },
+    {
+      "name": "violin-strings",
+      "category": "multihop",
+      "intermediate": "violin",
+      "answer": "4",
+      "swap_to": "guitar",
+      "swap_answer": "6",
+      "baseline_argmax": "4",
+      "baseline_ok": true,
+      "trials": [
+        {
+          "strength": 0.1,
+          "control": "jspace",
+          "argmax": "6",
+          "flip_to_swap_answer": true,
+          "still_answer": false,
+          "swap_answer_token_rank": 0
+        },
+        {
+          "strength": 0.1,
+          "control": "random",
+          "argmax": "4",
+          "flip_to_swap_answer": false,
+          "still_answer": true,
+          "swap_answer_token_rank": 6
+        },
+        {
+          "strength": 0.2,
+          "control": "jspace",
+          "argmax": " guitar",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 2
+        },
+        {
+          "strength": 0.2,
+          "control": "random",
+          "argmax": "1",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 5
+        },
+        {
+          "strength": 0.4,
+          "control": "jspace",
+          "argmax": " guitar",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 10742
+        },
+        {
+          "strength": 0.4,
+          "control": "random",
+          "argmax": "otten",
+          "flip_to_swap_answer": false,
+          "still_answer": false,
+          "swap_answer_token_rank": 57
+        }
+      ]
+    }
+  ]
+}
