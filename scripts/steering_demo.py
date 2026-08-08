@@ -14,15 +14,9 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import json
 from pathlib import Path
 
 import torch
-
-import jlens
-from jlens.examples import EXAMPLES, resolve_prompt
-from jlens.hooks import ActivationRecorder
-
 from _common import (
     LENS_FILE,
     LENS_REPO,
@@ -31,6 +25,9 @@ from _common import (
     MODEL_TAG,
     load_model_and_lens,
 )
+
+from jlens.examples import EXAMPLES, resolve_prompt
+from jlens.hooks import ActivationRecorder
 
 RESULTS = Path("results")
 STRENGTHS = (0.0, 0.1, 0.2)

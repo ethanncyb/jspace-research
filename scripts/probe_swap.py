@@ -20,9 +20,6 @@ import statistics
 from pathlib import Path
 
 import torch
-
-from jlens.hooks import ActivationRecorder, ActivationSteerer
-
 from _common import (
     LENS_FILE,
     LENS_REPO,
@@ -31,6 +28,8 @@ from _common import (
     MODEL_TAG,
     load_model_and_lens,
 )
+
+from jlens.hooks import ActivationRecorder, ActivationSteerer
 
 RESULTS = Path("results")
 STRENGTHS = (0.1, 0.2, 0.4)

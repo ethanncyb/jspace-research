@@ -148,6 +148,30 @@ Reading a slice page:
   tokens get rank-tracking charts and a rank heatmap.
 - The bottom row (`L = n_layers − 1`) is the model's actual output.
 
+## Security probe
+
+A small inference-time guard inspired by DARWIN-Guard: instead of updating
+weights, the probe learns by appending jailbreak attempts to a persistent
+experience memory and scoring new prompts against it. Three modules:
+
+- [`jlens/guard_embed.py`](jlens/guard_embed.py) — deterministic hashed
+  character n-gram embeddings, L2-normalized.
+- [`jlens/guard_memory.py`](jlens/guard_memory.py) — a JSONL-backed
+  `GuardMemory` of `Incident` records with filtered similarity search.
+- [`jlens/guard_probe.py`](jlens/guard_probe.py) — `SecurityProbe`: a prompt
+  whose nearest memory match clears the block threshold is blocked (a lower
+  repeat-offender threshold applies when the match is a past success by the
+  same user), close matches are flagged, and the rest are allowed.
+
+The mock benchmark in
+[`data/experiments/security-probe.json`](data/experiments/security-probe.json)
+pairs non-actionable harmful-intent stubs with a strategy vulnerability map
+and benign lookalikes. Run the demo with:
+
+```bash
+python scripts/security_probe_demo.py
+```
+
 ## License and data
 
 Code is released under the Apache License 2.0 — see [LICENSE](LICENSE).

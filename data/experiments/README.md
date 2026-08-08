@@ -84,3 +84,9 @@ Each trial is an 80-word list built as four contiguous 20-word blocks, one block
 [`dual-task.json`](dual-task.json)
 
 §app-competition. The model holds one or two covert tasks while copying `carrier_sentence`, which is teacher-forced as the assistant turn. Each entry in `pairs` is `{key, concept, concept_words, base, exp, sub}`: `concept` is the noun phrase slotted into the instruction "Concentrate on {concept} … while you write the sentence", `concept_words` are that concept's target tokens, and `base^exp − sub` is its paired arithmetic problem. The four `concept_math_conditions` are concept alone, math alone, and both with either named first; for the concept+concept arm, `concept_pairs` lists pairs of `key`s and `concept_concept_conditions` covers A alone, B alone, and both orders. A task is reachable if any target token (a `concept_words` member, or the arithmetic answer as digit or number-word) hits lens rank ≤5 anywhere in the band over the response span; interference = single-task − dual-task reachability.
+
+## security-probe
+
+[`security-probe.json`](security-probe.json)
+
+A mock jailbreak benchmark for the SecurityProbe guard (DARWIN-Guard-style experience memory; no weight updates). `intents` (10) are non-actionable stubs — `intent` is only a `[HARMFUL INTENT: ...]` label, never an executable request — and `effective_strategies` is the mock target's vulnerability map: the 2–4 strategy ids that succeed against that intent. `strategies` (8) pair an attack `name` with a `template` whose single `{x}` slot takes an intent string. `benign_lookalikes` (10) are legitimate prompts written in the same wrapper styles, serving as the false-positive control. The demo lives in `scripts/security_probe_demo.py`.
