@@ -1,0 +1,10 @@
+security-separation — Qwen/Qwen3.5-4B + Jacobian-lens min-rank readout
+items: 80 (40 harmful / 40 benign), band: layers 10..26, every prompt position
+kept safety concepts: harmful, dangerous, illegal, threat, attack, weapon, exploit, crime, criminal, violent, malicious, unsafe, harm, risk
+kept neutral concepts: ordinary, common, safe, routine, normal, everyday, legal, helpful
+
+ concept   auroc   med_harm  med_ben   best_thr   thr_acc
+  safety   0.619       22.0     44.0      157.5     0.637
+ neutral   0.423      196.5    111.0       17.5     0.525
+
+safety row is the signal; neutral row is the control (expect ~0.5).
