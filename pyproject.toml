@@ -14,6 +14,7 @@ dependencies = [
     "huggingface_hub",
     "transformers>=5.5",
     "numpy",
+    "ipykernel>=7.3.0",
 ]
 
 [project.urls]
