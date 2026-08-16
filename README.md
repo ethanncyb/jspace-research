@@ -172,6 +172,151 @@ and benign lookalikes. Run the demo with:
 python scripts/security_probe_demo.py
 ```
 
+## Qwen3 model-size study (Colab)
+
+[`qwen_size_study.ipynb`](qwen_size_study.ipynb) is a resumable Colab
+experiment comparing the dense Qwen3 4B, 8B, 14B, and 32B checkpoints. The
+4B/8B/14B runs target an L4; the 32B run requires an A100 with at least 38 GB
+usable VRAM. Every model uses frozen NF4 weights with BF16 compute so precision
+does not change with model size.
+
+When the notebook is opened in Cursor with a remote Colab kernel, that kernel
+cannot see the local Cursor checkout. Commit and push
+`codex/qwen-model-size-test` first. The notebook's initial bootstrap cell clones
+that branch into `/content/jspace-research`, installs it editable, and verifies
+`import jlens` before mounting Drive or loading a model. If you intentionally
+use another remote or branch, change `REPO_URL` and `REPO_BRANCH` in that first
+cell.
+
+Install the notebook dependencies with:
+
+```bash
+pip install -e '.[study]'
+```
+
+The notebook has a single `ACTIVE_MODEL` toggle and separate `smoke` and
+`full` profiles. Full behavioral evaluation uses all 164 HumanEval and 1,319
+GSM8K test cases. The more expensive oracle controllability track uses a fixed
+64-case subset from each dataset and the normalized strength sweep
+`0, 0.025, 0.05, 0.1, 0.2, 0.4` at 25%, 50%, and 75% model depth.
+
+The scalable local quantity is exact for one prompt and target token:
+
+```text
+g[layer, position] = d target_logit / d residual[layer, position]
+```
+
+`jlens.compute_local_jacobian` captures that sensitivity and
+`jlens.steer_local` applies a clean-residual-norm-scaled intervention. Matched
+random directions provide the causal control. The generated HTML pages align a
+token-by-layer sensitivity heatmap with a layer-by-strength random-adjusted
+target-rank heatmap. These views measure sensitivity and controllability; they
+are not a decoder of private thoughts.
+
+Security evaluation uses the distributable email, table, and code tasks from
+[Microsoft BIPIA](https://github.com/microsoft/BIPIA). It reports explicit
+`BENIGN`/`INJECTION` self-report, fixed-capacity PCA-128 residual probes at
+eight relative-depth checkpoints, harmless-canary attack success, and clean
+task utility as separate outcomes. It does not activate the circuit breaker or
+continual-learning prototype below.
+
+Each model writes a manifest and independent `benchmarks/`, `steering/`,
+`jspace/`, and `security/` artifacts beneath a shared experiment ID on Google
+Drive. JSONL is the append-only resume source; Parquet/CSV files are analysis
+exports. Model and dataset revisions, seeds, generation settings, package
+versions, GPU/VRAM, quantization, truncation, and git commit are recorded before
+results are compared. Four size points support an exploratory trend report, not
+a scaling-law claim.
+
+## Qwen 3.5 residual prompt-injection prototype
+
+The repository also contains an experimental, prefill-only prompt-injection
+detector. It compares the last-token residual from a trusted clean prefix with
+the last-token residual from the exact same prefix tokens plus a separately
+encoded, untrusted segment. One logistic probe is trained at each configured
+full-attention checkpoint. Qwen's GDN layers may be observed, but hooks never
+replace their outputs.
+
+The default checkpoints are zero-based layers `3, 7, 11, 15, 19, 23, 27, 31`.
+They are checked against `text_config.layer_types` when that field is present;
+the hidden size comes from the model configuration, so the same modules work
+with Qwen 3.5 4B (2560) and 9B (4096). Generated tokens are not scored or
+modified in v1.
+
+### Dataset contract
+
+Input may be a JSON array, JSONL, or CSV. Every row has:
+
+```json
+{
+  "id": "pair-001-injected",
+  "clean_prompt": "Trusted system and user prefix",
+  "appended_text": " untrusted suffix",
+  "label": "injected",
+  "pair_id": "pair-001"
+}
+```
+
+Labels may be `0`/`1` or `benign`/`injected`. Column names can be remapped with
+`field_map` in `config.yaml`. A row may provide `candidate_prompt` instead of
+`appended_text`; this requires a tokenizer, and is accepted only if the clean
+token IDs are an exact prefix of the candidate token IDs. `pair_id` is optional
+metadata, but using it prevents related examples from leaking across the
+grouped train/validation split.
+
+### Workflow
+
+Install the package, including the explicit YAML dependency, and collect
+features:
+
+```bash
+pip install -e .
+python eval_harness.py --config config.yaml collect data.jsonl \
+  --output outputs/features.pt
+```
+
+Train, evaluate, and perform guarded deterministic generation:
+
+```bash
+python eval_harness.py --config config.yaml train outputs/features.pt \
+  --output outputs/probe.pt
+python eval_harness.py --config config.yaml evaluate \
+  outputs/features.pt outputs/probe.pt --output-dir outputs/evaluation
+python eval_harness.py --config config.yaml generate outputs/probe.pt \
+  "trusted prefix" " appended segment"
+```
+
+Add `--exercise-intervention` to `evaluate` to rerun each pair through the
+configured circuit-breaker or hard-stop path and populate guarded outcomes.
+
+`run` performs collection, training, and evaluation end to end. Evaluation
+writes `per_layer.csv`, `per_example.csv`, and `summary.csv`, plus the
+continual-learning auto-positive JSONL buffer and manual-review CSV. Probe
+checkpoints include normalization statistics, benign reference vectors,
+raw-space attack directions, per-layer thresholds, layer indices, hidden size,
+aggregation, and model ID. Incompatible checkpoints and malformed prompt pairs
+fail before evaluation.
+
+Circuit-breaker mode projects the learned raw probe direction out of every
+appended-token residual at a triggering checkpoint. Later checkpoints therefore
+observe the already-corrected stream. Hard-stop mode interrupts prefill,
+discards partial model output/cache, and returns the configured refusal.
+Set `intervention.mode` to `disabled`, `circuit_breaker`, or `hard_stop`.
+
+To switch to 9B, change `model_id` in `config.yaml`; no hidden-size constant
+needs editing. The 4B model is the more practical development default. CPU is
+supported but real checkpoint runs are slow and memory-intensive; CUDA uses
+bfloat16, MPS uses float16, and CPU defaults to float32. Normal unit tests use
+the tiny local decoder and require neither network access nor model weights.
+
+This is an experimental detector, not a security boundary. Thresholds require
+calibration on held-out traffic. Automatic updates accept only extremely
+high-confidence positive pseudo-labels, cap their replay share, mix balanced
+trusted examples, apply diagonal-Fisher EWC, create a rollback checkpoint, and
+publish atomically after safeguards pass. Those controls reduce forgetting but
+do not eliminate data-poisoning risk; lower-confidence flags always require
+manual review and the system never invents automatic benign labels.
+
 ## License and data
 
 Code is released under the Apache License 2.0 — see [LICENSE](LICENSE).

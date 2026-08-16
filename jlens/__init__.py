@@ -19,6 +19,17 @@ from jlens.guard_probe import SecurityProbe, Verdict
 from jlens.hf import HFLensModel, Layout, from_hf
 from jlens.hooks import ActivationRecorder, ActivationSteerer
 from jlens.lens import JacobianLens, SteeringResult
+from jlens.local import (
+    DEFAULT_DEPTH_FRACTIONS,
+    DEFAULT_LOCAL_STRENGTHS,
+    LocalJacobianResult,
+    LocalSteeringResult,
+    compute_local_jacobian,
+    generate_local_comparison,
+    relative_layers,
+    run_local_steering_sweep,
+    steer_local,
+)
 from jlens.protocol import LensModel
 from jlens.vis import (
     SteeringComparisonData,
@@ -35,6 +46,8 @@ __all__ = [
     "HFLensModel",
     "Incident",
     "JacobianLens",
+    "LocalJacobianResult",
+    "LocalSteeringResult",
     "SecurityProbe",
     "SteeringResult",
     "SteeringComparisonData",
@@ -42,6 +55,8 @@ __all__ = [
     "LensModel",
     "Verdict",
     "configure_logging",
+    "compute_local_jacobian",
+    "generate_local_comparison",
     "build_steering_comparison_page",
     "compute_steering_comparison",
     "cosine",
@@ -52,6 +67,11 @@ __all__ = [
     "load_gsm8k_cases",
     "load_humaneval_cases",
     "normalize_prompt",
+    "relative_layers",
     "run_gold_next_token_benchmark",
+    "run_local_steering_sweep",
+    "steer_local",
     "summarize_benchmark",
+    "DEFAULT_DEPTH_FRACTIONS",
+    "DEFAULT_LOCAL_STRENGTHS",
 ]

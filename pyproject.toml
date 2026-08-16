@@ -12,8 +12,9 @@ license = "Apache-2.0"
 dependencies = [
     "torch",
     "huggingface_hub",
-    "transformers>=5.5",
+    "transformers>=5.5,<6",
     "numpy",
+    "PyYAML",
 ]
 
 [project.urls]
@@ -22,6 +23,15 @@ Paper = "https://transformer-circuits.pub/2026/workspace/index.html"
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "datasets"]
+study = [
+    "accelerate>=1.14,<2",
+    "bitsandbytes>=0.50,<0.51",
+    "datasets>=4.8,<5",
+    "jsonlines>=4,<5",
+    "nltk>=3.9,<4",
+    "pandas>=2.3,<3",
+    "pyarrow>=24,<25",
+]
 
 [tool.ruff]
 line-length = 88
@@ -31,8 +41,12 @@ target-version = "py310"
 select = ["E", "F", "W", "I", "B", "UP"]
 ignore = ["E501", "E741"]
 
+[tool.pytest.ini_options]
+markers = ["slow: optional tests that require locally available model weights"]
+
 [tool.setuptools]
 packages = ["jlens"]
+py-modules = ["model_hooks", "probe", "intervention", "continual_update", "eval_harness"]
 
 [tool.setuptools.package-data]
 jlens = ["data/*"]

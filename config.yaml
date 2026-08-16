@@ -1,0 +1,40 @@
+model_id: Qwen/Qwen3.5-4B
+device: auto
+dtype: auto
+maximum_length: 2048
+full_attention_indices: [3, 7, 11, 15, 19, 23, 27, 31]
+observe_gdn_layers: true
+aggregation: max
+seed: 17
+
+probe_training:
+  validation_fraction: 0.2
+  epochs: 100
+  learning_rate: 0.01
+
+intervention:
+  mode: circuit_breaker
+  score: probe_probability
+  threshold: null  # use calibrated per-layer checkpoint thresholds
+  beta: 1.0
+  positions: appended_segment
+  refusal_text: "I cannot process that request."
+  monitoring: prefill_only
+
+generation:
+  do_sample: false
+  max_new_tokens: 64
+  use_cache: true
+
+continual_learning:
+  strict_confidence: 0.995
+  pseudo_labeled_replay_fraction: 0.25
+  ewc_lambda: 1.0
+  retraining_cadence: 100
+  auto_buffer: auto_buffer.jsonl
+  manual_review: manual_review.csv
+
+paths:
+  features: outputs/features.pt
+  probe_checkpoint: outputs/probe.pt
+  evaluation_dir: outputs/evaluation

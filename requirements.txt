@@ -1,8 +1,17 @@
 torch
 huggingface_hub
-transformers>=5.5
+transformers>=5.5,<6
 numpy
+PyYAML
 
 # Optional, for local testing and development
 pytest
-datasets
+datasets>=4.8,<5
+
+# Optional, for qwen_size_study.ipynb on Colab
+accelerate>=1.14,<2
+bitsandbytes>=0.50,<0.51
+pandas>=2.3,<3
+pyarrow>=24,<25
+jsonlines>=4,<5
+nltk>=3.9,<4
