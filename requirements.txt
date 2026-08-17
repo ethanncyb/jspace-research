@@ -1,8 +1,15 @@
 torch
 huggingface_hub
-transformers
+transformers>=5.5
+accelerate>=1.0
 numpy
+PyYAML
+requests
+scikit-learn
+datasets
+sentence-transformers
+matplotlib>=3.8
+seaborn>=0.13
 
 # Optional, for local testing and development
 pytest
-datasets

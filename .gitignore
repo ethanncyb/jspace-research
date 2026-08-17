@@ -14,3 +14,6 @@ slice*.html
 !jlens/data/slice_vis.html
 slices/
 .DS_Store
+.env
+outputs/
+data/benchmarks/
