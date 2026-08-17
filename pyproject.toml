@@ -23,6 +23,8 @@ dependencies = [
     "matplotlib>=3.8",
     "seaborn>=0.13",
     "ipykernel>=7.3.0",
+    "causal-conv1d>=1.6.2.post1",
+    "flash-linear-attention>=0.5.2",
 ]
 
 [project.urls]
