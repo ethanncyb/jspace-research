@@ -1,0 +1,19 @@
+# The lens is a ~649MB fp16 checkpoint (562MB compressed). It is NOT committed --
+# the panel pulls it onto the Colab VM from PxlNexus/gemma4-12b-QAT-Jlens instead.
+# Match archives too: `panel/*.pt` alone lets a .7z of the same weights slip through.
+panel/*.pt
+panel/*.7z
+panel/*.zip
+panel/*.tar
+panel/*.tar.*
+panel/*.gguf
+panel/*.safetensors
+
+# Panel working state: per-run slice sidecars and the cached jlens page.
+panel/runs/
+panel/.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
