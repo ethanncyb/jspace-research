@@ -7,7 +7,7 @@
 #   1. target-token rank / logit lift / KL across strengths, jspace vs random
 #      matched-norm controls (via JacobianLens.steer);
 #   2. greedy continuations with vs without the intervention active during
-#      the prompt pass.
+#      generate (JacobianLens.steer_generate, prompt_pass mode).
 #
 # Artifacts: results/steering_demo_<model-tag>.txt (+ .svg rank chart).
 from __future__ import annotations
@@ -73,55 +73,6 @@ def pick_target(model, tok, prompt: str, candidates: list[str]) -> tuple[str, in
         if token_id is not None:
             return text, token_id, int((order == token_id).nonzero()[0])
     raise RuntimeError(f"no single-token candidate among {candidates}")
-
-
-def steer_generate(hf, model, lens, tok, prompt: str, target_id: int, strength: float, max_new: int) -> str:
-    """Greedy continuation with the J-space delta applied at the final prompt
-    token during the prompt pass only (cached decoding steps are untouched)."""
-    device = model.input_device
-    enc = tok(prompt, return_tensors="pt").to(device)
-    prompt_len = enc.input_ids.shape[1]
-    band = lens._default_steering_layers(model)
-
-    # Clean pass to get the per-site activation norms that scale the delta
-    # (same convention as JacobianLens.steer).
-    ids = model.encode(prompt)
-    with ActivationRecorder(model.layers, at=band) as recorder:
-        with torch.no_grad():
-            model.forward(ids)
-
-    handles = []
-
-    def make_hook(layer: int):
-        direction = lens.direction(model, layer, target_id)
-        clean_norm = recorder.activations[layer][0, -1, :].float().norm()
-        delta = (strength * clean_norm * direction).to(torch.float16)
-
-        def hook(module, inputs, output):
-            hidden = output if torch.is_tensor(output) else output[0]
-            if hidden.shape[1] < prompt_len:
-                return None  # incremental decoding step: nothing to steer
-            changed = hidden.clone()
-            changed[:, prompt_len - 1, :] += delta.to(hidden.device, hidden.dtype)
-            if torch.is_tensor(output):
-                return changed
-            return (changed, *output[1:])
-
-        return hook
-
-    try:
-        for layer in band:
-            handles.append(model.layers[layer].register_forward_hook(make_hook(layer)))
-        out = hf.generate(
-            **enc,
-            max_new_tokens=max_new,
-            do_sample=False,
-            pad_token_id=tok.eos_token_id,
-        )
-    finally:
-        for handle in handles:
-            handle.remove()
-    return tok.decode(out[0, prompt_len:], skip_special_tokens=True)
 
 
 def write_svg(path: Path, rows: list[dict]) -> None:
@@ -240,11 +191,20 @@ def main() -> None:
             print(rows[-1])
 
     generations: dict[str, str] = {}
+    prompt_ids = model.encode(prompt)
+    prompt_len = prompt_ids.shape[1]
     for label, strength in (("baseline", 0.0), ("jspace_0.1", 0.1), ("jspace_0.2", 0.2)):
         print(f"generating {label} ...")
-        generations[label] = steer_generate(
-            hf, model, lens, tok, prompt, target_id, strength, args.max_new
+        out = lens.steer_generate(
+            hf,
+            model,
+            prompt_ids,
+            target_token_id=target_id,
+            strength=strength,
+            decode_mode="prompt_pass",
+            max_new_tokens=args.max_new,
         )
+        generations[label] = tok.decode(out[0, prompt_len:], skip_special_tokens=True)
 
     RESULTS.mkdir(exist_ok=True)
     txt_path = RESULTS / f"steering_demo_{MODEL_TAG}.txt"

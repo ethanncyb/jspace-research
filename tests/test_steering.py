@@ -8,7 +8,7 @@ import pytest
 import torch
 from torch import nn
 
-from jlens.hooks import ActivationSteerer
+from jlens.hooks import ActivationSteerer, GenerateActivationSteerer
 from jlens.lens import JacobianLens
 
 from .tiny import TinyDecoder
@@ -115,3 +115,137 @@ def test_steer_rejects_invalid_sites(kwargs, message):
     base.update(kwargs)
     with pytest.raises(ValueError, match=message):
         lens.steer(model, "abc", **base)
+
+
+class _IdentityBlock(nn.Module):
+    def forward(self, hidden):
+        return hidden
+
+
+def test_generate_steerer_prompt_pass_only_last_prompt_token():
+    block = _IdentityBlock()
+    prompt_len = 4
+    hidden = torch.zeros(1, prompt_len, 3)
+    delta = torch.tensor([1.0, 2.0, 3.0])
+    with GenerateActivationSteerer(
+        [block], deltas={0: delta}, prompt_len=prompt_len, decode_mode="prompt_pass"
+    ):
+        output = block(hidden.clone())
+    torch.testing.assert_close(output[0, :3], torch.zeros(3, 3))
+    torch.testing.assert_close(output[0, 3], delta)
+
+
+def test_generate_steerer_prompt_pass_leaves_incremental_unchanged():
+    block = _IdentityBlock()
+    hidden = torch.ones(1, 1, 3)
+    delta = torch.tensor([1.0, 2.0, 3.0])
+    with GenerateActivationSteerer(
+        [block], deltas={0: delta}, prompt_len=4, decode_mode="prompt_pass"
+    ):
+        output = block(hidden)
+    torch.testing.assert_close(output, hidden)
+
+
+def test_generate_steerer_every_step_adds_on_incremental():
+    block = _IdentityBlock()
+    hidden = torch.zeros(1, 1, 3)
+    delta = torch.tensor([1.0, 2.0, 3.0])
+    with GenerateActivationSteerer(
+        [block], deltas={0: delta}, prompt_len=4, decode_mode="every_step"
+    ):
+        output = block(hidden.clone())
+    torch.testing.assert_close(output[0, -1], delta)
+
+
+def test_generate_steerer_every_step_growing_sequence_from_last_prompt():
+    block = _IdentityBlock()
+    prompt_len = 4
+    extra = 2
+    hidden = torch.zeros(1, prompt_len + extra, 3)
+    delta = torch.tensor([1.0, 2.0, 3.0])
+    with GenerateActivationSteerer(
+        [block], deltas={0: delta}, prompt_len=prompt_len, decode_mode="every_step"
+    ):
+        output = block(hidden.clone())
+    torch.testing.assert_close(output[0, : prompt_len - 1], torch.zeros(prompt_len - 1, 3))
+    for index in range(prompt_len - 1, prompt_len + extra):
+        torch.testing.assert_close(output[0, index], delta)
+
+
+def test_generate_steerer_prompt_pass_growing_sequence_only_last_prompt():
+    block = _IdentityBlock()
+    prompt_len = 4
+    hidden = torch.zeros(1, prompt_len + 2, 3)
+    delta = torch.tensor([1.0, 2.0, 3.0])
+    with GenerateActivationSteerer(
+        [block], deltas={0: delta}, prompt_len=prompt_len, decode_mode="prompt_pass"
+    ):
+        output = block(hidden.clone())
+    expected = torch.zeros_like(hidden)
+    expected[0, prompt_len - 1] = delta
+    torch.testing.assert_close(output, expected)
+
+
+def test_generate_steerer_accepts_row_vector_delta_and_preserves_tuple():
+    block = _TupleBlock()
+    hidden = torch.zeros(1, 4, 3)
+    delta = torch.tensor([[1.0, 2.0, 3.0]])
+    with GenerateActivationSteerer(
+        [block], deltas={0: delta}, prompt_len=4, decode_mode="prompt_pass"
+    ):
+        output = block(hidden)
+    assert output[1:] == ("cache", 17)
+    torch.testing.assert_close(output[0][0, -1], delta[0])
+
+
+def test_generate_steerer_rejects_invalid_mode_and_prompt_len():
+    block = _IdentityBlock()
+    with pytest.raises(ValueError, match="prompt_len"):
+        GenerateActivationSteerer(
+            [block], deltas={0: torch.ones(3)}, prompt_len=0
+        )
+    with pytest.raises(ValueError, match="decode_mode"):
+        GenerateActivationSteerer(
+            [block],
+            deltas={0: torch.ones(3)},
+            prompt_len=2,
+            decode_mode="both",
+        )
+
+
+def test_steer_generate_runs_hooks_during_fake_generate():
+    model = TinyDecoder()
+    lens = _lens(model)
+    ids = model.encode("abc")
+
+    class FakeHF(nn.Module):
+        def generate(self, input_ids, **kwargs):
+            model.forward(input_ids)
+            model.forward(input_ids[:, -1:])
+            return torch.cat([input_ids, input_ids[:, -1:]], dim=1)
+
+    out = lens.steer_generate(
+        FakeHF(),
+        model,
+        ids,
+        target_token_id=3,
+        strength=0.25,
+        decode_mode="every_step",
+        layers=[1],
+        max_new_tokens=1,
+    )
+    assert out.shape == (1, ids.shape[1] + 1)
+
+
+def test_steer_generate_rejects_invalid_decode_mode():
+    model = TinyDecoder()
+    lens = _lens(model)
+    with pytest.raises(ValueError, match="decode_mode"):
+        lens.steer_generate(
+            nn.Linear(1, 1),
+            model,
+            "abc",
+            target_token_id=2,
+            layers=[1],
+            decode_mode="both",
+        )

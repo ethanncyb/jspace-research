@@ -14,7 +14,7 @@ from jlens.benchmark import (
 )
 from jlens.fitting import fit, jacobian_for_prompt
 from jlens.hf import HFLensModel, Layout, from_hf
-from jlens.hooks import ActivationRecorder, ActivationSteerer
+from jlens.hooks import ActivationRecorder, ActivationSteerer, GenerateActivationSteerer
 from jlens.lens import JacobianLens, SteeringResult
 from jlens.protocol import LensModel
 from jlens.vis import (
@@ -26,6 +26,7 @@ from jlens.vis import (
 __all__ = [
     "ActivationRecorder",
     "ActivationSteerer",
+    "GenerateActivationSteerer",
     "BenchmarkObservation",
     "GoldNextTokenCase",
     "HFLensModel",

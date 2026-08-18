@@ -13,12 +13,12 @@ from __future__ import annotations
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 import torch
 import torch.nn.functional as F
 
-from jlens.hooks import ActivationRecorder, ActivationSteerer
+from jlens.hooks import ActivationRecorder, ActivationSteerer, GenerateActivationSteerer
 from jlens.protocol import LensModel
 
 
@@ -244,6 +244,66 @@ class JacobianLens:
             raise ValueError("positions resolve to duplicate indices")
         return normalised
 
+    def _resolve_steering_layers(
+        self, model: LensModel, layers: Sequence[int] | None
+    ) -> list[int]:
+        if layers is None:
+            layers = self._default_steering_layers(model)
+        layers = list(layers)
+        if not layers:
+            raise ValueError("layers must not be empty")
+        unknown = sorted(set(layers) - set(self.source_layers))
+        out_of_range = sorted(l for l in set(layers) if not 0 <= l < model.n_layers)
+        if out_of_range:
+            raise ValueError(
+                f"layers {out_of_range} out of range for a {model.n_layers}-layer model"
+            )
+        if unknown:
+            raise ValueError(
+                f"layers {unknown} not in source_layers; fitted layers are "
+                f"{self.source_layers}"
+            )
+        if len(set(layers)) != len(layers):
+            raise ValueError("layers must not contain duplicates")
+        return sorted(layers)
+
+    def _encode_prompt(
+        self,
+        model: LensModel,
+        prompt: str | torch.Tensor,
+        max_seq_len: int,
+    ) -> torch.Tensor:
+        if isinstance(prompt, str):
+            input_ids = model.encode(prompt, max_length=max_seq_len)
+        elif torch.is_tensor(prompt):
+            input_ids = prompt
+        else:
+            raise TypeError("prompt must be text or an input_ids tensor")
+        if input_ids.ndim != 2 or input_ids.shape[0] != 1:
+            raise ValueError("steer currently requires input_ids shape [1, seq_len]")
+        return input_ids
+
+    def _last_token_deltas(
+        self,
+        model: LensModel,
+        input_ids: torch.Tensor,
+        *,
+        target_token_id: int,
+        layers: Sequence[int],
+        strength: float,
+    ) -> dict[int, torch.Tensor]:
+        """J-space deltas scaled by the last prompt token's clean residual norm."""
+        with ActivationRecorder(model.layers, at=list(layers)) as recorder:
+            model.forward(input_ids)
+        deltas: dict[int, torch.Tensor] = {}
+        for layer in layers:
+            clean_norm = torch.linalg.vector_norm(
+                recorder.activations[layer][0, -1].float()
+            )
+            direction = self.direction(model, layer, target_token_id)
+            deltas[layer] = float(strength) * clean_norm.to(direction.device) * direction
+        return deltas
+
     @torch.no_grad()
     def steer(
         self,
@@ -270,34 +330,9 @@ class JacobianLens:
             raise ValueError("strength must be a finite number")
         if direction_mode not in ("jspace", "random"):
             raise ValueError("direction_mode must be 'jspace' or 'random'")
-        if layers is None:
-            layers = self._default_steering_layers(model)
-        layers = list(layers)
-        if not layers:
-            raise ValueError("layers must not be empty")
-        unknown = sorted(set(layers) - set(self.source_layers))
-        out_of_range = sorted(l for l in set(layers) if not 0 <= l < model.n_layers)
-        if out_of_range:
-            raise ValueError(
-                f"layers {out_of_range} out of range for a {model.n_layers}-layer model"
-            )
-        if unknown:
-            raise ValueError(
-                f"layers {unknown} not in source_layers; fitted layers are "
-                f"{self.source_layers}"
-            )
-        if len(set(layers)) != len(layers):
-            raise ValueError("layers must not contain duplicates")
-        layers = sorted(layers)
+        layers = self._resolve_steering_layers(model, layers)
 
-        if isinstance(prompt, str):
-            input_ids = model.encode(prompt, max_length=max_seq_len)
-        elif torch.is_tensor(prompt):
-            input_ids = prompt
-        else:
-            raise TypeError("prompt must be text or an input_ids tensor")
-        if input_ids.ndim != 2 or input_ids.shape[0] != 1:
-            raise ValueError("steer currently requires input_ids shape [1, seq_len]")
+        input_ids = self._encode_prompt(model, prompt, max_seq_len)
         resolved_positions = self._normalise_positions(positions, input_ids.shape[1])
 
         final_layer = model.n_layers - 1
@@ -384,6 +419,76 @@ class JacobianLens:
             target_logit_lift=target_lift.detach().cpu(),
             kl_divergence=kl.detach().cpu(),
         )
+
+    @torch.no_grad()
+    def steer_generate(
+        self,
+        hf_model: Any,
+        model: LensModel,
+        prompt: str | torch.Tensor,
+        *,
+        target_token_id: int,
+        strength: float = 0.1,
+        decode_mode: Literal["prompt_pass", "every_step"] = "prompt_pass",
+        layers: Sequence[int] | None = None,
+        max_new_tokens: int = 128,
+        max_seq_len: int = 512,
+    ) -> torch.Tensor:
+        """Greedy continuation with J-space residual deltas applied during generate.
+
+        ``decode_mode="prompt_pass"`` writes the delta at the last prompt token
+        only; cached decode steps are left unchanged (later tokens still see the
+        steered residual via the KV cache).  ``decode_mode="every_step"`` also
+        writes the same last-prompt-token-scaled delta at each new token.
+
+        Scaling matches :meth:`steer`: ``strength * ||h_clean|| * unit_direction``
+        at the last prompt token.  ``prompt`` is encoded with ``model.encode`` so
+        the generate prefix matches the lens wrapper.
+
+        Returns:
+            The full ``generate`` sequence, shape ``[1, prompt_len + new]``.
+        """
+        if not isinstance(strength, (int, float)) or not torch.isfinite(
+            torch.tensor(float(strength))
+        ):
+            raise ValueError("strength must be a finite number")
+        if decode_mode not in ("prompt_pass", "every_step"):
+            raise ValueError("decode_mode must be 'prompt_pass' or 'every_step'")
+        if not isinstance(max_new_tokens, int) or max_new_tokens < 1:
+            raise ValueError("max_new_tokens must be a positive integer")
+        layers = self._resolve_steering_layers(model, layers)
+        input_ids = self._encode_prompt(model, prompt, max_seq_len)
+        prompt_len = input_ids.shape[1]
+        deltas = self._last_token_deltas(
+            model,
+            input_ids,
+            target_token_id=target_token_id,
+            layers=layers,
+            strength=strength,
+        )
+
+        tokenizer = getattr(model, "tokenizer", None)
+        pad_token_id = None
+        if tokenizer is not None:
+            pad_token_id = getattr(tokenizer, "eos_token_id", None)
+            if pad_token_id is None:
+                pad_token_id = getattr(tokenizer, "pad_token_id", None)
+        generate_kwargs: dict[str, Any] = {
+            "input_ids": input_ids,
+            "attention_mask": torch.ones_like(input_ids),
+            "max_new_tokens": max_new_tokens,
+            "do_sample": False,
+        }
+        if pad_token_id is not None:
+            generate_kwargs["pad_token_id"] = pad_token_id
+
+        with GenerateActivationSteerer(
+            model.layers,
+            deltas=deltas,
+            prompt_len=prompt_len,
+            decode_mode=decode_mode,
+        ):
+            return hf_model.generate(**generate_kwargs)
 
     @torch.no_grad()
     def apply(
