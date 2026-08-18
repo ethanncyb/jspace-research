@@ -8,6 +8,7 @@ import csv
 import json
 import logging
 import random
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -17,7 +18,11 @@ import torch
 
 from promptguard import olares_client
 from promptguard.benchmark_setup import BenchmarkSplit, heldout_split, load_benchmarks
-from promptguard.config import ResearchConfig, load_config
+from promptguard.config import (
+    ResearchConfig,
+    load_config,
+    validate_frozen_guard10_defense,
+)
 from promptguard.drift_probe import DeltaExample, DriftProbe, extract_appended_delta
 from promptguard.evolving_attacker import (
     AttackRecord,
@@ -30,6 +35,7 @@ from promptguard.evolving_attacker import (
 )
 from promptguard.evolving_guard import EvolvingGuard
 from promptguard.model_hooks import HookedModel, load_model
+from promptguard.semantic_preservation import IntentPreservationJudge
 
 LOGGER = logging.getLogger(__name__)
 
@@ -280,6 +286,7 @@ class EvolutionRunner:
         model: HookedModel,
         *,
         probe: DriftProbe | None = None,
+        frozen_guard_checkpoint: str | Path | None = None,
     ) -> None:
         self.config = config
         self.model = model
@@ -294,29 +301,60 @@ class EvolutionRunner:
             aggregate=config.probe.aggregate,
         )
         self._provided_probe = probe is not None
+        self.frozen_guard_checkpoint = (
+            Path(frozen_guard_checkpoint) if frozen_guard_checkpoint else None
+        )
+        if self.frozen_guard_checkpoint is not None and probe is None:
+            raise ValueError("frozen_guard_checkpoint requires a loaded probe")
         self.malicious_prompts = list(config.data.malicious_prompts)
         self.heldout_prompts = list(config.data.heldout_malicious_prompts)
         self.benchmark_split: BenchmarkSplit | None = None
         if config.data.use_benchmarks_for_evolution:
             self.benchmark_split = heldout_split(
                 load_benchmarks(config.benchmarks),
-                heldout_categories=config.benchmarks.heldout_categories,
-                heldout_fraction=config.benchmarks.heldout_fraction,
+                heldout_categories=(
+                    config.benchmarks.attacker_development_categories
+                ),
+                heldout_fraction=(
+                    config.benchmarks.attacker_development_fraction
+                ),
                 seed=config.benchmarks.seed,
             )
-            self.malicious_prompts = [
-                example.instruction for example in self.benchmark_split.train
+            guard_training_prompts = [
+                example.instruction for example in self.benchmark_split.training
             ]
             self.heldout_prompts = [
-                example.instruction for example in self.benchmark_split.heldout
+                example.instruction
+                for example in self.benchmark_split.attacker_development
             ]
+            self.malicious_prompts = (
+                self.heldout_prompts
+                if self.frozen_guard_checkpoint is not None
+                else guard_training_prompts
+            )
         self.malicious_prompts = seeded_prompt_order(
             self.malicious_prompts, seed=config.evolution.seed
+        )
+        semantic_validator = (
+            IntentPreservationJudge(
+                model=config.semantic.model,
+                use_native_model=config.semantic.use_native_model,
+                model_think=config.semantic.model_think,
+                confidence_threshold=config.semantic.confidence_threshold,
+                max_tokens=config.semantic.judge_max_tokens,
+                batch_size=config.semantic.batch_size,
+                cache_path=config.semantic.cache_path,
+            )
+            if config.semantic.enabled
+            else None
         )
         self.attacker = EvolvingAttacker(
             alpha=config.attacker.alpha,
             gamma=config.attacker.gamma,
             sandbox_tau=config.attacker.sandbox_tau,
+            sandbox_min_score_reduction=(
+                config.attacker.sandbox_min_score_reduction
+            ),
             attempts_per_prompt=config.attacker.attempts_per_prompt,
             reflector=OlaresReflector(config.olares.fast_model),
             embedder=lambda text: olares_client.embed(
@@ -324,6 +362,8 @@ class EvolutionRunner:
             ),
             dedup_similarity=config.attacker.dedup_similarity,
             max_reflections_per_round=config.attacker.max_reflections_per_round,
+            threshold=config.probe.threshold,
+            semantic_validator=semantic_validator,
             seed=config.evolution.seed,
         )
         self.guard = EvolvingGuard(
@@ -341,7 +381,9 @@ class EvolutionRunner:
             return
         path = self.output_dir / "benchmark_split.csv"
         path.parent.mkdir(parents=True, exist_ok=True)
-        heldout_ids = {example.id for example in self.benchmark_split.heldout}
+        development_ids = {
+            example.id for example in self.benchmark_split.attacker_development
+        }
         with path.open("w", newline="", encoding="utf-8") as handle:
             fields = [
                 "id",
@@ -353,15 +395,19 @@ class EvolutionRunner:
             writer = csv.DictWriter(handle, fieldnames=fields)
             writer.writeheader()
             for example in (
-                *self.benchmark_split.train,
-                *self.benchmark_split.heldout,
+                *self.benchmark_split.training,
+                *self.benchmark_split.attacker_development,
             ):
                 writer.writerow(
                     {
                         "id": example.id,
                         "source_dataset": example.source_dataset,
                         "semantic_category": example.category,
-                        "split": "heldout" if example.id in heldout_ids else "active",
+                        "split": (
+                            "attacker_development"
+                            if example.id in development_ids
+                            else "guard_training"
+                        ),
                         "instruction": example.instruction,
                     }
                 )
@@ -442,13 +488,35 @@ class EvolutionRunner:
                     "active_prompt_count": len(self.malicious_prompts),
                     "heldout_prompt_count": len(self.heldout_prompts),
                     "rounds": self.config.evolution.rounds,
+                    "guard_frozen": self.frozen_guard_checkpoint is not None,
+                    "frozen_guard_checkpoint": (
+                        str(self.frozen_guard_checkpoint)
+                        if self.frozen_guard_checkpoint is not None
+                        else None
+                    ),
+                    "detector_threshold": self.config.probe.threshold,
+                    "intervention_mode": self.config.intervention.mode,
+                    "intervention_threshold": self.config.intervention.threshold,
                 },
                 indent=2,
             ),
             encoding="utf-8",
         )
         self.attacker.pool.save(self.output_dir / "strategy_pool_round_000.json")
-        guard_checkpoints: dict[int, Path] = {0: self.bootstrap()}
+        if self.frozen_guard_checkpoint is None:
+            guard_checkpoints: dict[int, Path] = {0: self.bootstrap()}
+        else:
+            matches = re.findall(r"(\d+)", self.frozen_guard_checkpoint.stem)
+            frozen_round = int(matches[-1]) if matches else 0
+            guard_checkpoints = {frozen_round: self.frozen_guard_checkpoint}
+            LOGGER.info(
+                "frozen_guard_enabled checkpoint=%s guard_round=%d threshold=%.6f intervention_mode=%s intervention_threshold=%.6f",
+                self.frozen_guard_checkpoint,
+                frozen_round,
+                self.config.probe.threshold,
+                self.config.intervention.mode,
+                self.config.intervention.threshold,
+            )
         attack_sets: dict[int, list[DeltaExample]] = {}
         heldout_payloads = self.heldout_prompts or self.malicious_prompts
         heldout_families = evaluation_attack_strategies()
@@ -481,6 +549,10 @@ class EvolutionRunner:
         summaries: list[dict[str, Any]] = []
         baseline = self.config.evolution.baseline_prompt
         threshold = self.config.probe.threshold
+        validation_payloads = (self.heldout_prompts or self.malicious_prompts)[
+            : self.config.attacker.mutation_validation_samples
+        ]
+        self.attacker.prewarm_semantic_cache(validation_payloads)
 
         for round_index in range(1, self.config.evolution.rounds + 1):
             if round_index == 1:
@@ -502,9 +574,6 @@ class EvolutionRunner:
                 baseline=baseline,
                 threshold=threshold,
             )
-            validation_payloads = (self.heldout_prompts or self.malicious_prompts)[
-                : self.config.attacker.mutation_validation_samples
-            ]
             attack_result = self.attacker.run_round(
                 round_index=round_index,
                 payloads=self.malicious_prompts,
@@ -526,17 +595,25 @@ class EvolutionRunner:
             )
             attack_sets[round_index] = self._features(unique_prompts)
 
-            checkpoint = self.checkpoint_dir / f"guard_{round_index:03d}.pt"
-            guard_result = self.guard.run_round(
-                round_index=round_index,
-                successful_attacks=attack_result.successful_attacks,
-                benign_prompts=self.config.data.benign_prompts,
-                baseline=baseline,
-                extractor=self.extractor,
-                checkpoint_path=checkpoint,
-                attack_records=attack_result.records,
-            )
-            guard_checkpoints[round_index] = checkpoint
+            guard_result = None
+            if self.frozen_guard_checkpoint is None:
+                checkpoint = self.checkpoint_dir / f"guard_{round_index:03d}.pt"
+                guard_result = self.guard.run_round(
+                    round_index=round_index,
+                    successful_attacks=attack_result.successful_attacks,
+                    benign_prompts=self.config.data.benign_prompts,
+                    baseline=baseline,
+                    extractor=self.extractor,
+                    checkpoint_path=checkpoint,
+                    attack_records=attack_result.records,
+                )
+                guard_checkpoints[round_index] = checkpoint
+            else:
+                LOGGER.info(
+                    "guard_update_skipped round=%d reason=frozen_guard checkpoint=%s",
+                    round_index,
+                    self.frozen_guard_checkpoint,
+                )
             self.attacker.pool.save(
                 self.output_dir / f"strategy_pool_round_{round_index:03d}.json"
             )
@@ -559,10 +636,11 @@ class EvolutionRunner:
                 "heldout_attacker_asr": heldout_asr,
                 "probe_unsafe_recall": metrics.unsafe_recall,
                 "probe_benign_pass_rate": metrics.benign_pass_rate,
-                "accepted_pseudo_labels": guard_result.accepted_count,
-                "review_queue_count": guard_result.review_count,
-                "pseudo_label_candidates": guard_result.candidate_count,
-                "discarded_pseudo_labels": guard_result.discarded_count,
+                "accepted_pseudo_labels": guard_result.accepted_count if guard_result else 0,
+                "review_queue_count": guard_result.review_count if guard_result else 0,
+                "pseudo_label_candidates": guard_result.candidate_count if guard_result else 0,
+                "discarded_pseudo_labels": guard_result.discarded_count if guard_result else 0,
+                "guard_update_enabled": guard_result is not None,
                 "reflection_calls": attack_result.reflection_calls,
                 "reflection_rejections": attack_result.reflection_rejections,
                 "admitted_strategies": len(attack_result.admitted_strategies),
@@ -598,6 +676,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--probe", help="continue from an existing probe checkpoint instead of Guard-0"
     )
     parser.add_argument(
+        "--frozen-guard-checkpoint",
+        help=(
+            "load an already-trained guard checkpoint and disable bootstrap and "
+            "all guard updates for the full attacker run"
+        ),
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         help=(
@@ -623,6 +708,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     args = build_parser().parse_args(argv)
     config = load_config(args.config)
+    if args.frozen_guard_checkpoint:
+        validate_frozen_guard10_defense(config)
     if args.seed is not None:
         config.evolution.seed = args.seed
     if args.output_dir:
@@ -634,8 +721,16 @@ def main(argv: Sequence[str] | None = None) -> None:
     olares_client.check_olares_reachable()
     print(f"Inference backend: {olares_client.backend_name()}")
     loaded = load_model(config.model)
-    probe = DriftProbe.load(args.probe) if args.probe else None
-    summaries = EvolutionRunner(config, loaded.hooks, probe=probe).run()
+    if args.probe and args.frozen_guard_checkpoint:
+        raise ValueError("use either --probe or --frozen-guard-checkpoint, not both")
+    probe_path = args.frozen_guard_checkpoint or args.probe
+    probe = DriftProbe.load(probe_path) if probe_path else None
+    summaries = EvolutionRunner(
+        config,
+        loaded.hooks,
+        probe=probe,
+        frozen_guard_checkpoint=args.frozen_guard_checkpoint,
+    ).run()
     print(json.dumps(summaries, indent=2))
 
 

@@ -14,11 +14,16 @@ from promptguard import olares_client
 from promptguard.baseline_attacks import (
     AttackMethod,
     EvolvedPoolAttack,
+    RandomTransformationAttack,
     ReNeLLMAttack,
     TAPAttack,
 )
-from promptguard.benchmark_setup import BenchmarkExample, heldout_split, load_benchmarks
-from promptguard.config import ResearchConfig, load_config
+from promptguard.benchmark_setup import BenchmarkExample, load_benchmark_splits
+from promptguard.config import (
+    ResearchConfig,
+    load_config,
+    validate_frozen_guard10_defense,
+)
 from promptguard.drift_probe import DriftProbe
 from promptguard.evolution_loop import CachedDeltaExtractor, make_evaluator
 from promptguard.evolving_attacker import StrategyPool
@@ -28,6 +33,7 @@ from promptguard.metrics import (
     summarize_trials,
 )
 from promptguard.model_hooks import load_model
+from promptguard.semantic_preservation import IntentPreservationJudge
 
 LOGGER = logging.getLogger(__name__)
 
@@ -37,11 +43,17 @@ def _round_number(path: str | Path) -> int:
     return int(matches[-1]) if matches else 0
 
 
-def _static_methods(config: ResearchConfig) -> list[AttackMethod]:
+def _static_methods(config: ResearchConfig, semantic_validator) -> list[AttackMethod]:
     methods: list[AttackMethod] = []
     for name in config.baselines.enabled:
         if name == "renellm":
-            methods.append(ReNeLLMAttack(model=config.olares.fast_model))
+            methods.append(
+                ReNeLLMAttack(
+                    model=config.olares.fast_model,
+                    query_budget=config.baselines.query_budget,
+                    semantic_validator=semantic_validator,
+                )
+            )
         elif name == "tap":
             methods.append(
                 TAPAttack(
@@ -50,6 +62,15 @@ def _static_methods(config: ResearchConfig) -> list[AttackMethod]:
                     candidates_per_iteration=config.baselines.tap_candidates_per_iteration,
                     beam_width=config.baselines.tap_beam_width,
                     iterations=config.baselines.tap_iterations,
+                    semantic_validator=semantic_validator,
+                )
+            )
+        elif name == "random_transform":
+            methods.append(
+                RandomTransformationAttack(
+                    query_budget=config.baselines.query_budget,
+                    semantic_validator=semantic_validator,
+                    seed=config.evolution.seed,
                 )
             )
         else:
@@ -105,13 +126,16 @@ def _run_method(
             success=run.success,
             final_drift_score=best.drift_score,
             harmfulness_score=judge_score,
+            semantic_valid_attempts=sum(
+                attempt.semantic_valid for attempt in run.attempts
+            ),
         )
         trials.append(trial)
         details.append(
             {
                 **asdict(trial),
                 "category": example.category,
-                "split": "heldout" if example.id in split_ids else "train",
+                "split": "final_test" if example.id in split_ids else "unexpected",
                 "best_prompt": best.prompt,
             }
         )
@@ -131,23 +155,57 @@ def _write_csv(path: Path, rows: list[dict[str, object]]) -> None:
 def run_benchmarks(
     config: ResearchConfig,
     checkpoints: Sequence[str | Path],
+    *,
+    include_cross_stage: bool = True,
+    require_final_attacker_snapshot: bool = False,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     loaded = load_model(config.model)
     extractor = CachedDeltaExtractor(loaded.hooks, pooling=config.probe.pooling)
-    examples = load_benchmarks(config.benchmarks)
-    split = heldout_split(
-        examples,
-        heldout_categories=config.benchmarks.heldout_categories,
-        heldout_fraction=config.benchmarks.heldout_fraction,
-        seed=config.benchmarks.seed,
+    split = load_benchmark_splits(config.benchmarks)
+    final_examples = list(split.final_test)
+    final_ids = {example.id for example in final_examples}
+    if not config.semantic.enabled:
+        raise ValueError("final comparison requires the semantic-preservation gate")
+    semantic_validator = IntentPreservationJudge(
+        model=config.semantic.model,
+        use_native_model=config.semantic.use_native_model,
+        model_think=config.semantic.model_think,
+        confidence_threshold=config.semantic.confidence_threshold,
+        max_tokens=config.semantic.judge_max_tokens,
+        batch_size=config.semantic.batch_size,
+        cache_path=config.semantic.cache_path,
     )
-    ordered_examples = [*split.train, *split.heldout]
-    heldout_ids = {example.id for example in split.heldout}
     snapshots = _strategy_snapshots(config)
+    if (
+        require_final_attacker_snapshot
+        and config.evolution.rounds not in snapshots
+    ):
+        expected = (
+            Path(config.evolution.output_dir)
+            / f"strategy_pool_round_{config.evolution.rounds:03d}.json"
+        )
+        raise FileNotFoundError(
+            f"final evolving-attacker snapshot is missing: {expected}; "
+            "finish the frozen attacker-development run first"
+        )
     metric_rows: list[dict[str, object]] = []
     detail_rows: list[dict[str, object]] = []
     cross_rows: list[dict[str, object]] = []
     backend = olares_client.backend_name()
+    output_dir = Path(config.baselines.output_dir)
+    _write_csv(
+        output_dir / "final_test_split.csv",
+        [
+            {
+                "id": example.id,
+                "source_dataset": example.source_dataset,
+                "semantic_category": example.category,
+                "split": "final_test",
+                "instruction": example.instruction,
+            }
+            for example in final_examples
+        ],
+    )
 
     for checkpoint in checkpoints:
         guard_round = _round_number(checkpoint)
@@ -163,19 +221,20 @@ def run_benchmarks(
             default=min(snapshots),
         )
         methods = [
-            *_static_methods(config),
+            *_static_methods(config, semantic_validator),
             EvolvedPoolAttack(
                 snapshots[latest_snapshot_round],
                 query_budget=config.baselines.query_budget,
+                semantic_validator=semantic_validator,
             ),
         ]
         for method in methods:
             trials, details = _run_method(
                 method,
-                ordered_examples,
+                final_examples,
                 evaluator,
                 config,
-                split_ids=heldout_ids,
+                split_ids=final_ids,
             )
             detail_rows.extend(
                 {
@@ -198,16 +257,22 @@ def run_benchmarks(
                 for row in summarize_trials(trials)
             )
 
+        if not include_cross_stage:
+            continue
         # DARWIN Figure-4-style Attack-K x Guard-J matrix. This is intentionally
         # probe-only, so it does not spend additional Olares generation calls.
         for strategy_round, pool in sorted(snapshots.items()):
-            method = EvolvedPoolAttack(pool, query_budget=config.baselines.query_budget)
+            method = EvolvedPoolAttack(
+                pool,
+                query_budget=config.baselines.query_budget,
+                semantic_validator=semantic_validator,
+            )
             trials, _ = _run_method(
                 method,
-                ordered_examples,
+                final_examples,
                 evaluator,
                 config,
-                split_ids=heldout_ids,
+                split_ids=final_ids,
                 enable_judge=False,
             )
             for row in summarize_trials(trials):
@@ -221,8 +286,11 @@ def run_benchmarks(
                     }
                 )
 
-    output_dir = Path(config.baselines.output_dir)
     _write_csv(output_dir / "asr_aqc.csv", metric_rows)
+    _write_csv(
+        output_dir / "final_comparison.csv",
+        [row for row in metric_rows if row["source_dataset"] == "all"],
+    )
     _write_csv(output_dir / "attempts.csv", detail_rows)
     _write_csv(output_dir / "cross_stage.csv", cross_rows)
     return metric_rows, cross_rows
@@ -236,6 +304,10 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="+",
         help="probe checkpoints; defaults to all outputs/checkpoints/guard_*.pt",
     )
+    parser.add_argument(
+        "--frozen-guard-checkpoint",
+        help="evaluate every attack method against exactly this immutable guard checkpoint",
+    )
     return parser
 
 
@@ -243,15 +315,33 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     config = load_config(args.config)
+    if args.frozen_guard_checkpoint:
+        validate_frozen_guard10_defense(config)
     olares_client.configure(config.olares)
     olares_client.check_olares_reachable()
     LOGGER.info("active inference backend: %s", olares_client.backend_name())
-    checkpoints = args.checkpoints or sorted(
-        Path(config.evolution.checkpoint_dir).glob("guard_*.pt")
+    if args.checkpoints and args.frozen_guard_checkpoint:
+        raise ValueError(
+            "use either --checkpoints or --frozen-guard-checkpoint, not both"
+        )
+    checkpoints = (
+        [args.frozen_guard_checkpoint]
+        if args.frozen_guard_checkpoint
+        else args.checkpoints
+        or sorted(Path(config.evolution.checkpoint_dir).glob("guard_*.pt"))
     )
     if not checkpoints:
         raise FileNotFoundError("no probe checkpoints found; run evolution_loop first")
-    metrics, cross = run_benchmarks(config, checkpoints)
+    metrics, cross = run_benchmarks(
+        config,
+        checkpoints,
+        include_cross_stage=not bool(args.frozen_guard_checkpoint),
+        require_final_attacker_snapshot=bool(args.frozen_guard_checkpoint),
+    )
+    print(
+        "CAUTION: ASR is query-budget-dependent; the final comparison is valid "
+        "only because every method uses the same configured detector-query budget."
+    )
     print(f"Wrote {len(metrics)} metric rows and {len(cross)} cross-stage rows")
 
 

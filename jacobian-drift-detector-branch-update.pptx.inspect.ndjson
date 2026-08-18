@@ -1,0 +1,237 @@
+{"kind":"deck","id":"pr/ssiyfu","name":"Deck"}
+{"kind":"layout","layoutId":"b52ac3e3-655f-48be-a7f3-03e0837745cd","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"ccf704dd-fd11-4f2a-afc0-427f0a1798ef","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/h6m6nr","slide":1,"title":"RESEARCH PROTOTYPE • BRANCH b0d2874","textShapes":5}
+{"kind":"textbox","id":"sh/dkrqx47q","slide":1,"name":"text-42-42","text":"RESEARCH PROTOTYPE • BRANCH b0d2874","textPreview":"RESEARCH PROTOTYPE • BRANCH b0d2874","textChars":35,"textLines":1,"bbox":[42,42,650,32]}
+{"kind":"textbox","id":"sh/qh072p8f","slide":1,"name":"text-42-168","text":"PromptGuard","textPreview":"PromptGuard","textChars":11,"textLines":1,"bbox":[42,168,980,104]}
+{"kind":"textbox","id":"sh/bi98vup0","slide":1,"name":"text-42-278","text":"Detecting jailbreak drift inside Qwen","textPreview":"Detecting jailbreak drift inside Qwen","textChars":37,"textLines":1,"bbox":[42,278,1080,80]}
+{"kind":"textbox","id":"sh/0n2p8jqh","slide":1,"name":"text-42-452","text":"What this branch is building, how it works, what we have observed, and the path to a credible validation.","textPreview":"What this branch is building, how it works, what we have observed, and the path to a credible validation.","textChars":105,"textLines":1,"bbox":[42,452,830,104]}
+{"kind":"shape","id":"sh/lobq1o72","slide":1,"bbox":[42,622,1196,0.01]}
+{"kind":"shape","id":"sh/yl07698b","slide":1,"name":"box-918-474","bbox":[918,474,16,16]}
+{"kind":"shape","id":"sh/zmt8zepw","slide":1,"name":"box-956-457","bbox":[956,457,16,16]}
+{"kind":"shape","id":"sh/8b2pcjqd","slide":1,"name":"box-994-440","bbox":[994,440,16,16]}
+{"kind":"shape","id":"sh/9cbq5o7y","slide":1,"name":"box-1032-423","bbox":[1032,423,16,16]}
+{"kind":"shape","id":"sh/h8j6dc3q","slide":1,"name":"box-1070-406","bbox":[1070,406,16,16]}
+{"kind":"shape","id":"sh/g7a5k7m5","slide":1,"name":"box-1108-389","bbox":[1108,389,16,16]}
+{"kind":"shape","id":"sh/v61ob2lk","slide":1,"name":"box-1146-372","bbox":[1146,372,16,16]}
+{"kind":"shape","id":"sh/u5snih4f","slide":1,"name":"box-1184-355","bbox":[1184,355,16,16]}
+{"kind":"textbox","id":"sh/5c36hw32","slide":1,"name":"text-1034-644","text":"17 Aug 2026","textPreview":"17 Aug 2026","textChars":11,"textLines":1,"bbox":[1034,644,204,26]}
+{"kind":"notes","id":"nt/h6m6nr","slide":1,"text":"Open with the central idea: use internal activation changes as an early-warning signal, then train the detector against an evolving attacker.\n\n[Sources]\n- README.md\n- config.yaml\n- git rev-parse HEAD"}
+{"kind":"slide","id":"sl/eadfb9","slide":2,"title":"BRANCH UPDATE","textShapes":12}
+{"kind":"textbox","id":"sh/x4nqxc72","slide":2,"name":"text-42-34","text":"BRANCH UPDATE","textPreview":"BRANCH UPDATE","textChars":13,"textLines":1,"bbox":[42,34,350,24]}
+{"kind":"textbox","id":"sh/ahw7mx8r","slide":2,"name":"text-42-72","text":"J-Space becomes an adaptive safety guard","textPreview":"J-Space becomes an adaptive safety guard","textChars":40,"textLines":1,"bbox":[42,72,1196,72]}
+{"kind":"shape","id":"sh/bi58v2pc","slide":2,"bbox":[42,158,1196,0.01]}
+{"kind":"textbox","id":"sh/ofepk7ql","slide":2,"name":"text-42-668","text":"feature/jacobian-drift-detector","textPreview":"feature/jacobian-drift-detector","textChars":31,"textLines":1,"bbox":[42,668,420,22]}
+{"kind":"textbox","id":"sh/9gnqtc76","slide":2,"name":"text-1180-668","text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1180,668,58,22]}
+{"kind":"textbox","id":"sh/mdc7ix8f","slide":2,"name":"text-42-196","text":"Foundation already on the branch","textPreview":"Foundation already on the branch","textChars":32,"textLines":1,"bbox":[42,196,530,44]}
+{"kind":"textbox","id":"sh/ne58r290","slide":2,"name":"text-42-252","text":"Jacobian lens + steering","textPreview":"Jacobian lens + steering","textChars":24,"textLines":1,"bbox":[42,252,520,58]}
+{"kind":"textbox","id":"sh/0bupgnqp","slide":2,"name":"text-42-326","text":"Read internal residual-stream state, transport it into a meaningful basis, and intervene on model behavior.","textPreview":"Read internal residual-stream state, transport it into a meaningful basis, and intervene on model behavior.","textChars":107,"textLines":1,"bbox":[42,326,520,126]}
+{"kind":"textbox","id":"sh/1c3qpsra","slide":2,"name":"text-670-196","text":"What the tip commit adds","textPreview":"What the tip commit adds","textChars":24,"textLines":1,"bbox":[670,196,520,44]}
+{"kind":"textbox","id":"sh/pc7a9gzu","slide":2,"name":"text-670-252","text":"PromptGuard","textPreview":"PromptGuard","textChars":11,"textLines":1,"bbox":[670,252,520,58]}
+{"kind":"textbox","id":"sh/obe90bi9","slide":2,"name":"text-670-326","text":"A layerwise drift detector, evolving attack loop, guarded interventions, benchmark harness, diagnostics, and plotting pipeline.","textPreview":"A layerwise drift detector, evolving attack loop, guarded interventions, benchmark harness, diagnostics, and plotting pipeline.","textChars":127,"textLines":1,"bbox":[670,326,520,144]}
+{"kind":"shape","id":"sh/na5s76h4","slide":2,"bbox":[620,190,0.01,0.01]}
+{"kind":"shape","id":"sh/29wry10j","slide":2,"name":"box-42-528","bbox":[42,528,1196,92]}
+{"kind":"textbox","id":"sh/1ona5wzy","slide":2,"name":"text-70-548","text":"Branch footprint","textPreview":"Branch footprint","textChars":16,"textLines":1,"bbox":[70,548,220,32]}
+{"kind":"textbox","id":"sh/gne9wrid","slide":2,"name":"text-292-546","text":"42 files in the tip commit  •  4,364 lines under promptguard/  •  8 full-attention checkpoints","textPreview":"42 files in the tip commit  •  4,364 lines under promptguard/  •  8 full-attention checkpoints","textChars":94,"textLines":1,"bbox":[292,546,910,38]}
+{"kind":"notes","id":"nt/eadfb9","slide":2,"text":"Clarify scope: the feature branch contains the older J-Space work as history; b0d2874 is the PromptGuard feature addition being showcased.\n\n[Sources]\n- git diff HEAD^..HEAD --stat\n- README.md\n- promptguard/\n- config.yaml"}
+{"kind":"slide","id":"sl/5or7de","slide":3,"title":"HOW IT WORKS","textShapes":21}
+{"kind":"textbox","id":"sh/ax0rmlcr","slide":3,"name":"text-42-34","text":"HOW IT WORKS","textPreview":"HOW IT WORKS","textChars":12,"textLines":1,"bbox":[42,34,350,24]}
+{"kind":"textbox","id":"sh/x0bahgb2","slide":3,"name":"text-42-72","text":"A prompt becomes a drift score before generation proceeds","textPreview":"A prompt becomes a drift score before generation proceeds","textChars":57,"textLines":1,"bbox":[42,72,1196,72]}
+{"kind":"shape","id":"sh/wz29obuh","slide":3,"bbox":[42,158,1196,0.01]}
+{"kind":"textbox","id":"sh/j2tsjqt8","slide":3,"name":"text-42-668","text":"feature/jacobian-drift-detector","textPreview":"feature/jacobian-drift-detector","textChars":31,"textLines":1,"bbox":[42,668,420,22]}
+{"kind":"textbox","id":"sh/i1kbqlcn","slide":3,"name":"text-1180-668","text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1180,668,58,22]}
+{"kind":"shape","id":"sh/5obal0be","slide":3,"bbox":[232,326,52,0.01]}
+{"kind":"shape","id":"sh/kn2tsvut","slide":3,"bbox":[474,326,52,0.01]}
+{"kind":"shape","id":"sh/7qdsnat4","slide":3,"bbox":[716,326,52,0.01]}
+{"kind":"shape","id":"sh/6pkbu5cz","slide":3,"bbox":[958,326,52,0.01]}
+{"kind":"shape","id":"sh/836l4be9","slide":3,"name":"box-42-236","bbox":[42,236,198,204]}
+{"kind":"textbox","id":"sh/t4zmdwvu","slide":3,"name":"text-62-254","text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[62,254,50,32]}
+{"kind":"textbox","id":"sh/61o321w3","slide":3,"name":"text-62-296","text":"Pair prompts","textPreview":"Pair prompts","textChars":12,"textLines":1,"bbox":[62,296,158,58]}
+{"kind":"textbox","id":"sh/72xkb6do","slide":3,"name":"text-62-364","text":"Clean prefix vs. prefix + candidate injection","textPreview":"Clean prefix vs. prefix + candidate injection","textChars":45,"textLines":1,"bbox":[62,364,158,58]}
+{"kind":"shape","id":"sh/grql8be5","slide":3,"name":"box-284-236","bbox":[284,236,198,204]}
+{"kind":"textbox","id":"sh/hszmhgvq","slide":3,"name":"text-304-254","text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[304,254,50,32]}
+{"kind":"textbox","id":"sh/u58361wf","slide":3,"name":"text-304-296","text":"Capture","textPreview":"Capture","textChars":7,"textLines":1,"bbox":[304,296,158,58]}
+{"kind":"textbox","id":"sh/v6h4f6d0","slide":3,"name":"text-304-364","text":"Read residuals at 8 full-attention layers","textPreview":"Read residuals at 8 full-attention layers","textChars":41,"textLines":1,"bbox":[304,364,158,58]}
+{"kind":"shape","id":"sh/4valcveh","slide":3,"name":"box-526-236","bbox":[526,236,198,204]}
+{"kind":"textbox","id":"sh/5wjmlgv2","slide":3,"name":"text-546-254","text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[546,254,50,32]}
+{"kind":"textbox","id":"sh/d0vu9wju","slide":3,"name":"text-546-296","text":"Compute Δ","textPreview":"Compute Δ","textChars":9,"textLines":1,"bbox":[546,296,158,58]}
+{"kind":"textbox","id":"sh/sfmtgr29","slide":3,"name":"text-546-364","text":"Pool each layer and subtract before from after","textPreview":"Pool each layer and subtract before from after","textChars":46,"textLines":1,"bbox":[546,364,158,58]}
+{"kind":"shape","id":"sh/redc7m1o","slide":3,"name":"box-768-236","bbox":[768,236,198,204]}
+{"kind":"textbox","id":"sh/qd4behk3","slide":3,"name":"text-788-254","text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[788,254,50,32]}
+{"kind":"textbox","id":"sh/14fudwjq","slide":3,"name":"text-788-296","text":"Score","textPreview":"Score","textChars":5,"textLines":1,"bbox":[788,296,158,58]}
+{"kind":"textbox","id":"sh/03mdkr2l","slide":3,"name":"text-788-364","text":"One linear probe per layer; aggregate logits","textPreview":"One linear probe per layer; aggregate logits","textChars":44,"textLines":1,"bbox":[788,364,158,58]}
+{"kind":"shape","id":"sh/f2dcbm10","slide":3,"name":"box-1010-236","bbox":[1010,236,198,204]}
+{"kind":"textbox","id":"sh/e14vi1kf","slide":3,"name":"text-1030-254","text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1030,254,50,32]}
+{"kind":"textbox","id":"sh/h8bu1cjm","slide":3,"name":"text-1030-296","text":"Act","textPreview":"Act","textChars":3,"textLines":1,"bbox":[1030,296,158,58]}
+{"kind":"textbox","id":"sh/g72t8721","slide":3,"name":"text-1030-364","text":"Pass, refuse, or project out the drift direction","textPreview":"Pass, refuse, or project out the drift direction","textChars":48,"textLines":1,"bbox":[1030,364,158,58]}
+{"kind":"shape","id":"sh/6dgrid0z","slide":3,"name":"box-42-490","bbox":[42,490,1196,114]}
+{"kind":"textbox","id":"sh/7e9sbihk","slide":3,"name":"text-66-514","text":"Safety constraint","textPreview":"Safety constraint","textChars":17,"textLines":1,"bbox":[66,514,220,34]}
+{"kind":"textbox","id":"sh/8fi9k3i5","slide":3,"name":"text-298-510","text":"Qwen Gated DeltaNet blocks may be observed, but write hooks are rejected. Intervention is limited to discovered full-attention blocks.","textPreview":"Qwen Gated DeltaNet blocks may be observed, but write hooks are rejected. Intervention is limited to discovered full-attention blocks.","textChars":134,"textLines":1,"bbox":[298,510,900,58]}
+{"kind":"notes","id":"nt/5or7de","slide":3,"text":"Walk left to right. The key implementation choice is to compare activation state before and after appending untrusted text, then aggregate layerwise linear evidence.\n\n[Sources]\n- promptguard/drift_probe.py\n- promptguard/model_hooks.py\n- promptguard/intervention.py\n- config.yaml"}
+{"kind":"slide","id":"sl/y9ouj5","slide":4,"title":"ADAPTATION LOOP","textShapes":17}
+{"kind":"textbox","id":"sh/butof65w","slide":4,"name":"text-42-34","text":"ADAPTATION LOOP","textPreview":"ADAPTATION LOOP","textChars":15,"textLines":1,"bbox":[42,34,350,24]}
+{"kind":"textbox","id":"sh/cf2p8b6h","slide":4,"name":"text-42-72","text":"The guard improves by training against the attacks that evade it","textPreview":"The guard improves by training against the attacks that evade it","textChars":64,"textLines":1,"bbox":[42,72,1196,72]}
+{"kind":"shape","id":"sh/xgb6hwnm","slide":4,"bbox":[42,158,1196,0.01]}
+{"kind":"textbox","id":"sh/yhk7a1o7","slide":4,"name":"text-42-668","text":"feature/jacobian-drift-detector","textPreview":"feature/jacobian-drift-detector","textChars":31,"textLines":1,"bbox":[42,668,420,22]}
+{"kind":"textbox","id":"sh/zitoj65s","slide":4,"name":"text-1180-668","text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1180,668,58,22]}
+{"kind":"shape","id":"sh/kj2pcb6d","slide":4,"bbox":[72,332,1136,0.01]}
+{"kind":"shape","id":"sh/lkv6lgny","slide":4,"name":"box-72-321","bbox":[72,321,20,20]}
+{"kind":"textbox","id":"sh/el0nyho3","slide":4,"name":"text-72-242","text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[72,242,40,32]}
+{"kind":"textbox","id":"sh/fm9o7mpo","slide":4,"name":"text-72-372","text":"Mutate","textPreview":"Mutate","textChars":6,"textLines":1,"bbox":[72,372,240,42]}
+{"kind":"textbox","id":"sh/fyx4vm5c","slide":4,"name":"text-72-426","text":"Sample roleplay, encoding, fragmentation, context and learned templates.","textPreview":"Sample roleplay, encoding, fragmentation, context and learned templates.","textChars":72,"textLines":1,"bbox":[72,426,246,112]}
+{"kind":"shape","id":"sh/uxo3mhor","slide":4,"name":"box-356-321","bbox":[356,321,20,20]}
+{"kind":"textbox","id":"sh/h0fmxcni","slide":4,"name":"text-356-242","text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[356,242,40,32]}
+{"kind":"textbox","id":"sh/gz6lo76x","slide":4,"name":"text-356-372","text":"Attack","textPreview":"Attack","textChars":6,"textLines":1,"bbox":[356,372,240,42]}
+{"kind":"textbox","id":"sh/7ux4r25g","slide":4,"name":"text-356-426","text":"Score transformed prompts against the frozen validation probe.","textPreview":"Score transformed prompts against the frozen validation probe.","textChars":62,"textLines":1,"bbox":[356,426,246,112]}
+{"kind":"shape","id":"sh/6t43ixov","slide":4,"name":"box-640-321","bbox":[640,321,20,20]}
+{"kind":"textbox","id":"sh/twfmtcnm","slide":4,"name":"text-640-242","text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[640,242,40,32]}
+{"kind":"textbox","id":"sh/sv6lk761","slide":4,"name":"text-640-372","text":"Gate + learn","textPreview":"Gate + learn","textChars":12,"textLines":1,"bbox":[640,372,240,42]}
+{"kind":"textbox","id":"sh/j6dknip4","slide":4,"name":"text-640-426","text":"Train only trusted or high-confidence examples; queue uncertainty for review.","textPreview":"Train only trusted or high-confidence examples; queue uncertainty for review.","textChars":77,"textLines":1,"bbox":[640,426,246,112]}
+{"kind":"shape","id":"sh/i543exoz","slide":4,"name":"box-924-321","bbox":[924,321,20,20]}
+{"kind":"textbox","id":"sh/m1knqd8r","slide":4,"name":"text-924-242","text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[924,242,40,32]}
+{"kind":"textbox","id":"sh/n2t4zi9c","slide":4,"name":"text-924-372","text":"Cross-play","textPreview":"Cross-play","textChars":10,"textLines":1,"bbox":[924,372,240,42]}
+{"kind":"textbox","id":"sh/83m5snqx","slide":4,"name":"text-924-426","text":"Evaluate Attack-K × Guard-J plus families never used for training.","textPreview":"Evaluate Attack-K × Guard-J plus families never used for training.","textChars":66,"textLines":1,"bbox":[924,426,246,112]}
+{"kind":"textbox","id":"sh/94vm1sr2","slide":4,"name":"text-72-568","text":"Olares proposes text templates—not executable code—and every call has a local fallback.","textPreview":"Olares proposes text templates—not executable code—and every call has a local fallback.","textChars":87,"textLines":1,"bbox":[72,568,1110,40]}
+{"kind":"notes","id":"nt/y9ouj5","slide":4,"text":"Stress the containment decisions: mutations are templates, embedding-deduplicated, sandbox-validated, and confidence-gated. The same probe weights continue learning rather than restarting every round.\n\n[Sources]\n- promptguard/evolving_attacker.py\n- promptguard/evolving_guard.py\n- promptguard/evolution_loop.py\n- promptguard/olares_client.py"}
+{"kind":"slide","id":"sl/yzct53","slide":5,"title":"RUNTIME POLICY","textShapes":16}
+{"kind":"textbox","id":"sh/elw3al8z","slide":5,"name":"text-42-34","text":"RUNTIME POLICY","textPreview":"RUNTIME POLICY","textChars":14,"textLines":1,"bbox":[42,34,350,24]}
+{"kind":"textbox","id":"sh/18nml07q","slide":5,"name":"text-42-72","text":"One score drives three deliberately simple outcomes","textPreview":"One score drives three deliberately simple outcomes","textChars":51,"textLines":1,"bbox":[42,72,1196,72]}
+{"kind":"shape","id":"sh/07elcvq5","slide":5,"bbox":[42,158,1196,0.01]}
+{"kind":"textbox","id":"sh/na54nqpg","slide":5,"name":"text-42-668","text":"feature/jacobian-drift-detector","textPreview":"feature/jacobian-drift-detector","textChars":31,"textLines":1,"bbox":[42,668,420,22]}
+{"kind":"textbox","id":"sh/m9w3el8b","slide":5,"name":"text-1180-668","text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1180,668,58,22]}
+{"kind":"textbox","id":"sh/9cnmp07m","slide":5,"name":"text-42-214","text":"drift score","textPreview":"drift score","textChars":11,"textLines":1,"bbox":[42,214,220,34]}
+{"kind":"shape","id":"sh/8be5gvq1","slide":5,"bbox":[42,294,560,0.01]}
+{"kind":"shape","id":"sh/vep4raps","slide":5,"bbox":[322,294,280,0.01]}
+{"kind":"shape","id":"sh/adgni587","slide":5,"name":"box-316-278","bbox":[316,278,12,32]}
+{"kind":"textbox","id":"sh/cf65ofut","slide":5,"name":"text-42-316","text":"0.00","textPreview":"0.00","textChars":4,"textLines":1,"bbox":[42,316,80,30]}
+{"kind":"textbox","id":"sh/dgf6hkbe","slide":5,"name":"text-272-316","text":"threshold 0.50","textPreview":"threshold 0.50","textChars":14,"textLines":1,"bbox":[272,316,160,30]}
+{"kind":"textbox","id":"sh/qdonm5c3","slide":5,"name":"text-542-316","text":"1.00","textPreview":"1.00","textChars":4,"textLines":1,"bbox":[542,316,60,30]}
+{"kind":"shape","id":"sh/rexofato","slide":5,"name":"box-670-194","bbox":[670,194,248,146]}
+{"kind":"textbox","id":"sh/03q5sfu5","slide":5,"name":"text-696-216","text":"PASS","textPreview":"PASS","textChars":4,"textLines":1,"bbox":[696,216,196,38]}
+{"kind":"textbox","id":"sh/14z6lkbq","slide":5,"name":"text-696-270","text":"Below threshold: generate normally.","textPreview":"Below threshold: generate normally.","textChars":35,"textLines":1,"bbox":[696,270,196,48]}
+{"kind":"shape","id":"sh/e1onq5cz","slide":5,"name":"box-940-194","bbox":[940,194,248,146]}
+{"kind":"textbox","id":"sh/z2hojatk","slide":5,"name":"text-966-216","text":"HARD STOP","textPreview":"HARD STOP","textChars":9,"textLines":1,"bbox":[966,216,196,38]}
+{"kind":"textbox","id":"sh/o7q5wzu1","slide":5,"name":"text-966-270","text":"Return a fixed refusal before generation.","textPreview":"Return a fixed refusal before generation.","textChars":41,"textLines":1,"bbox":[966,270,196,52]}
+{"kind":"shape","id":"sh/98z6p4bm","slide":5,"name":"box-670-374","bbox":[670,374,518,174]}
+{"kind":"textbox","id":"sh/xov69k3q","slide":5,"name":"text-696-398","text":"CIRCUIT BREAKER","textPreview":"CIRCUIT BREAKER","textChars":15,"textLines":1,"bbox":[696,398,458,40]}
+{"kind":"textbox","id":"sh/wnm5gfm5","slide":5,"name":"text-696-452","text":"Project the learned drift component out of residual activations, then generate with write hooks at permitted layers.","textPreview":"Project the learned drift component out of residual activations, then generate with write hooks at permitted layers.","textChars":116,"textLines":1,"bbox":[696,452,450,76]}
+{"kind":"textbox","id":"sh/vmd47ul0","slide":5,"name":"text-42-430","text":"Current default","textPreview":"Current default","textChars":15,"textLines":1,"bbox":[42,430,180,32]}
+{"kind":"textbox","id":"sh/al4nep4f","slide":5,"name":"text-42-474","text":"circuit_breaker  •  β = 1.0  •  all token positions","textPreview":"circuit_breaker  •  β = 1.0  •  all token positions","textChars":51,"textLines":1,"bbox":[42,474,560,62]}
+{"kind":"notes","id":"nt/yzct53","slide":5,"text":"Explain that this is a one-time pre-generation decision in the current implementation. The circuit breaker removes projection onto the probe's drift direction; hard stop never calls generation.\n\n[Sources]\n- promptguard/intervention.py\n- config.yaml\n- tests/test_promptguard.py"}
+{"kind":"slide","id":"sl/fcsi8q","slide":6,"title":"RESULTS SO FAR","textShapes":10}
+{"kind":"textbox","id":"sh/ixwvuxo3","slide":6,"name":"text-42-34","text":"RESULTS SO FAR","textPreview":"RESULTS SO FAR","textChars":14,"textLines":1,"bbox":[42,34,350,24]}
+{"kind":"textbox","id":"sh/50nu5s7e","slide":6,"name":"text-42-72","text":"Held-out evasion hits zero; active attacks rebound","textPreview":"Held-out evasion hits zero; active attacks rebound","textChars":50,"textLines":1,"bbox":[42,72,1196,72]}
+{"kind":"shape","id":"sh/kzedw769","slide":6,"bbox":[42,158,1196,0.01]}
+{"kind":"textbox","id":"sh/725c72pk","slide":6,"name":"text-42-668","text":"feature/jacobian-drift-detector","textPreview":"feature/jacobian-drift-detector","textChars":31,"textLines":1,"bbox":[42,668,420,22]}
+{"kind":"textbox","id":"sh/61wvyxoz","slide":6,"name":"text-1180-668","text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1180,668,58,22]}
+{"kind":"shape","id":"sh/s3yd0765","slide":6,"name":"box-842-194","bbox":[842,194,352,118]}
+{"kind":"textbox","id":"sh/n6lcvipg","slide":6,"name":"text-870-212","text":"5.41%","textPreview":"5.41%","textChars":5,"textLines":1,"bbox":[870,212,300,50]}
+{"kind":"textbox","id":"sh/m5cbmdov","slide":6,"name":"text-870-266","text":"mean held-out ASR in round 1","textPreview":"mean held-out ASR in round 1","textChars":28,"textLines":1,"bbox":[870,266,296,28]}
+{"kind":"shape","id":"sh/4v69g3mx","slide":6,"name":"box-842-332","bbox":[842,332,352,118]}
+{"kind":"textbox","id":"sh/5wfq983i","slide":6,"name":"text-870-350","text":"0% by round 3","textPreview":"0% by round 3","textChars":13,"textLines":1,"bbox":[870,350,300,50]}
+{"kind":"textbox","id":"sh/i9o7et4r","slide":6,"name":"text-870-404","text":"all three seeds; narrow benchmark","textPreview":"all three seeds; narrow benchmark","textChars":33,"textLines":1,"bbox":[870,404,296,28]}
+{"kind":"shape","id":"sh/jax87ylc","slide":6,"name":"box-842-470","bbox":[842,470,352,142]}
+{"kind":"textbox","id":"sh/szq9kn2t","slide":6,"name":"text-870-488","text":"7.75%","textPreview":"7.75%","textChars":5,"textLines":1,"bbox":[870,488,300,50]}
+{"kind":"textbox","id":"sh/t0zqd83e","slide":6,"name":"text-870-542","text":"mean active ASR rebounds at round 9 — adaptation is not monotonic.","textPreview":"mean active ASR rebounds at round 9 — adaptation is not monotonic.","textChars":66,"textLines":1,"bbox":[870,542,296,56]}
+{"kind":"chart","id":"ch/tsn6dkji","slide":6,"name":"","chartType":"line","bbox":[42,182,760,430]}
+{"kind":"notes","id":"nt/fcsi8q","slide":6,"text":"This chart averages three full ten-round runs. The held-out result is the encouraging headline; the active-attack rebounds are the honest warning that the evolving game remains unstable.\n\n[Sources]\n- outputs/evolution_multiseed/heldout_asr_mean_std.csv\n- outputs/evolution_multiseed/seed_7/run_summary.json\n- outputs/evolution_multiseed/seed_19/run_summary.json\n- outputs/evolution_multiseed/seed_31/run_summary.json"}
+{"kind":"slide","id":"sl/p2jf26","slide":7,"title":"LAYER DIAGNOSTICS","textShapes":7}
+{"kind":"textbox","id":"sh/07e1k7e1","slide":7,"name":"text-42-34","text":"LAYER DIAGNOSTICS","textPreview":"LAYER DIAGNOSTICS","textChars":17,"textLines":1,"bbox":[42,34,350,24]}
+{"kind":"textbox","id":"sh/z650r2xw","slide":7,"name":"text-42-72","text":"Guard-10 amplifies the signal across all eight layers","textPreview":"Guard-10 amplifies the signal across all eight layers","textChars":53,"textLines":1,"bbox":[42,72,1196,72]}
+{"kind":"shape","id":"sh/e5wjixwb","slide":7,"bbox":[42,158,1196,0.01]}
+{"kind":"textbox","id":"sh/9w7ixcvy","slide":7,"name":"text-42-668","text":"feature/jacobian-drift-detector","textPreview":"feature/jacobian-drift-detector","textChars":31,"textLines":1,"bbox":[42,668,420,22]}
+{"kind":"textbox","id":"sh/oby1o7ed","slide":7,"name":"text-1180-668","text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1180,668,58,22]}
+{"kind":"textbox","id":"sh/nap0v2ds","slide":7,"name":"text-42-178","text":"Guard-0","textPreview":"Guard-0","textChars":7,"textLines":1,"bbox":[42,178,540,36]}
+{"kind":"textbox","id":"sh/m9wjmxw7","slide":7,"name":"text-650-178","text":"Guard-10","textPreview":"Guard-10","textChars":8,"textLines":1,"bbox":[650,178,540,36]}
+{"kind":"shape","id":"sh/e5knixcz","slide":7,"name":"box-42-574","bbox":[42,574,1196,60]}
+{"kind":"textbox","id":"sh/z6tor2tk","slide":7,"name":"text-66-588","text":"Same prompt deltas, stronger probe alignment—but near-1.0 saturation makes calibration the next test.","textPreview":"Same prompt deltas, stronger probe alignment—but near-1.0 saturation makes calibration the next test.","textChars":101,"textLines":1,"bbox":[66,588,1148,38]}
+{"kind":"chart","id":"ch/94bm5srm","slide":7,"name":"","chartType":"line","bbox":[42,216,560,338]}
+{"kind":"chart","id":"ch/o32lcna1","slide":7,"name":"","chartType":"line","bbox":[650,216,560,338]}
+{"kind":"notes","id":"nt/p2jf26","slide":7,"text":"The diagnostic reuses the same 21 prompts and raw activation deltas for both checkpoints. Guard-10 raises early-layer mean probabilities sharply: for translated attacks, layer 11 rises from 69.4% to effectively 100%. All tested examples are detected at every layer in both checkpoints, so this slide demonstrates stronger confidence, not a new increase in detection rate. Saturation could mean better alignment or overconfidence and needs benign calibration.\n\n[Sources]\n- outputs/layer_diagnostic/guard_000/layer_summary.csv\n- outputs/layer_diagnostic/guard_010/layer_summary.csv\n- outputs/layer_diagnostic/guard_000/metadata.json\n- outputs/layer_diagnostic/guard_010/metadata.json"}
+{"kind":"slide","id":"sl/40b31s","slide":8,"title":"TEST OUTPUTS","textShapes":23}
+{"kind":"textbox","id":"sh/ne5cnix8","slide":8,"name":"text-42-34","text":"TEST OUTPUTS","textPreview":"TEST OUTPUTS","textChars":12,"textLines":1,"bbox":[42,34,350,24]}
+{"kind":"textbox","id":"sh/ofetgnet","slide":8,"name":"text-42-72","text":"The results are traceable to inspectable artifacts","textPreview":"The results are traceable to inspectable artifacts","textChars":50,"textLines":1,"bbox":[42,72,1196,72]}
+{"kind":"shape","id":"sh/9gnupsfe","slide":8,"bbox":[42,158,1196,0.01]}
+{"kind":"textbox","id":"sh/ahwbixwz","slide":8,"name":"text-42-668","text":"feature/jacobian-drift-detector","textPreview":"feature/jacobian-drift-detector","textChars":31,"textLines":1,"bbox":[42,668,420,22]}
+{"kind":"textbox","id":"sh/bi5cr2xk","slide":8,"name":"text-1180-668","text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1180,668,58,22]}
+{"kind":"textbox","id":"sh/wjytk7ep","slide":8,"name":"text-42-190","text":"Layer diagnostics","textPreview":"Layer diagnostics","textChars":17,"textLines":1,"bbox":[42,190,520,42]}
+{"kind":"textbox","id":"sh/xk7utcfa","slide":8,"name":"text-42-250","text":"Standalone diagnostic","textPreview":"Standalone diagnostic","textChars":21,"textLines":1,"bbox":[42,250,300,30]}
+{"kind":"textbox","id":"sh/qlcb6twf","slide":8,"name":"text-342-248","text":"Re-run one checkpoint without the full evolution loop","textPreview":"Re-run one checkpoint without the full evolution loop","textChars":53,"textLines":1,"bbox":[342,248,250,54]}
+{"kind":"textbox","id":"sh/rmlsfyx0","slide":8,"name":"text-42-328","text":"Per-prompt / per-layer scores","textPreview":"Per-prompt / per-layer scores","textChars":29,"textLines":1,"bbox":[42,328,300,30]}
+{"kind":"textbox","id":"sh/filoja10","slide":8,"name":"text-342-326","text":"Raw evidence for each prompt and hooked layer","textPreview":"Raw evidence for each prompt and hooked layer","textChars":45,"textLines":1,"bbox":[342,326,250,54]}
+{"kind":"textbox","id":"sh/ehc7q5kf","slide":8,"name":"text-42-406","text":"Layer summary + report","textPreview":"Layer summary + report","textChars":22,"textLines":1,"bbox":[42,406,300,30]}
+{"kind":"textbox","id":"sh/1k36l0jq","slide":8,"name":"text-342-404","text":"Means, spread, detection rate, and activation magnitude","textPreview":"Means, spread, detection rate, and activation magnitude","textChars":55,"textLines":1,"bbox":[342,404,250,54]}
+{"kind":"textbox","id":"sh/gjupsv2l","slide":8,"name":"text-42-484","text":"Guard-0 / Guard-10 plots","textPreview":"Guard-0 / Guard-10 plots","textChars":24,"textLines":1,"bbox":[42,484,300,30]}
+{"kind":"textbox","id":"sh/relofq1o","slide":8,"name":"text-342-482","text":"Before-and-after view of learned probe alignment","textPreview":"Before-and-after view of learned probe alignment","textChars":48,"textLines":1,"bbox":[342,482,250,54]}
+{"kind":"shape","id":"sh/6tsnmlk3","slide":8,"bbox":[620,188,0.01,0.01]}
+{"kind":"textbox","id":"sh/tg36h0ju","slide":8,"name":"text-670-190","text":"Evolution run","textPreview":"Evolution run","textChars":13,"textLines":1,"bbox":[670,190,520,42]}
+{"kind":"textbox","id":"sh/sfu5ov29","slide":8,"name":"text-670-250","text":"Full run summary","textPreview":"Full run summary","textChars":16,"textLines":1,"bbox":[670,250,260,30]}
+{"kind":"textbox","id":"sh/jq1obq1s","slide":8,"name":"text-930-248","text":"Round-by-round outcomes and admitted strategies","textPreview":"Round-by-round outcomes and admitted strategies","textChars":47,"textLines":1,"bbox":[930,248,270,54]}
+{"kind":"textbox","id":"sh/ipsnilk7","slide":8,"name":"text-670-328","text":"Round metrics","textPreview":"Round metrics","textChars":13,"textLines":1,"bbox":[670,328,260,30]}
+{"kind":"textbox","id":"sh/ml87ul4z","slide":8,"name":"text-930-326","text":"ASR, recall, benign pass rate, pool growth","textPreview":"ASR, recall, benign pass rate, pool growth","textChars":42,"textLines":1,"bbox":[930,326,270,54]}
+{"kind":"textbox","id":"sh/7mhon6lk","slide":8,"name":"text-670-406","text":"Held-out families","textPreview":"Held-out families","textChars":17,"textLines":1,"bbox":[670,406,260,30]}
+{"kind":"textbox","id":"sh/8napwbm5","slide":8,"name":"text-930-404","text":"154 transformed cases broken down by family","textPreview":"154 transformed cases broken down by family","textChars":43,"textLines":1,"bbox":[930,404,270,54]}
+{"kind":"textbox","id":"sh/9ojqpg3q","slide":8,"name":"text-670-484","text":"Review queue","textPreview":"Review queue","textChars":12,"textLines":1,"bbox":[670,484,260,30]}
+{"kind":"textbox","id":"sh/ups7yl4b","slide":8,"name":"text-930-482","text":"Low-confidence pseudo-labels held for human review","textPreview":"Low-confidence pseudo-labels held for human review","textChars":50,"textLines":1,"bbox":[930,482,270,54]}
+{"kind":"shape","id":"sh/vq18rqlg","slide":8,"name":"box-42-582","bbox":[42,582,1196,52]}
+{"kind":"textbox","id":"sh/wrap0vm1","slide":8,"name":"text-66-595","text":"Gap: outputs are gitignored; publish a versioned result bundle before team review.","textPreview":"Gap: outputs are gitignored; publish a versioned result bundle before team review.","textChars":82,"textLines":1,"bbox":[66,595,1148,30]}
+{"kind":"notes","id":"nt/40b31s","slide":8,"text":"Use this slide to answer 'can we audit the result?' The answer is yes locally: there are per-example scores, aggregate tables, checkpoints, attack logs, strategy snapshots, and review queues. The packaging gap is that outputs are currently gitignored.\n\n[Sources]\n- README.md\n- outputs/layer_diagnostic/guard_000/\n- outputs/layer_diagnostic/guard_010/\n- outputs/evolution_multiseed/seed_7/\n- .gitignore"}
+{"kind":"slide","id":"sl/orhph0","slide":9,"title":"EVIDENCE QUALITY","textShapes":16}
+{"kind":"textbox","id":"sh/98vyx4j6","slide":9,"name":"text-42-34","text":"EVIDENCE QUALITY","textPreview":"EVIDENCE QUALITY","textChars":16,"textLines":1,"bbox":[42,34,350,24]}
+{"kind":"textbox","id":"sh/m54f2p0v","slide":9,"name":"text-42-72","text":"The prototype is well-tested; the empirical claim is still narrow","textPreview":"The prototype is well-tested; the empirical claim is still narrow","textChars":65,"textLines":1,"bbox":[42,72,1196,72]}
+{"kind":"shape","id":"sh/n6dgvu1g","slide":9,"bbox":[42,158,1196,0.01]}
+{"kind":"textbox","id":"sh/wb6h8jix","slide":9,"name":"text-42-668","text":"feature/jacobian-drift-detector","textPreview":"feature/jacobian-drift-detector","textChars":31,"textLines":1,"bbox":[42,668,420,22]}
+{"kind":"textbox","id":"sh/xcfy14ji","slide":9,"name":"text-1180-668","text":"09","textPreview":"09","textChars":2,"textLines":1,"bbox":[1180,668,58,22]}
+{"kind":"shape","id":"sh/a9oz690r","slide":9,"name":"box-42-188","bbox":[42,188,370,170]}
+{"kind":"textbox","id":"sh/baxgze1c","slide":9,"name":"text-70-214","text":"70 / 70","textPreview":"70 / 70","textChars":7,"textLines":1,"bbox":[70,214,312,62]}
+{"kind":"textbox","id":"sh/kz6hcjit","slide":9,"name":"text-70-286","text":"tests passing","textPreview":"tests passing","textChars":13,"textLines":1,"bbox":[70,286,312,44]}
+{"kind":"shape","id":"sh/l0zy5oze","slide":9,"name":"box-442-188","bbox":[442,188,370,170]}
+{"kind":"textbox","id":"sh/1svq1k7m","slide":9,"name":"text-470-214","text":"3 × 10","textPreview":"3 × 10","textChars":6,"textLines":1,"bbox":[470,214,312,62]}
+{"kind":"textbox","id":"sh/0rm98f61","slide":9,"name":"text-470-286","text":"seeds × rounds","textPreview":"seeds × rounds","textChars":14,"textLines":1,"bbox":[470,286,312,44]}
+{"kind":"shape","id":"sh/fqd8zupg","slide":9,"name":"box-842-188","bbox":[842,188,370,170]}
+{"kind":"textbox","id":"sh/ep4r6pov","slide":9,"name":"text-870-214","text":"154","textPreview":"154","textChars":3,"textLines":1,"bbox":[870,214,312,62]}
+{"kind":"textbox","id":"sh/pgfa547i","slide":9,"name":"text-870-286","text":"held-out transformations per seed","textPreview":"held-out transformations per seed","textChars":33,"textLines":1,"bbox":[870,286,312,44]}
+{"kind":"textbox","id":"sh/of69cz6x","slide":9,"name":"text-42-406","text":"What the result does support","textPreview":"What the result does support","textChars":28,"textLines":1,"bbox":[42,406,520,38]}
+{"kind":"shape","id":"sh/ned83upc","slide":9,"name":"box-42-466","bbox":[42,466,10,10]}
+{"kind":"textbox","id":"sh/2d4rapor","slide":9,"name":"text-66-456","text":"Repeatability across three random seeds on one fixed HarmBench/AdvBench split.","textPreview":"Repeatability across three random seeds on one fixed HarmBench/AdvBench split.","textChars":78,"textLines":1,"bbox":[66,456,520,58]}
+{"kind":"shape","id":"sh/5kbqt07e","slide":9,"name":"box-42-534","bbox":[42,534,10,10]}
+{"kind":"textbox","id":"sh/4j290v6t","slide":9,"name":"text-66-524","text":"A working end-to-end pipeline: hooks → probe → evolution → evaluation → plots.","textPreview":"A working end-to-end pipeline: hooks → probe → evolution → evaluation → plots.","textChars":78,"textLines":1,"bbox":[66,524,520,58]}
+{"kind":"textbox","id":"sh/w369gfep","slide":9,"name":"text-650-406","text":"What it does not yet support","textPreview":"What it does not yet support","textChars":28,"textLines":1,"bbox":[650,406,540,38]}
+{"kind":"shape","id":"sh/h4fqpkfa","slide":9,"name":"box-650-466","bbox":[650,466,10,10]}
+{"kind":"textbox","id":"sh/u1ore5wj","slide":9,"name":"text-674-456","text":"Broad robustness: only 7 base held-out prompts and one model family.","textPreview":"Broad robustness: only 7 base held-out prompts and one model family.","textChars":68,"textLines":1,"bbox":[674,456,540,58]}
+{"kind":"shape","id":"sh/v2x8nax4","slide":9,"name":"box-650-534","bbox":[650,534,10,10]}
+{"kind":"textbox","id":"sh/4769kfel","slide":9,"name":"text-674-524","text":"Response safety: ASR is threshold evasion, not a harmful-output judge.","textPreview":"Response safety: ASR is threshold evasion, not a harmful-output judge.","textChars":70,"textLines":1,"bbox":[674,524,540,58]}
+{"kind":"notes","id":"nt/orhph0","slide":9,"text":"Tests were rerun immediately before deck creation: 70 passed in 3.33 seconds. The transformed count is 154 per seed from seven base held-out prompts across multiple evaluation families.\n\n[Sources]\n- uv run pytest -q on 2026-08-17\n- outputs/evolution_multiseed/report.md\n- outputs/evolution_multiseed/seed_7/run_metadata.json\n- README.md"}
+{"kind":"slide","id":"sl/vvtedl","slide":10,"title":"WHAT STILL NEEDS TO BE DONE","textShapes":20}
+{"kind":"textbox","id":"sh/bylkr6lo","slide":10,"name":"text-42-34","text":"WHAT STILL NEEDS TO BE DONE","textPreview":"WHAT STILL NEEDS TO BE DONE","textChars":27,"textLines":1,"bbox":[42,34,350,24]}
+{"kind":"textbox","id":"sh/czu1kb29","slide":10,"name":"text-42-72","text":"Next milestone: a harder, independent evaluation","textPreview":"Next milestone: a harder, independent evaluation","textChars":48,"textLines":1,"bbox":[42,72,1196,72]}
+{"kind":"shape","id":"sh/x0n2tg3u","slide":10,"bbox":[42,158,1196,0.01]}
+{"kind":"textbox","id":"sh/y1wjmlkf","slide":10,"name":"text-42-668","text":"feature/jacobian-drift-detector","textPreview":"feature/jacobian-drift-detector","textChars":31,"textLines":1,"bbox":[42,668,420,22]}
+{"kind":"textbox","id":"sh/z25kvql0","slide":10,"name":"text-1180-668","text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[1180,668,58,22]}
+{"kind":"textbox","id":"sh/k3e1ov2l","slide":10,"name":"text-42-198","text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[42,198,54,30]}
+{"kind":"textbox","id":"sh/l4n2x03q","slide":10,"name":"text-42-240","text":"Scientific rigor","textPreview":"Scientific rigor","textChars":16,"textLines":1,"bbox":[42,240,350,44]}
+{"kind":"shape","id":"sh/mpwjq5kb","slide":10,"name":"box-42-320","bbox":[42,320,10,10]}
+{"kind":"textbox","id":"sh/7q5kzqlw","slide":10,"name":"text-66-310","text":"Larger, independently curated held-out suites","textPreview":"Larger, independently curated held-out suites","textChars":45,"textLines":1,"bbox":[66,310,350,60]}
+{"kind":"shape","id":"sh/3uxovi58","slide":10,"name":"box-42-394","bbox":[42,394,10,10]}
+{"kind":"textbox","id":"sh/ito72d43","slide":10,"name":"text-66-384","text":"Multiple Qwen sizes and non-Qwen decoders","textPreview":"Multiple Qwen sizes and non-Qwen decoders","textChars":41,"textLines":1,"bbox":[66,384,350,60]}
+{"kind":"shape","id":"sh/5wf6x83e","slide":10,"name":"box-42-468","bbox":[42,468,10,10]}
+{"kind":"textbox","id":"sh/4v6p43mt","slide":10,"name":"text-66-458","text":"Confidence intervals beyond three seeds","textPreview":"Confidence intervals beyond three seeds","textChars":39,"textLines":1,"bbox":[66,458,350,60]}
+{"kind":"textbox","id":"sh/v6dory5c","slide":10,"name":"text-442-198","text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[442,198,54,30]}
+{"kind":"textbox","id":"sh/u547yt4r","slide":10,"name":"text-442-240","text":"Safety validity","textPreview":"Safety validity","textChars":15,"textLines":1,"bbox":[442,240,350,44]}
+{"kind":"shape","id":"sh/hsf6t8ni","slide":10,"name":"box-442-320","bbox":[442,320,10,10]}
+{"kind":"textbox","id":"sh/g7mp03mx","slide":10,"name":"text-466-310","text":"Response-level harmfulness evaluation","textPreview":"Response-level harmfulness evaluation","textChars":37,"textLines":1,"bbox":[466,310,350,60]}
+{"kind":"shape","id":"sh/f2ho32lg","slide":10,"name":"box-442-394","bbox":[442,394,10,10]}
+{"kind":"textbox","id":"sh/e187ax4b","slide":10,"name":"text-466-384","text":"Threshold calibration and false-positive analysis","textPreview":"Threshold calibration and false-positive analysis","textChars":49,"textLines":1,"bbox":[466,384,350,60]}
+{"kind":"shape","id":"sh/ahsr21oj","slide":10,"name":"box-442-468","bbox":[442,468,10,10]}
+{"kind":"textbox","id":"sh/bilsvm5o","slide":10,"name":"text-466-458","text":"Adaptive attacks outside the current strategy grammar","textPreview":"Adaptive attacks outside the current strategy grammar","textChars":53,"textLines":1,"bbox":[466,458,350,60]}
+{"kind":"textbox","id":"sh/cju94r69","slide":10,"name":"text-842-198","text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[842,198,54,30]}
+{"kind":"textbox","id":"sh/xk3axwnu","slide":10,"name":"text-842-240","text":"Production path","textPreview":"Production path","textChars":15,"textLines":1,"bbox":[842,240,350,44]}
+{"kind":"shape","id":"sh/ylcr61of","slide":10,"name":"box-842-320","bbox":[842,320,10,10]}
+{"kind":"textbox","id":"sh/zmlsz650","slide":10,"name":"text-866-310","text":"Latency and memory profiling during generation","textPreview":"Latency and memory profiling during generation","textChars":46,"textLines":1,"bbox":[866,310,350,60]}
+{"kind":"shape","id":"sh/knu98b6l","slide":10,"name":"box-842-394","bbox":[842,394,10,10]}
+{"kind":"textbox","id":"sh/lo3a1gn6","slide":10,"name":"text-866-384","text":"Secure dataset/review-queue governance","textPreview":"Secure dataset/review-queue governance","textChars":38,"textLines":1,"bbox":[866,384,350,60]}
+{"kind":"shape","id":"sh/ep8ruhob","slide":10,"name":"box-842-468","bbox":[842,468,10,10]}
+{"kind":"textbox","id":"sh/fqh8n2pg","slide":10,"name":"text-866-458","text":"Commit reproducible result summaries; remove model-download artifacts","textPreview":"Commit reproducible result summaries; remove model-download artifacts","textChars":69,"textLines":1,"bbox":[866,458,350,60]}
+{"kind":"shape","id":"sh/hk7utk7e","slide":10,"name":"box-42-566","bbox":[42,566,1196,66]}
+{"kind":"textbox","id":"sh/wjyd0fqt","slide":10,"name":"text-66-582","text":"Recommended next step: freeze a validation protocol before adding more strategies.","textPreview":"Recommended next step: freeze a validation protocol before adding more strategies.","textChars":82,"textLines":1,"bbox":[66,582,1148,36]}
+{"kind":"notes","id":"nt/vvtedl","slide":10,"text":"Close on the decision-quality next step: define an independent validation protocol first, then measure whether added sophistication improves external validity rather than only optimizing the current game.\n\n[Sources]\n- README.md\n- config.yaml\n- outputs/evolution_multiseed/report.md\n- git diff HEAD^..HEAD --stat"}

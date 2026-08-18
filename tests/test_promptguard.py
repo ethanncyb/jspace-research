@@ -9,9 +9,15 @@ import pytest
 import torch
 from torch import nn
 
-from promptguard.config import GuardConfig, InterventionConfig, ProbeConfig
+from promptguard.config import (
+    GuardConfig,
+    InterventionConfig,
+    ProbeConfig,
+    ResearchConfig,
+)
 from promptguard.drift_probe import DriftProbe, pool_activations
 from promptguard.evolution_loop import (
+    EvolutionRunner,
     active_family_evaluate,
     cross_stage_evaluate,
     evaluation_attack_strategies,
@@ -22,6 +28,7 @@ from promptguard.evolving_attacker import (
     DetectionOutcome,
     EvolvingAttacker,
     MutationProposal,
+    continuous_attack_reward,
     starter_strategies,
 )
 from promptguard.evolving_guard import EvolvingGuard, SelfLabeledExample
@@ -191,6 +198,90 @@ def test_attacker_admits_only_validated_mutation_and_normalizes_transition():
     assert result.admitted_strategies == ["admitted_mutation"]
     assert len(attacker.pool) == len(starter_strategies()) + 1
     assert np.allclose(attacker.transitions.sum(axis=1), 1.0)
+
+
+def test_attacker_admits_meaningful_score_reduction_without_threshold_crossing():
+    class PartialProgressReflector:
+        def propose(self, failed, strategy):
+            return MutationProposal(
+                name="partial_progress",
+                family="mutated",
+                template="IMPROVE {payload}",
+            )
+
+    attacker = EvolvingAttacker(
+        reflector=PartialProgressReflector(),
+        sandbox_tau=0.25,
+        sandbox_min_score_reduction=0.10,
+        attempts_per_prompt=1,
+        seed=2,
+    )
+
+    def evaluator(prompt):
+        score = 0.65 if prompt.startswith("IMPROVE ") else 0.9
+        return DetectionOutcome(score, flagged=True)
+
+    result = attacker.run_round(
+        round_index=1,
+        payloads=["unsafe seed"],
+        evaluator=evaluator,
+        validation_payloads=["one", "two"],
+        heldout_evaluator=evaluator,
+    )
+
+    assert result.admitted_strategies == ["partial_progress"]
+    assert all(record.flagged for record in result.records)
+
+
+def test_continuous_reward_credits_score_improvement_and_gates_semantics():
+    improved = continuous_attack_reward(0.9, 0.6)
+    regressed = continuous_attack_reward(0.6, 0.9)
+    evaded = continuous_attack_reward(0.6, 0.4)
+
+    assert improved > regressed
+    assert evaded > continuous_attack_reward(0.6, 0.51)
+    assert continuous_attack_reward(0.9, 0.1, semantic_valid=False) == -1.0
+
+
+def test_frozen_guard_run_skips_every_guard_update(tmp_path):
+    config = ResearchConfig()
+    config.evolution.rounds = 1
+    config.evolution.output_dir = str(tmp_path / "evolution")
+    config.evolution.checkpoint_dir = str(tmp_path / "new-checkpoints")
+    config.guard.review_queue_path = str(tmp_path / "review.csv")
+    config.attacker.attempts_per_prompt = 1
+    config.attacker.max_reflections_per_round = 1
+    config.semantic.enabled = False
+    config.data.benign_prompts = ["benign"]
+    config.data.malicious_prompts = ["unsafe"]
+    config.data.heldout_malicious_prompts = ["final unsafe"]
+
+    probe = DriftProbe([0], 2)
+    with torch.no_grad():
+        probe.classifiers["0"].weight.zero_()
+        probe.classifiers["0"].bias.fill_(-10.0)
+    frozen_checkpoint = tmp_path / "guard_010.pt"
+    probe.save(frozen_checkpoint, round_index=10)
+    checkpoint_before = frozen_checkpoint.read_bytes()
+
+    model = SimpleNamespace(full_attention_layers=[0], hidden_dim=2)
+    runner = EvolutionRunner(
+        config,
+        model,
+        probe=probe,
+        frozen_guard_checkpoint=frozen_checkpoint,
+    )
+    runner.extractor = lambda _baseline, _text: {0: torch.zeros(1, 2)}
+
+    def unexpected_guard_update(**_kwargs):
+        raise AssertionError("frozen evaluation must not update the guard")
+
+    runner.guard.run_round = unexpected_guard_update
+    summaries = runner.run()
+
+    assert summaries[0]["guard_update_enabled"] is False
+    assert frozen_checkpoint.read_bytes() == checkpoint_before
+    assert not (tmp_path / "new-checkpoints").exists()
 
 
 def test_guard_confidence_gate_and_continual_checkpoint(tmp_path):

@@ -25,9 +25,26 @@ class BenchmarkExample:
 
 @dataclass(frozen=True)
 class BenchmarkSplit:
-    train: tuple[BenchmarkExample, ...]
-    heldout: tuple[BenchmarkExample, ...]
-    heldout_categories: tuple[str, ...]
+    training: tuple[BenchmarkExample, ...]
+    attacker_development: tuple[BenchmarkExample, ...]
+    final_test: tuple[BenchmarkExample, ...] = ()
+    attacker_development_categories: tuple[str, ...] = ()
+
+    @property
+    def train(self) -> tuple[BenchmarkExample, ...]:
+        """Backward-compatible name for the guard-training partition."""
+
+        return self.training
+
+    @property
+    def heldout(self) -> tuple[BenchmarkExample, ...]:
+        """Backward-compatible name for attacker development, not final test."""
+
+        return self.attacker_development
+
+    @property
+    def heldout_categories(self) -> tuple[str, ...]:
+        return self.attacker_development_categories
 
 
 def _materialize(source: str | Path, cache_dir: str | Path) -> Path:
@@ -160,6 +177,25 @@ def load_benchmarks(config: BenchmarkConfig) -> list[BenchmarkExample]:
     ]
 
 
+def load_benchmark_universe(config: BenchmarkConfig) -> list[BenchmarkExample]:
+    """Load all source examples so final-test IDs can be genuinely fresh."""
+
+    return [
+        *load_harmbench(
+            config.harmbench_url,
+            cache_dir=config.cache_dir,
+            subset_size="full",
+            seed=config.seed,
+        ),
+        *load_advbench(
+            config.advbench_url,
+            cache_dir=config.cache_dir,
+            subset_size="full",
+            seed=config.seed + 1,
+        ),
+    ]
+
+
 def heldout_split(
     examples: Iterable[BenchmarkExample],
     *,
@@ -197,4 +233,70 @@ def heldout_split(
         heldout_ids = {example.id for example in shuffled[:count]}
         heldout = [example for example in values if example.id in heldout_ids]
         train = [example for example in values if example.id not in heldout_ids]
-    return BenchmarkSplit(tuple(train), tuple(heldout), tuple(sorted(requested)))
+    return BenchmarkSplit(
+        tuple(train),
+        tuple(heldout),
+        attacker_development_categories=tuple(sorted(requested)),
+    )
+
+
+def three_way_split(
+    development_examples: Iterable[BenchmarkExample],
+    final_candidates: Iterable[BenchmarkExample],
+    *,
+    attacker_development_categories: Sequence[str] = (),
+    attacker_development_fraction: float = 0.2,
+    development_seed: int = 7,
+    final_test_size: int = 10,
+    final_test_seed: int = 1007,
+) -> BenchmarkSplit:
+    """Create guard-training, attacker-development, and fresh final partitions.
+
+    ``development_examples`` reconstructs the exact dataset used by the
+    existing Guard-10 run. Final-test examples are selected only from IDs that
+    were absent from that run, preventing both guard-training and attacker-
+    development leakage into the final comparison.
+    """
+
+    development = list(development_examples)
+    two_way = heldout_split(
+        development,
+        heldout_categories=attacker_development_categories,
+        heldout_fraction=attacker_development_fraction,
+        seed=development_seed,
+    )
+    if final_test_size <= 0:
+        raise ValueError("final_test_size must be positive")
+    development_ids = {example.id for example in development}
+    fresh = [
+        example for example in final_candidates if example.id not in development_ids
+    ]
+    if len(fresh) < final_test_size:
+        raise ValueError(
+            "not enough fresh benchmark examples for the requested final test"
+        )
+    final_test = _choose_subset(fresh, final_test_size, seed=final_test_seed)
+    return BenchmarkSplit(
+        training=two_way.training,
+        attacker_development=two_way.attacker_development,
+        final_test=tuple(final_test),
+        attacker_development_categories=(
+            two_way.attacker_development_categories
+        ),
+    )
+
+
+def load_benchmark_splits(config: BenchmarkConfig) -> BenchmarkSplit:
+    """Reconstruct Guard-10 train/dev data and reserve fresh final examples."""
+
+    return three_way_split(
+        load_benchmarks(config),
+        load_benchmark_universe(config),
+        attacker_development_categories=(
+            config.attacker_development_categories
+        ),
+        attacker_development_fraction=config.attacker_development_fraction,
+        development_seed=config.seed,
+        final_test_size=config.final_test_size,
+        final_test_seed=config.final_test_seed,
+    )

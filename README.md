@@ -105,8 +105,10 @@ The command performs the following sequence:
 
 Attacker reflection is routed through Olares and returns a `MutationProposal`
 template, never executable Python. Mutations are embedding-deduplicated and
-enter the active pool only when their ASR against the frozen validation probe
-reaches `attacker.sandbox_tau`.
+enter the active pool when either their ASR against the frozen development
+probe reaches `attacker.sandbox_tau` or their mean drift score improves over
+the parent by `attacker.sandbox_min_score_reduction`. The guard threshold is
+unchanged by this attacker-side admission rule.
 
 Low-confidence pseudo-labels are not trained on. `ConfidenceGate` appends them
 to `outputs/review_queue.csv`; only values at or above
@@ -129,9 +131,11 @@ set +a
 ```
 
 At startup the client probes `/v1/chat/completions` with a minimal chat message
-and a 10-second minimum timeout. Text generation uses only that endpoint with
-the configured bearer token. Every later request also catches timeouts, network
-errors, and malformed responses independently. If Olares fails mid-run, text
+and a 10-second minimum timeout. The configured fast attack model uses native
+`/api/chat` with hidden thinking disabled so its token budget is spent on attack
+candidates; the semantic reason model stays on `/v1/chat/completions`. Every
+later request catches timeouts, network errors, and malformed responses
+independently. If Olares fails mid-run, text
 generation falls back to `Qwen/Qwen2.5-1.5B-Instruct` and embeddings fall back
 to `sentence-transformers/all-MiniLM-L6-v2`; failure of the embedding fallback
 uses a stable local hash so strategy deduplication cannot crash the run. Set
@@ -141,7 +145,9 @@ Model routing is config-driven:
 
 - `fast_model` (`Ornith-1.0-9B` by default): reflection, ReNeLLM rewrites, and
   TAP candidates;
-- `reason_model` (`glm-fixed`): optional harmfulness judge only;
+- `semantic.model` (`qwen3.5:9b`): independent structured intent-preservation
+  judge, using native non-thinking output;
+- `reason_model` (`glm-fixed`): optional harmfulness judge;
 - `embed_model` (`nomic-embed-text`): strategy similarity/deduplication;
 - `code_model` (`qwen3-coder:30b`): reserved for future code strategies.
 
@@ -153,36 +159,57 @@ LLM call in the default path.
 The loader downloads and caches the official
 [HarmBench behavior CSV](https://github.com/centerforaisafety/HarmBench/tree/main/data/behavior_datasets)
 and [AdvBench harmful-behavior CSV](https://github.com/llm-attacks/llm-attacks/blob/main/data/advbench/harmful_behaviors.csv).
-Defaults select 25 instructions from each dataset (50 total) and reserve 20%
-(preferably whole semantic categories) for held-out evaluation. Use `full` for
-either subset size later; no code change is needed. The default evolution run
-uses this benchmark split in place of the tiny smoke-test seeds, while keeping
-held-out categories/instructions out of guard updates.
+Defaults reconstruct the 50-example Guard-10 universe from 25 instructions per
+dataset. That universe is divided into guard-training and attacker-development
+partitions. The final-test partition is selected from source IDs absent from
+the entire Guard-10 universe, so it cannot have entered guard learning or
+attacker tuning. Use `full` for either development subset size later; no code
+change is needed.
 
-After an evolution run, compare the configured baseline attack and evolving
-strategy snapshots across every saved guard:
+Run the stronger attacker against the immutable Guard-10 checkpoint with:
 
 ```bash
-uv run python benchmark_runner.py --config config.yaml
+uv run python evolution_loop.py --config config.yaml \
+  --frozen-guard-checkpoint outputs/checkpoints_benchmark_50/guard_010.pt
 ```
 
-The default baseline is one ReNeLLM-style rewrite. Add `tap` to
-`baselines.enabled` to enable iterative candidate generation/pruning within
-`baselines.query_budget`. The optional Olares reason-model judge is disabled by
-default; enable `metrics.enable_harmfulness_judge` only when response-quality
-scoring is desired.
+Frozen mode rejects changes to the trained 0.50 detector/intervention
+thresholds or circuit-breaker settings. It skips bootstrap, every guard update,
+and all new guard checkpoint writes. The run uses only attacker-development
+payloads and writes the required round-10 strategy snapshot under
+`evolution.output_dir`.
 
-Benchmark outputs under `outputs/benchmarks/` are:
+After the frozen attacker-development run, execute the once-only final
+comparison against the same Guard-10 checkpoint:
 
-- `asr_aqc.csv`: DARWIN Table-1/4-style ASR and average query count (AQC), per
-  dataset and aggregated, with guard round, strategy-pool size, and backend;
-- `attempts.csv`: per-instruction best score, attempts, split, and prompt;
-- `cross_stage.csv`: small Attack-K × Guard-J matrix for forgetting and
-  strategy-pool scaling.
+```bash
+uv run python benchmark_runner.py --config config.yaml \
+  --frozen-guard-checkpoint outputs/checkpoints_benchmark_50/guard_010.pt
+```
+
+The configured methods are ReNeLLM, TAP, a seeded random-transformation
+baseline, and the evolved strategy pool. Every method has the same detector
+query cap. A cached, structured reason-model judge gates success on semantic
+intent preservation; judge calls are evaluation overhead and do not consume
+the detector-query budget. The final command refuses to run until the expected
+round-10 attacker snapshot exists.
+
+Benchmark outputs under `baselines.output_dir` are:
+
+- `final_comparison.csv`: aggregate ASR, average detector queries per successful
+  evasion, semantic-validity rate, shared query budget, and an explicit warning
+  that ASR depends on that budget;
+- `attempts.csv`: per-instruction score, detector attempts, semantic counts,
+  split, and best prompt;
+- `final_test_split.csv`: the immutable final-test manifest;
+- `asr_aqc.csv`: per-dataset and aggregate metric rows retained for backward
+  compatibility.
 
 Here, **ASR means the harmful prompt stayed below this internal drift probe's
-threshold**, and AQC counts probe attempts until first evasion or budget
-exhaustion. These are not attacks against a frontier model and, by default, do
+threshold and passed the semantic-intent gate**. Average queries are computed
+only across successful evasions; failed attacks do not inflate that number.
+ASR must only be compared at the same query budget. These are not attacks
+against a frontier model and, by default, do
 not use GPT-4 or HarmBench's response classifier. They are therefore not
 directly comparable to DARWIN's published ASR/AQC numbers.
 

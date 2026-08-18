@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import threading
 from collections.abc import Sequence
 from typing import Any
@@ -98,6 +99,53 @@ def _openai_generate(
     return str(content)
 
 
+def _native_generate(
+    prompt: str,
+    *,
+    model: str,
+    system: str | None,
+    max_tokens: int,
+    timeout: float,
+    think: bool,
+    response_format: str | dict[str, Any] | None,
+) -> str:
+    """Use native Olares/Ollama chat so attack models can disable thinking."""
+
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+    body: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "think": think,
+        "options": {
+            "num_predict": max_tokens,
+            "temperature": 0.2,
+        },
+    }
+    if response_format is not None:
+        body["format"] = response_format
+    response = requests.post(
+        f"{OLARES_BASE_URL}/api/chat",
+        headers=_headers(),
+        json=body,
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    data = response.json()
+    content = data.get("message", {}).get("content") or ""
+    if not content:
+        LOGGER.warning(
+            "Olares native chat returned empty content: done_reason=%r message=%r",
+            data.get("done_reason"),
+            data.get("message"),
+        )
+        raise ValueError("Olares native chat returned an empty completion")
+    return str(content)
+
+
 def check_olares_reachable() -> bool:
     """Probe the confirmed-working OpenAI-compatible chat endpoint."""
 
@@ -165,20 +213,53 @@ def generate(
     model: str = OLARES_FAST_MODEL,
     system: str | None = None,
     max_tokens: int = 512,
+    *,
+    native: bool | None = None,
+    think: bool | None = None,
+    response_format: str | dict[str, Any] | None = None,
 ) -> str:
     """Generate with Olares, falling back locally on every failed call."""
 
+    last_remote_error: Exception | None = None
     if USE_OLARES and not _CONFIG.force_local_fallback:
-        try:
-            return _openai_generate(
-                prompt,
-                model=model,
-                system=system,
-                max_tokens=max_tokens,
-                timeout=_CONFIG.timeout_seconds,
-            )
-        except Exception as exc:
-            LOGGER.warning("Olares generation call failed: %s", exc)
+        for attempt in range(_CONFIG.remote_generation_retries + 1):
+            try:
+                use_native = (
+                    model == _CONFIG.fast_model and _CONFIG.use_native_fast_model
+                    if native is None
+                    else native
+                )
+                if use_native:
+                    return _native_generate(
+                        prompt,
+                        model=model,
+                        system=system,
+                        max_tokens=max_tokens,
+                        timeout=_CONFIG.timeout_seconds,
+                        think=(
+                            _CONFIG.fast_model_think if think is None else think
+                        ),
+                        response_format=response_format,
+                    )
+                return _openai_generate(
+                    prompt,
+                    model=model,
+                    system=system,
+                    max_tokens=max_tokens,
+                    timeout=_CONFIG.timeout_seconds,
+                )
+            except Exception as exc:
+                last_remote_error = exc
+                LOGGER.warning(
+                    "Olares generation call failed attempt=%d/%d: %s",
+                    attempt + 1,
+                    _CONFIG.remote_generation_retries + 1,
+                    exc,
+                )
+        if not _CONFIG.allow_local_generation_fallback:
+            raise RuntimeError(
+                "Olares generation failed and local fallback is disabled"
+            ) from last_remote_error
     try:
         return _local_generate(prompt, system=system, max_tokens=max_tokens)
     except Exception as exc:
@@ -224,11 +305,17 @@ def _get_local_embedder():
 
 
 def _hash_embedding(text: str, dimensions: int = 384) -> list[float]:
-    """Last-resort deterministic vector so dedup never aborts a run."""
+    """Deterministic lexical feature hash for local strategy deduplication."""
 
-    digest = hashlib.sha256(text.encode()).digest()
-    raw = (digest * ((dimensions // len(digest)) + 1))[:dimensions]
-    vector = np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 127.5
+    normalized = " ".join(re.findall(r"[a-z0-9{}]+", text.lower()))
+    features = normalized.split()
+    compact = normalized.replace(" ", "_")
+    features.extend(compact[index : index + 3] for index in range(len(compact) - 2))
+    vector = np.zeros(dimensions, dtype=np.float32)
+    for feature in features:
+        digest = hashlib.sha256(feature.encode()).digest()
+        index = int.from_bytes(digest[:4], "big") % dimensions
+        vector[index] += 1.0 if digest[4] & 1 else -1.0
     vector /= np.linalg.norm(vector).clip(min=1e-12)
     return vector.tolist()
 
@@ -236,6 +323,8 @@ def _hash_embedding(text: str, dimensions: int = 384) -> list[float]:
 def embed(text: str, model: str = OLARES_EMBED_MODEL) -> list[float]:
     """Embed text through Olares, sentence-transformers, or a stable hash."""
 
+    if not _CONFIG.use_remote_embeddings:
+        return _hash_embedding(text)
     if USE_OLARES and not _CONFIG.force_local_fallback:
         for caller in (_native_embed, _openai_embed):
             try:
