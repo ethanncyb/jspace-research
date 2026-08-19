@@ -58,8 +58,9 @@ class JSPaceIntervention:
         layers: resolved layer indices to hook (see capture.resolve_layers).
         method: one of :data:`METHODS`.
         top_k: number of largest-|z| coordinates replaced per position.
-        token_strategy: ``"all_generated_tokens"`` — every position of every
-            forward during generation (prefill + decode).
+        token_strategy: ``"all_positions"`` — every position of every forward
+            during generation (prefill + decode). ``"all_generated_tokens"``
+            is accepted as a legacy alias.
         log_path: optional JSONL file for sampled per-forward detail records.
     """
 
@@ -71,13 +72,16 @@ class JSPaceIntervention:
         method: str = "mean_replace",
         top_k: int = 50,
         strength: float = 1.0,
-        token_strategy: str = "all_generated_tokens",
+        token_strategy: str = "all_positions",
         log_path: str | Path | None = None,
     ) -> None:
         if method not in METHODS:
             raise ValueError(f"method must be one of {METHODS}, got {method!r}")
-        if token_strategy != "all_generated_tokens":
-            raise ValueError("only 'all_generated_tokens' is implemented")
+        # "all_generated_tokens" is the legacy name for the same semantics
+        if token_strategy == "all_generated_tokens":
+            token_strategy = "all_positions"
+        if token_strategy != "all_positions":
+            raise ValueError("only 'all_positions' is implemented")
         if not 0.0 <= float(strength) <= 1.0:
             raise ValueError("strength must be in [0, 1]")
         self._jlens = jlens

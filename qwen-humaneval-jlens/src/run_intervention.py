@@ -31,12 +31,10 @@ from src.run_baseline import _StopOnStrings, extract_code
 BASELINE_SCORE = 0.6037  # measured Phase-1 baseline pass@1 (99/164, both machines)
 
 
-def run(cfg: dict) -> None:
+def run(cfg: dict, run_name: str | None = None) -> None:
     gen_cfg = deterministic_gen_config(cfg)
     iv_cfg = cfg["intervention"]
     out_base = Path(cfg["outputs"]["base_dir"])
-    out_dir = out_base / "intervention"
-    out_dir.mkdir(parents=True, exist_ok=True)
 
     tasks = load_humaneval(cfg)
     hf_model, tokenizer = load_model(cfg)
@@ -48,6 +46,11 @@ def run(cfg: dict) -> None:
         lens_model.n_layers,
         jlens_iface.get_supported_layers(),
     )
+    if run_name is None:
+        run_name = f"intervention_layers_{layers[0]}_{layers[-1]}"
+    out_dir = out_base / run_name
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     intervention = JSPaceIntervention(
         jlens_iface,
         lens_model,
@@ -55,10 +58,10 @@ def run(cfg: dict) -> None:
         method=iv_cfg.get("method", "mean_replace"),
         top_k=iv_cfg.get("top_k", 50),
         strength=iv_cfg.get("strength", 1.0),
-        token_strategy=iv_cfg.get("token_strategy", "all_generated_tokens"),
+        token_strategy=iv_cfg.get("token_strategy", "all_positions"),
         log_path=out_dir / "hook_log.jsonl",
     )
-    print(f"[run_intervention] method={intervention.method} "
+    print(f"[run_intervention] run={run_name} method={intervention.method} "
           f"top_k={intervention.top_k} strength={intervention.strength} "
           f"layers={layers}")
 
@@ -117,12 +120,14 @@ def run(cfg: dict) -> None:
                 "model": cfg["model"]["name"],
                 "benchmark": "HumanEval",
                 "condition": "jspace_intervention",
+                "run_name": run_name,
                 "baseline_score": BASELINE_SCORE,
                 "intervention_method": intervention.method,
                 "layers": layers,
                 "top_k": intervention.top_k,
                 "strength": intervention.strength,
                 "token_strategy": intervention.token_strategy,
+                "mean_source": iv_cfg.get("mean_source", "same_task_running_mean"),
                 "decoding_settings": gen_cfg,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
@@ -141,6 +146,11 @@ def main() -> None:
                         help="override intervention.method (e.g. none for the control run)")
     parser.add_argument("--strength", type=float, default=None,
                         help="override intervention.strength (blend factor α)")
+    parser.add_argument("--run-name", default=None,
+                        help="output subdir under outputs/ "
+                             "(default: intervention_layers_<first>_<last>)")
+    parser.add_argument("--layers", default=None,
+                        help="override intervention.layers: '12-20' or '12,13,14'")
     args = parser.parse_args()
 
     with open(args.config) as fh:
@@ -152,8 +162,15 @@ def main() -> None:
         cfg["intervention"]["method"] = args.method
     if args.strength is not None:
         cfg["intervention"]["strength"] = args.strength
+    if args.layers is not None:
+        spec = args.layers
+        if "-" in spec:
+            lo, hi = spec.split("-", 1)
+            cfg["intervention"]["layers"] = list(range(int(lo), int(hi) + 1))
+        else:
+            cfg["intervention"]["layers"] = [int(x) for x in spec.split(",")]
 
-    run(cfg)
+    run(cfg, run_name=args.run_name)
 
 
 if __name__ == "__main__":

@@ -118,7 +118,25 @@ calibration-set means are marked in `src/jspace_intervention.py`.
 
 ## Results
 
-### Phase 2: J-Space `mean_replace` intervention (remote 5090m)
+| arm | layers | pass@1 | relative drop | broken / fixed |
+|---|---|---|---|---|
+| baseline (replicated ×2) | — | **0.6037** (99/164) | — | — |
+| mean_replace α=0.05 k=50 | 0–9 (early) | **0.0061** (1/164) | −99.0% | 98 / 0 |
+| mean_replace α=0.05 k=50 | 12–20 (mid core) | **0.3049** (50/164) | −49.5% | 51 / 2 |
+| mean_replace α=0.05 k=50 | 10–26 (full band) | **0.1098** (18/164) | −81.8% | 81 / 0 |
+| mean_replace α=0.05 k=50 | 27–30 (late edge) | **0.6098** (100/164) | +1.0% (noise) | 9 / 10 |
+
+The layer map: early-layer ablation (0–9) is catastrophic but uninformative
+about J-Space specificity — early representations are load-bearing for
+everything, and the damage propagates through the whole network. The mid-to-late
+band (10–26, core 12–20) shows the interpretable effect: fluent code, broken
+logic. The final fitted layers (27–30) show no directional effect (9 broken vs
+10 fixed = balanced random flips) — consistent with J-Space there being the
+readout itself rather than content used by downstream computation.
+
+Per-arm details: `outputs/intervention_layers_<first>_<last>/comparison/`.
+
+### Phase 2 arm details
 
 Intervention: top-50 J-Space coordinates per token moved toward the task-local
 running mean with blend α=0.05, layers 10–26, all token positions. Mean
@@ -145,8 +163,8 @@ coding-specific content is uniquely localized there. Controls like
 `random_ablation` (TODO in `src/jspace_intervention.py`) would sharpen that
 claim.
 
-Full details: `outputs/comparison/report.md`, per-task table in
-`outputs/comparison/comparison.csv`.
+Full details: `outputs/intervention_layers_10_26/comparison/report.md`,
+per-task table in `outputs/intervention_layers_10_26/comparison/comparison.csv`.
 
 ### Phase 1: baseline (both machines)
 

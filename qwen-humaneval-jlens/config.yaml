@@ -37,11 +37,12 @@ jspace:
 
 intervention:
   method: "mean_replace"         # mean_replace | none (control)
+  layers: [12, 13, 14, 15, 16, 17, 18, 19, 20]   # this arm; "late" = 10–26 band
   top_k: 50                      # largest-|z| J-Space coordinates moved per position
   strength: 0.05                 # blend factor α: z' = z + α(mean − z).
                                  # α=1.0 (full replacement) is model-breaking.
-  token_strategy: "all_generated_tokens"
-  layers: "late"                 # same band as Phase-1 capture (10–26)
+  token_strategy: "all_positions"  # every position of every forward (prefill + decode)
+  mean_source: "same_task_running_mean"
 
 outputs:
   base_dir: "outputs"
