@@ -1,0 +1,6 @@
+{
+  "model": "Qwen/Qwen3.5-9B-Base",
+  "n_tasks": 164,
+  "n_passed": 99,
+  "pass_at_1": 0.6036585365853658
+}

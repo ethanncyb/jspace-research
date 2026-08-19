@@ -1,0 +1,9 @@
+# jlens itself comes from the parent repo — install it first:
+#   pip install -e ..
+torch>=2.2
+transformers>=5.5
+accelerate>=1.0
+datasets>=2.18
+numpy
+PyYAML
+huggingface_hub
