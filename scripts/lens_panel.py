@@ -81,7 +81,7 @@ class Config:
     gpu = "A100"
     #: Preferred source for the lens: the VM pulls it from the Hub instead of us
     #: pushing 649MB up a home uplink. Set hf_repo = "" (--no-hf) to force the push.
-    hf_repo = "PxlNexus/gemma4-12b-QAT-Jlens"
+    hf_repo = "PxlNexus/gemma4-JLens"
     hf_file = "gemma4_12b_qat_lens.pt"
     #: sha256 of the fitted lens, checked on the VM after download. Guards against a
     #: truncated transfer and against the repo silently changing under you.

@@ -27,7 +27,7 @@ slice is ~1 s and an image slice ~2 s, because the model stays resident in the k
 
 The only prerequisite is an authenticated `colab` CLI (see below). The lens itself is
 pulled onto the VM from
-[PxlNexus/gemma4-12b-QAT-Jlens](https://huggingface.co/PxlNexus/gemma4-12b-QAT-Jlens),
+[PxlNexus/gemma4-JLens](https://huggingface.co/PxlNexus/gemma4-JLens),
 so a fresh clone needs no local 649 MB binary.
 
 > **Use the chat template.** This checkpoint is channel/thinking-tuned and collapses on
@@ -188,7 +188,7 @@ land again on every boot. Pushing it costs your uplink; pulling it costs Colab's
 
 That is a **42x** difference, and it is not a fluke: the push is bounded by a home
 uplink, the pull by a datacentre one. The panel downloads from
-[PxlNexus/gemma4-12b-QAT-Jlens](https://huggingface.co/PxlNexus/gemma4-12b-QAT-Jlens)
+[PxlNexus/gemma4-JLens](https://huggingface.co/PxlNexus/gemma4-JLens)
 and verifies sha256 against a pinned digest before installing it, so a truncated
 transfer or a changed repo fails loudly instead of loading a corrupt lens.
 `upload_large()` remains as an automatic fallback when the fetch fails.
