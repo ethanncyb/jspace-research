@@ -1,0 +1,89 @@
+# GSM8K × J-Space benchmark
+
+Python benchmark for Qwen on GSM8K with:
+
+- a normal / observation-only baseline
+- an exact no-op hook control
+- a configurable J-Space intervention (`mean_replace`)
+- saved J-Space details (layers, tokens, words, last token)
+- Jupyter notebooks over saved artifacts
+
+This is the GSM8K counterpart of the HumanEval J-Space study. It measures
+**exact-answer accuracy**, not teacher-forced next-token controllability.
+The latter remains available as `benchmark.test_type: gold_next_token`.
+
+## Layout
+
+- `configs/` — default, smoke, host, run-tier, and condition YAML
+- `src/gsm8k_jspace/` — typed config, runner, capture, intervention, evaluation
+- `notebooks/` — parameterized analysis notebooks
+- `scripts/uv-env` — pick `.venv-mps` / `.venv-rocm` / `.venv-cuda` / `.venv-cpu`
+- `plans/` — design documents
+
+## Setup (uv)
+
+From this directory:
+
+```bash
+chmod +x scripts/uv-env scripts/detect-host.py scripts/verify-environment.py
+./scripts/uv-env sync
+./scripts/uv-env diagnose --config configs/smoke.yaml
+```
+
+`scripts/uv-env` detects the host GPU and sets `UV_PROJECT_ENVIRONMENT`:
+
+| host | environment | backend |
+|---|---|---|
+| M1 Max MacBook Pro | `.venv-mps` | MPS |
+| Framework desktop, Radeon 8060S | `.venv-rocm` | ROCm |
+| A100 / H100 | `.venv-cuda` | CUDA |
+| CPU / CI | `.venv-cpu` | CPU |
+
+Override detection with `./scripts/uv-env --profile cpu sync`.
+
+The parent `jlens` package is installed as an editable path dependency.
+
+## Commands
+
+```bash
+# print the fully resolved config (no model load)
+python -m gsm8k_jspace inspect-config --config configs/smoke.yaml
+
+# small run
+python -m gsm8k_jspace run --config configs/smoke.yaml --evaluate
+
+# merge a condition overlay
+python -m gsm8k_jspace run \
+  --config configs/runs/small-smoke.yaml \
+  --host-config configs/hosts/m1-max.yaml \
+  --overlay configs/experiments/mean-replace.yaml
+
+python -m gsm8k_jspace evaluate --run outputs/gsm8k/<run_id>
+python -m gsm8k_jspace compare --baseline <baseline_dir> --candidate <run_dir>
+```
+
+## Run tiers
+
+1. **Small (M1 Max):** 5 examples, `configs/runs/small-smoke.yaml`
+2. **Medium (Radeon 8060S):** 100 examples, `configs/runs/medium-validation.yaml`
+3. **Large (A100/H100):** full GSM8K test, `configs/runs/large-full.yaml`
+
+Pair baseline and intervention only on the **same GPU class**.
+
+## Tests
+
+```bash
+PYTHONPATH=src:.. pytest tests -q
+```
+
+Fast tests use synthetic GSM8K rows and `tests/tiny.py` from the parent repo.
+They do not download Qwen.
+
+## Jupyter
+
+```bash
+./scripts/uv-env jupyter
+```
+
+Open `notebooks/00-run-overview.ipynb` and set `RUN_DIR` to a completed run.
+Notebooks read saved artifacts only; they do not load the 9B model.

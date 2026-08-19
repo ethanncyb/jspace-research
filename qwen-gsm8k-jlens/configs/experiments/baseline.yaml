@@ -1,0 +1,13 @@
+schema_version: 1
+
+experiment:
+  name: "gsm8k-baseline"
+  condition: "baseline"
+  run_tier: "small"
+  tags: ["gsm8k", "baseline"]
+
+intervention:
+  enabled: false
+
+capture:
+  enabled: true

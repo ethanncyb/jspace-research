@@ -1,0 +1,22 @@
+[
+  {
+    "question": "What is 6 times 7?",
+    "answer": "6*7 = <<6*7=42>>42.\n#### 42"
+  },
+  {
+    "question": "Tom has 10 apples and eats 3. How many remain?",
+    "answer": "10-3 = <<10-3=7>>7.\n#### 7"
+  },
+  {
+    "question": "A baker made 12 cakes and sold 5. How many are left?",
+    "answer": "12-5 = <<12-5=7>>7.\n#### 7"
+  },
+  {
+    "question": "Find 3 plus 4.",
+    "answer": "3+4 = <<3+4=7>>7.\n#### 7"
+  },
+  {
+    "question": "What is 100 divided by 4?",
+    "answer": "100/4 = <<100/4=25>>25.\n#### 25"
+  }
+]

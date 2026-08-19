@@ -1,0 +1,18 @@
+# Execution-only overrides for Framework desktop / Radeon 8060S / ROCm.
+
+runtime:
+  host_profile: "radeon-8060s"
+  backend: "rocm"
+  device: "auto"
+  linear_algebra_device: "cpu"
+  compatibility_mode: "strict"
+  memory_preflight: true
+  minimum_free_memory_gb: 4.0
+  pinv:
+    compute_device: "cpu"
+    cache_device: "cpu"
+    preload: false
+
+model:
+  dtype: "bfloat16"
+  device_map: "auto"

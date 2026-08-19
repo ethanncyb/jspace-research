@@ -1,0 +1,14 @@
+schema_version: 1
+
+experiment:
+  name: "gsm8k-no-op"
+  condition: "no_op"
+  run_tier: "small"
+  tags: ["gsm8k", "no_op"]
+
+intervention:
+  enabled: false
+  method: "none"
+
+capture:
+  enabled: true

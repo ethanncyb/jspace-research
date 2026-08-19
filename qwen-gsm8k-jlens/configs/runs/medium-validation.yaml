@@ -1,0 +1,44 @@
+schema_version: 1
+
+experiment:
+  name: "gsm8k-medium-validation"
+  condition: "baseline"
+  run_tier: "medium"
+  tags: ["gsm8k", "medium"]
+  notes: "Fixed 100-example Radeon validation/calibration subset."
+
+benchmark:
+  test_type: "full_answer"
+  full_run: false
+  subset_size: 100
+  selection: "shuffled"
+  selection_seed: 0
+
+generation:
+  mode: "greedy"
+  max_new_tokens: 512
+  do_sample: false
+  seed: 0
+
+capture:
+  enabled: true
+  layers:
+    mode: "late"
+  tokens:
+    mode: "all_generated"
+    include_prompt: false
+  fields:
+    hidden_norm: true
+    jspace_norm: true
+    top_jspace_tokens: true
+    hidden_vector: false
+    jspace_vector: false
+    intervention_delta_norm: true
+  top_k_tokens: 20
+
+intervention:
+  enabled: false
+
+outputs:
+  root_dir: "outputs/gsm8k"
+  on_existing: "resume"

@@ -1,0 +1,45 @@
+schema_version: 1
+
+experiment:
+  name: "gsm8k-small-smoke"
+  condition: "baseline"
+  run_tier: "small"
+  tags: ["gsm8k", "small"]
+  notes: "M1 Max 5-example correctness smoke."
+
+benchmark:
+  test_type: "full_answer"
+  full_run: false
+  subset_size: 5
+  selection: "first"
+  selection_seed: 0
+
+generation:
+  mode: "greedy"
+  max_new_tokens: 256
+  do_sample: false
+  seed: 0
+
+capture:
+  enabled: true
+  layers:
+    mode: "explicit"
+    values: [10, 18]
+  tokens:
+    mode: "generated_last"
+    include_prompt: false
+  fields:
+    hidden_norm: true
+    jspace_norm: true
+    top_jspace_tokens: true
+    hidden_vector: false
+    jspace_vector: false
+    intervention_delta_norm: true
+  top_k_tokens: 10
+
+intervention:
+  enabled: false
+
+outputs:
+  root_dir: "outputs/gsm8k"
+  on_existing: "resume"

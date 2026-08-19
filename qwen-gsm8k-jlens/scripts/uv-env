@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Select an isolated uv environment from the host GPU, then sync/run/diagnose.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+PROFILE_ARG="${GSM8K_HOST_PROFILE:-auto}"
+if [[ "${1:-}" == "--profile" ]]; then
+  PROFILE_ARG="$2"
+  shift 2
+fi
+
+HOST_JSON="$(python3 "$ROOT/scripts/detect-host.py" "$PROFILE_ARG")"
+VENV_DIR="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["venv_dir"])' "$HOST_JSON")"
+BACKEND="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["backend"])' "$HOST_JSON")"
+NAME="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["name"])' "$HOST_JSON")"
+TORCH_BACKEND="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["torch_backend"] or "")' "$HOST_JSON")"
+
+export UV_PROJECT_ENVIRONMENT="$ROOT/$VENV_DIR"
+echo "[uv-env] host=$NAME backend=$BACKEND UV_PROJECT_ENVIRONMENT=$UV_PROJECT_ENVIRONMENT"
+
+CMD="${1:-sync}"
+shift || true
+
+sync_cmd() {
+  extra=()
+  if [[ -n "$TORCH_BACKEND" ]] && uv sync --help 2>&1 | grep -q -- '--torch-backend'; then
+    extra+=(--torch-backend "$TORCH_BACKEND")
+  fi
+  if uv sync --help 2>&1 | grep -q -- '--locked'; then
+    extra+=(--locked)
+  fi
+  uv sync "${extra[@]}" "$@"
+}
+
+case "$CMD" in
+  sync)
+    sync_cmd "$@"
+    ;;
+  diagnose)
+    uv run python -m gsm8k_jspace diagnose "$@"
+    ;;
+  run)
+    uv run python -m gsm8k_jspace run "$@"
+    ;;
+  jupyter)
+    uv run --group analysis jupyter lab "$@"
+    ;;
+  *)
+    echo "usage: $0 [--profile auto|m1-max|radeon-8060s|nvidia-datacenter|cpu] sync|diagnose|run|jupyter [args...]" >&2
+    exit 2
+    ;;
+esac

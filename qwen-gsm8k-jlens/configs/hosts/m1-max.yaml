@@ -1,0 +1,18 @@
+# Execution-only overrides for M1 Max / MPS. Scientific settings stay in run YAML.
+
+runtime:
+  host_profile: "m1-max"
+  backend: "mps"
+  device: "mps"
+  linear_algebra_device: "cpu"
+  compatibility_mode: "strict"
+  memory_preflight: true
+  minimum_free_memory_gb: 2.0
+  pinv:
+    compute_device: "cpu"
+    cache_device: "cpu"
+    preload: false
+
+model:
+  dtype: "float16"
+  device_map: "mps"

@@ -1,0 +1,42 @@
+schema_version: 1
+
+experiment:
+  name: "gsm8k-large-full"
+  condition: "baseline"
+  run_tier: "large"
+  tags: ["gsm8k", "large"]
+  notes: "Full GSM8K test split. Pair only with same-GPU conditions."
+
+benchmark:
+  test_type: "full_answer"
+  full_run: true
+  subset_size: 1319
+  selection: "first"
+  selection_seed: 0
+
+generation:
+  mode: "greedy"
+  max_new_tokens: 512
+  do_sample: false
+  seed: 0
+
+capture:
+  enabled: false
+  layers:
+    mode: "late"
+  tokens:
+    mode: "all_generated"
+  fields:
+    hidden_norm: true
+    jspace_norm: true
+    top_jspace_tokens: true
+    hidden_vector: false
+    jspace_vector: false
+    intervention_delta_norm: true
+
+intervention:
+  enabled: false
+
+outputs:
+  root_dir: "outputs/gsm8k"
+  on_existing: "resume"

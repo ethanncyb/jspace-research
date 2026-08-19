@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gsm8k-jspace"
+version = "0.1.0"
+description = "Configurable GSM8K benchmark with J-Space observation and intervention"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+dependencies = [
+    "jlens",
+    "torch",
+    "huggingface_hub",
+    "transformers>=4.40",
+    "accelerate>=1.0",
+    "datasets>=2.18",
+    "numpy",
+    "PyYAML",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+analysis = [
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+    "pandas>=2.0",
+    "ipykernel",
+    "nbformat",
+    "nbclient",
+]
+
+[project.scripts]
+gsm8k-jspace = "gsm8k_jspace.cli:main"
+
+[tool.uv.sources]
+jlens = { path = "..", editable = true }
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "E741"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,19 @@
+"""Intervention controller interface."""
+
+from __future__ import annotations
+
+from typing import Any, Protocol
+
+
+class InterventionController(Protocol):
+    def reset_example(self, example_id: str, prompt_length: int) -> None: ...
+
+    def before_generation(self) -> None: ...
+
+    def after_generation(self) -> None: ...
+
+    def summary(self) -> dict[str, Any]: ...
+
+    def __enter__(self) -> "InterventionController": ...
+
+    def __exit__(self, *exc) -> None: ...

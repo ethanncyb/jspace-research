@@ -1,0 +1,26 @@
+schema_version: 1
+
+experiment:
+  name: "gsm8k-mean-replace"
+  condition: "intervention"
+  run_tier: "small"
+  tags: ["gsm8k", "intervention", "mean_replace"]
+
+intervention:
+  enabled: true
+  method: "mean_replace"
+  layers:
+    mode: "late"
+  tokens:
+    mode: "all_generated"
+    include_prompt: true
+  features:
+    mode: "top_abs"
+    top_k: 50
+  strength: 0.05
+  reference: "task_running_mean"
+
+capture:
+  enabled: true
+  capture_pre_intervention: true
+  capture_post_intervention: false

@@ -1,0 +1,92 @@
+schema_version: 1
+
+experiment:
+  name: "gsm8k-smoke"
+  condition: "baseline"
+  run_tier: "small"
+  tags: ["gsm8k", "smoke"]
+  notes: "Five-example plumbing smoke. Does not support scientific claims."
+
+model:
+  name: "Qwen/Qwen3.5-9B-Base"
+  dtype: "auto"
+  device_map: "auto"
+  trust_remote_code: false
+
+jlens:
+  required: true
+  source: "hub"
+  repo: "neuronpedia/jacobian-lens"
+  revision: "qwen-n1000"
+  file: "qwen3.5-9b-pt/jlens/Salesforce-wikitext/Qwen3.5-9B-Base_jacobian_lens.pt"
+
+benchmark:
+  test_type: "full_answer"
+  dataset: "openai/gsm8k"
+  dataset_config: "main"
+  split: "test"
+  full_run: false
+  subset_size: 5
+  selection: "first"
+  selection_seed: 0
+
+prompt:
+  template: "zero_shot_cot_v1"
+  answer_marker: "####"
+  few_shot_examples: 0
+  context_overflow: "error"
+  final_token_capture: "replay"
+
+generation:
+  mode: "greedy"
+  max_new_tokens: 256
+  do_sample: false
+  temperature: 0.0
+  seed: 0
+
+capture:
+  enabled: false
+  layers:
+    mode: "explicit"
+    values: [10, 18]
+  tokens:
+    mode: "generated_last"
+    include_prompt: false
+  fields:
+    hidden_norm: true
+    jspace_norm: true
+    top_jspace_tokens: true
+    hidden_vector: false
+    jspace_vector: false
+    intervention_delta_norm: true
+  top_k_tokens: 5
+
+intervention:
+  enabled: false
+  method: "mean_replace"
+  strength: 0.05
+
+evaluation:
+  parser: "gsm8k_numeric_v1"
+  prefer_answer_marker: true
+  allow_last_number_fallback: true
+  numeric_tolerance: 0.0
+
+outputs:
+  root_dir: "outputs/gsm8k"
+  on_existing: "resume"
+
+visualization:
+  enabled: true
+  notebooks:
+    - "run-overview"
+    - "gsm8k-accuracy"
+
+runtime:
+  host_profile: "auto"
+  backend: "auto"
+  memory_preflight: true
+  pinv:
+    compute_device: "cpu"
+    cache_device: "cpu"
+    preload: false

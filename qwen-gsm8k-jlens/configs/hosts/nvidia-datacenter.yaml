@@ -1,0 +1,18 @@
+# Execution-only overrides for A100 / H100 CUDA servers.
+
+runtime:
+  host_profile: "nvidia-datacenter"
+  backend: "cuda"
+  device: "auto"
+  linear_algebra_device: "cpu"
+  compatibility_mode: "strict"
+  memory_preflight: true
+  minimum_free_memory_gb: 8.0
+  pinv:
+    compute_device: "cpu"
+    cache_device: "cpu"
+    preload: false
+
+model:
+  dtype: "bfloat16"
+  device_map: "auto"
