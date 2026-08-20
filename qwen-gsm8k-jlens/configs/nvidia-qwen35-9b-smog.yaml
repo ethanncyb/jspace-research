@@ -1,15 +1,15 @@
-# NVIDIA — Qwen3.5-9B full GSM8K test split (baseline, no capture).
+# NVIDIA — Qwen3.5-9B-Base five-example smog with J-Lens capture.
 schema_version: 1
 
 experiment:
-  name: "gsm8k-nvidia-qwen35-9b-full"
+  name: "gsm8k-nvidia-qwen35-9b-smog"
   condition: "baseline"
-  run_tier: "large"
-  tags: ["gsm8k", "large", "nvidia-datacenter", "qwen35-9b"]
-  notes: "Full GSM8K test split on NVIDIA CUDA for Qwen/Qwen3.5-9B (no J-Lens)."
+  run_tier: "small"
+  tags: ["gsm8k", "smog", "nvidia-datacenter", "qwen35-9b-pt", "jlens"]
+  notes: "Five-example NVIDIA CUDA smog for Qwen3.5-9B-Base with J-Lens recording."
 
 model:
-  name: "Qwen/Qwen3.5-9B"
+  name: "Qwen/Qwen3.5-9B-Base"
   revision: null
   tokenizer_revision: null
   dtype: "bfloat16"
@@ -19,8 +19,8 @@ model:
   trust_remote_code: false
 
 jlens:
-  required: false
-  source: "identity"
+  required: true
+  source: "hub"
   repo: "neuronpedia/jacobian-lens"
   revision: "qwen-n1000"
   file: "qwen3.5-9b-pt/jlens/Salesforce-wikitext/Qwen3.5-9B-Base_jacobian_lens.pt"
@@ -31,8 +31,8 @@ benchmark:
   dataset: "openai/gsm8k"
   dataset_config: "main"
   split: "test"
-  full_run: true
-  subset_size: 1319
+  full_run: false
+  subset_size: 5
   selection: "first"
   selection_seed: 0
 
@@ -42,11 +42,11 @@ prompt:
   few_shot_examples: 0
   context_overflow: "error"
   final_token_capture: "replay"
-  use_chat_template: true
+  use_chat_template: false
 
 generation:
   mode: "greedy"
-  max_new_tokens: 512
+  max_new_tokens: 256
   do_sample: false
   temperature: 0.0
   top_p: 1.0
@@ -54,19 +54,19 @@ generation:
   stop_strings: []
 
 capture:
-  enabled: false
+  enabled: true
   phases: ["post_layer"]
   layers:
-    mode: "late"
+    mode: "all_fitted"
     values: []
     start: null
     stop: null
     stride: 1
   tokens:
-    mode: "all_generated"
+    mode: "full_sequence"
     stride: 1
     positions: []
-    include_prompt: false
+    include_prompt: true
   fields:
     hidden_norm: true
     jspace_norm: true
@@ -76,7 +76,7 @@ capture:
     hidden_vector: false
     jspace_vector: false
     intervention_delta_norm: true
-  top_k_tokens: 20
+  top_k_tokens: 10
   vector_dtype: "float16"
   capture_pre_intervention: true
   capture_post_intervention: false

@@ -16,6 +16,12 @@ First sync the matching environment:
 ./scripts/uv-env run --config configs/radeon-qwen35-9b-smog.yaml --evaluate
 ```
 
+**500-example subset, no J-Lens** (`Qwen/Qwen3.5-9B`):
+
+```bash
+./scripts/uv-env run --config configs/radeon-qwen35-9b-500.yaml --evaluate
+```
+
 **Full GSM8K test, no J-Lens** (`Qwen/Qwen3.5-9B`):
 
 ```bash
@@ -24,11 +30,41 @@ First sync the matching environment:
 
 ## NVIDIA (CUDA)
 
+NVIDIA ready-made configs default to `runtime.gpus: [0, 1]` and `runtime.parallel: true`.
+Each selected GPU loads a **full model copy** and runs a disjoint shard of examples.
+
+**5-example smog with J-Lens capture** (`Qwen/Qwen3.5-9B-Base`):
+
+```bash
+./scripts/uv-env run --config configs/nvidia-qwen35-9b-smog.yaml --evaluate
+```
+
+**500-example subset, no J-Lens** (`Qwen/Qwen3.5-9B`):
+
+```bash
+./scripts/uv-env run --config configs/nvidia-qwen35-9b-500.yaml --evaluate
+```
+
 **Full GSM8K test, no J-Lens** (`Qwen/Qwen3.5-9B`):
 
 ```bash
 ./scripts/uv-env run --config configs/nvidia-qwen35-9b-full.yaml --evaluate
 ```
+
+### Pick GPUs
+
+Edit `runtime.gpus` in the YAML, or override on the CLI:
+
+```bash
+# use GPUs 0 and 2
+./scripts/uv-env run --config configs/nvidia-qwen35-9b-full.yaml --gpus 0,2 --evaluate
+
+# single GPU (no data-parallel)
+./scripts/uv-env run --config configs/nvidia-qwen35-9b-full.yaml --gpus 1 --evaluate
+```
+
+With one GPU, the run is sequential on that card. With two or more (and
+`parallel: true`), examples are round-robin sharded across workers.
 
 ## Inspect / resume
 

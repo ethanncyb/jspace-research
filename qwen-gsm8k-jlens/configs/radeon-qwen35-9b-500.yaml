@@ -1,12 +1,12 @@
-# NVIDIA — Qwen3.5-9B full GSM8K test split (baseline, no capture).
+# Radeon 8060S — Qwen3.5-9B 500-example GSM8K subset (baseline, no capture).
 schema_version: 1
 
 experiment:
-  name: "gsm8k-nvidia-qwen35-9b-full"
+  name: "gsm8k-radeon-qwen35-9b-500"
   condition: "baseline"
-  run_tier: "large"
-  tags: ["gsm8k", "large", "nvidia-datacenter", "qwen35-9b"]
-  notes: "Full GSM8K test split on NVIDIA CUDA for Qwen/Qwen3.5-9B (no J-Lens)."
+  run_tier: "medium"
+  tags: ["gsm8k", "medium", "radeon-8060s", "qwen35-9b"]
+  notes: "Fixed 500-example GSM8K subset on Radeon 8060S for Qwen/Qwen3.5-9B (no J-Lens)."
 
 model:
   name: "Qwen/Qwen3.5-9B"
@@ -31,8 +31,8 @@ benchmark:
   dataset: "openai/gsm8k"
   dataset_config: "main"
   split: "test"
-  full_run: true
-  subset_size: 1319
+  full_run: false
+  subset_size: 500
   selection: "first"
   selection_seed: 0
 
@@ -112,15 +112,15 @@ visualization:
   max_capture_rows_in_memory: 250000
 
 runtime:
-  host_profile: "nvidia-datacenter"
-  backend: "cuda"
+  host_profile: "radeon-8060s"
+  backend: "rocm"
   device: "auto"
   linear_algebra_device: "cpu"
   compatibility_mode: "strict"
   memory_preflight: true
-  minimum_free_memory_gb: 8.0
-  gpus: [0, 1]
-  parallel: true
+  minimum_free_memory_gb: 4.0
+  gpus: [0]
+  parallel: false
   pinv:
     compute_device: "cpu"
     cache_device: "cpu"
