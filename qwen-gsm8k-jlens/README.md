@@ -15,6 +15,7 @@ The latter remains available as `benchmark.test_type: gold_next_token`.
 ## Layout
 
 - `configs/` — default, smoke, host, run-tier, and condition YAML
+- `configs/README.md` — commands for ready-made Radeon / NVIDIA Qwen3.5-9B runs
 - `src/gsm8k_jspace/` — typed config, runner, capture, intervention, evaluation
 - `notebooks/` — parameterized analysis notebooks
 - `scripts/uv-env` — pick `.venv-mlx` / `.venv-rocm` / `.venv-cuda` / `.venv-cpu`
@@ -64,7 +65,7 @@ python -m gsm8k_jspace run --config configs/smoke.yaml --overlay configs/experim
 # merge a condition overlay
 python -m gsm8k_jspace run \
   --config configs/runs/small-smoke.yaml \
-  --host-config configs/hosts/m1-max.yaml \
+  --host-config configs/hosts/apple.yaml \
   --overlay configs/experiments/mean-replace.yaml
 
 python -m gsm8k_jspace evaluate --run outputs/gsm8k/<run_id>

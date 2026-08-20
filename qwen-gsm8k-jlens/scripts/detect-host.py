@@ -3,21 +3,28 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+HOST_PY = ROOT / "src" / "gsm8k_jspace" / "platform" / "host.py"
 
-from gsm8k_jspace.platform.host import detect_host_profile  # noqa: E402
+
+def _load_host():
+    spec = importlib.util.spec_from_file_location("gsm8k_jspace_host", HOST_PY)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load {HOST_PY}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def main() -> int:
     explicit = sys.argv[1] if len(sys.argv) > 1 else None
-    profile = detect_host_profile(explicit)
+    profile = _load_host().detect_host_profile(explicit)
     print(
         json.dumps(
             {

@@ -43,9 +43,9 @@ qwen-gsm8k-jlens/
 ├── .python-version
 ├── configs/
 │   ├── hosts/
-│   │   ├── m1-max.yaml
-│   │   ├── radeon-8060s.yaml
-│   │   └── nvidia-datacenter.yaml
+│   │   ├── apple.yaml
+│   │   ├── amd.yaml
+│   │   └── nvidia.yaml
 │   └── runs/
 │       ├── small-smoke.yaml
 │       ├── medium-validation.yaml

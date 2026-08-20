@@ -92,7 +92,7 @@ def test_m1_host_overlay_uses_mlx():
 
     merged = deep_merge(
         load_yaml_mapping(CONFIGS / "runs" / "small-smoke.yaml"),
-        load_yaml_mapping(CONFIGS / "hosts" / "m1-max.yaml"),
+        load_yaml_mapping(CONFIGS / "hosts" / "apple.yaml"),
     )
     cfg = config_from_mapping(merged)
     assert cfg.runtime.backend == "mlx"

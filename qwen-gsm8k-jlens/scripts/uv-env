@@ -18,12 +18,91 @@ NAME="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["name"])' "$H
 TORCH_BACKEND="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["torch_backend"] or "")' "$HOST_JSON")"
 
 export UV_PROJECT_ENVIRONMENT="$ROOT/$VENV_DIR"
+if [[ "$BACKEND" == "rocm" ]]; then
+  # TheRock gfx1151 wheels are CPython 3.12; ignore .python-version (3.11).
+  export UV_PYTHON="${ROCM_PYTHON_VERSION:-3.12}"
+fi
 echo "[uv-env] host=$NAME backend=$BACKEND UV_PROJECT_ENVIRONMENT=$UV_PROJECT_ENVIRONMENT"
 
 CMD="${1:-sync}"
 shift || true
 
+# Strix Halo / Radeon 8060S (gfx1151) cannot use PyPI CUDA wheels or
+# pytorch.org ROCm builds. TheRock publishes gfx1151 wheels for CPython 3.12.
+ROCM_PYTHON_VERSION="${ROCM_PYTHON_VERSION:-3.12}"
+ROCM_GFX1151_INDEX="${ROCM_GFX1151_INDEX:-https://rocm.nightlies.amd.com/v2/gfx1151/}"
+ROCM_GFX1151_STAGING_INDEX="${ROCM_GFX1151_STAGING_INDEX:-https://rocm.nightlies.amd.com/v2-staging/gfx1151/}"
+
+venv_python_mm() {
+  "$UV_PROJECT_ENVIRONMENT/bin/python" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
+}
+
+ensure_rocm_venv() {
+  local want="$ROCM_PYTHON_VERSION"
+  uv python install "$want"
+  if [[ -x "$UV_PROJECT_ENVIRONMENT/bin/python" ]]; then
+    local have
+    have="$(venv_python_mm)"
+    if [[ "$have" != "$want" ]]; then
+      echo "[uv-env] replacing $VENV_DIR (python $have) with python $want"
+      uv venv "$UV_PROJECT_ENVIRONMENT" --python "$want" --clear
+    fi
+  else
+    uv venv "$UV_PROJECT_ENVIRONMENT" --python "$want"
+  fi
+}
+
+sync_rocm_therock() {
+  echo "[uv-env] gfx1151 TheRock: python=$ROCM_PYTHON_VERSION index=$ROCM_GFX1151_INDEX"
+  ensure_rocm_venv
+  local reqs
+  reqs="$(mktemp)"
+  # Drop torch and the editable jlens path. Installing jlens from the
+  # requirements file would pull PyPI CUDA torch as a dependency.
+  uv export --frozen --no-dev --group analysis --no-hashes --no-header --no-annotate \
+    --no-emit-project --prune torch \
+    | grep -viE '^-e |^torch|^nvidia-|^cuda-|^triton' \
+    > "$reqs"
+  uv pip install --python "$UV_PROJECT_ENVIRONMENT" -r "$reqs"
+  rm -f "$reqs"
+  uv pip install --python "$UV_PROJECT_ENVIRONMENT" --no-deps -e "$ROOT/.." -e "$ROOT"
+  uv pip install --python "$UV_PROJECT_ENVIRONMENT" pytest ruff
+  echo "[uv-env] installing PyTorch ROCm wheels for gfx1151"
+  install_gfx1151_torch "$ROCM_GFX1151_INDEX" || {
+    echo "[uv-env] $ROCM_GFX1151_INDEX failed; trying staging + prereleases"
+    install_gfx1151_torch "$ROCM_GFX1151_STAGING_INDEX" --prerelease allow
+  }
+}
+
+install_gfx1151_torch() {
+  local index="$1"
+  shift || true
+  # PyPI CUDA torch (e.g. 2.13.0) is a higher version than TheRock 2.10.x, so
+  # uninstall first; otherwise uv will keep the CUDA wheel.
+  uv pip uninstall --python "$UV_PROJECT_ENVIRONMENT" torch 2>/dev/null || true
+  uv pip install --python "$UV_PROJECT_ENVIRONMENT" --index "$index" "$@" torch
+  local leftovers
+  leftovers="$("$UV_PROJECT_ENVIRONMENT/bin/python" -c '
+import importlib.metadata as m
+names = []
+for dist in m.distributions():
+    n = dist.metadata["Name"]
+    if n.lower().startswith(("nvidia-", "cuda-")):
+        names.append(n)
+print(" ".join(names))
+')"
+  if [[ -n "${leftovers// }" ]]; then
+    echo "[uv-env] removing CUDA leftover packages"
+    # shellcheck disable=SC2086
+    uv pip uninstall --python "$UV_PROJECT_ENVIRONMENT" $leftovers
+  fi
+}
+
 sync_cmd() {
+  if [[ "$BACKEND" == "rocm" ]]; then
+    sync_rocm_therock "$@"
+    return
+  fi
   extra=()
   if [[ -n "$TORCH_BACKEND" ]] && uv sync --help 2>&1 | grep -q -- '--torch-backend'; then
     extra+=(--torch-backend "$TORCH_BACKEND")
@@ -38,18 +117,27 @@ sync_cmd() {
   uv sync "${extra[@]}" "$@"
 }
 
+run_in_env() {
+  if [[ "$BACKEND" == "rocm" ]]; then
+    # uv run would sync uv.lock and replace TheRock gfx1151 torch with CUDA.
+    uv run --no-sync "$@"
+  else
+    uv run "$@"
+  fi
+}
+
 case "$CMD" in
   sync)
     sync_cmd "$@"
     ;;
   diagnose)
-    uv run python -m gsm8k_jspace diagnose "$@"
+    run_in_env python -m gsm8k_jspace diagnose "$@"
     ;;
   run)
-    uv run python -m gsm8k_jspace run "$@"
+    run_in_env python -m gsm8k_jspace run "$@"
     ;;
   jupyter)
-    uv run --group analysis jupyter lab "$@"
+    run_in_env --group analysis jupyter lab "$@"
     ;;
   *)
     echo "usage: $0 [--profile auto|m1-max|radeon-8060s|nvidia-datacenter|cpu] sync|diagnose|run|jupyter [args...]" >&2
