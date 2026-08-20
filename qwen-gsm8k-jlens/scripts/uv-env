@@ -28,6 +28,10 @@ sync_cmd() {
   if [[ -n "$TORCH_BACKEND" ]] && uv sync --help 2>&1 | grep -q -- '--torch-backend'; then
     extra+=(--torch-backend "$TORCH_BACKEND")
   fi
+  if [[ "$BACKEND" == "mlx" ]]; then
+    extra+=(--extra apple)
+  fi
+  extra+=(--group analysis)
   if uv sync --help 2>&1 | grep -q -- '--locked'; then
     extra+=(--locked)
   fi

@@ -53,6 +53,8 @@ def should_keep_position(
         return generated_position % selector.stride == 0
     if mode == "generated_last":
         return False
+    if mode == "full_sequence":
+        return False
     if mode == "word_end":
         return not is_prefill or selector.include_prompt
     if mode == "explicit":

@@ -41,6 +41,7 @@ prompt:
   few_shot_examples: 0
   context_overflow: "error"
   final_token_capture: "replay"
+  use_chat_template: false
 
 generation:
   mode: "greedy"
@@ -69,6 +70,8 @@ capture:
     hidden_norm: true
     jspace_norm: true
     top_jspace_tokens: true
+    top_logit_tokens: true
+    top_model_tokens: true
     hidden_vector: false
     jspace_vector: false
     intervention_delta_norm: true

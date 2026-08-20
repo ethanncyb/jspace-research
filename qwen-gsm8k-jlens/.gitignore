@@ -4,7 +4,7 @@ __pycache__/
 build/
 dist/
 .venv/
-.venv-mps/
+.venv-mlx/
 .venv-rocm/
 .venv-cuda/
 .venv-cpu/

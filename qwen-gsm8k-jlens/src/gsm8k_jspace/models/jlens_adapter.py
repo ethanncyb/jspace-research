@@ -58,18 +58,22 @@ class JLensAdapter:
         self, hidden_state: torch.Tensor, layer_idx: int, lens_model, k: int
     ) -> list[dict[str, Any]]:
         z = self.project_to_jspace(hidden_state, layer_idx)
-        logits = lens_model.unembed(z).float()
-        top = logits.topk(k)
-        rows = []
-        for token_id, logit in zip(top.indices.tolist(), top.values.tolist()):
-            rows.append(
-                {
-                    "token_id": int(token_id),
-                    "text": lens_model.tokenizer.decode([token_id]),
-                    "logit": float(logit),
-                }
-            )
-        return rows
+        return topk_token_rows(lens_model.unembed(z), lens_model.tokenizer, k)
+
+    def top_logit_tokens(self, hidden_state: torch.Tensor, lens_model, k: int) -> list[dict[str, Any]]:
+        return topk_token_rows(lens_model.unembed(hidden_state), lens_model.tokenizer, k)
+
+
+def topk_token_rows(logits: torch.Tensor, tokenizer, k: int) -> list[dict[str, Any]]:
+    vec = logits.float().reshape(-1)
+    count = min(int(k), int(vec.numel()))
+    values, indices = vec.topk(count)
+    rows = []
+    decode = getattr(tokenizer, "decode", None)
+    for token_id, logit in zip(indices.tolist(), values.tolist()):
+        text = decode([int(token_id)]) if decode is not None else str(token_id)
+        rows.append({"token_id": int(token_id), "text": text, "logit": float(logit)})
+    return rows
 
 
 def _identity_lens(n_layers: int, d_model: int):

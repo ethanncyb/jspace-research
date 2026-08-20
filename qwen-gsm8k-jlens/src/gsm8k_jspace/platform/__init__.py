@@ -5,6 +5,7 @@ from __future__ import annotations
 from gsm8k_jspace.platform.capabilities import (
     BackendInfo,
     detect_backend,
+    mlx_is_available,
     probe_operations,
     resolve_dtype,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "BackendInfo",
     "collect_environment",
     "detect_backend",
+    "mlx_is_available",
     "estimate_run_memory_gb",
     "memory_preflight",
     "probe_operations",

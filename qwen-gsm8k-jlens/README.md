@@ -17,7 +17,7 @@ The latter remains available as `benchmark.test_type: gold_next_token`.
 - `configs/` — default, smoke, host, run-tier, and condition YAML
 - `src/gsm8k_jspace/` — typed config, runner, capture, intervention, evaluation
 - `notebooks/` — parameterized analysis notebooks
-- `scripts/uv-env` — pick `.venv-mps` / `.venv-rocm` / `.venv-cuda` / `.venv-cpu`
+- `scripts/uv-env` — pick `.venv-mlx` / `.venv-rocm` / `.venv-cuda` / `.venv-cpu`
 - `plans/` — design documents
 
 ## Setup (uv)
@@ -34,10 +34,13 @@ chmod +x scripts/uv-env scripts/detect-host.py scripts/verify-environment.py
 
 | host | environment | backend |
 |---|---|---|
-| M1 Max MacBook Pro | `.venv-mps` | MPS |
+| M1 Max MacBook Pro | `.venv-mlx` | MLX (`mlx` + `mlx-lm`) |
 | Framework desktop, Radeon 8060S | `.venv-rocm` | ROCm |
 | A100 / H100 | `.venv-cuda` | CUDA |
 | CPU / CI | `.venv-cpu` | CPU |
+
+Apple Silicon uses **MLX** by default. `./scripts/uv-env sync` installs the
+`apple` extra. PyTorch MPS remains available with `./scripts/uv-env --profile mps`.
 
 Override detection with `./scripts/uv-env --profile cpu sync`.
 
@@ -49,8 +52,14 @@ The parent `jlens` package is installed as an editable path dependency.
 # print the fully resolved config (no model load)
 python -m gsm8k_jspace inspect-config --config configs/smoke.yaml
 
-# small run
-python -m gsm8k_jspace run --config configs/smoke.yaml --evaluate
+# small run without J-Space capture files
+python -m gsm8k_jspace run --config configs/smoke.yaml --evaluate --no-capture
+
+# same run, but record J-Space top-k / norms
+python -m gsm8k_jspace run --config configs/smoke.yaml --evaluate --capture
+
+# overlay instead of flags
+python -m gsm8k_jspace run --config configs/smoke.yaml --overlay configs/experiments/capture-on.yaml
 
 # merge a condition overlay
 python -m gsm8k_jspace run \
@@ -61,6 +70,10 @@ python -m gsm8k_jspace run \
 python -m gsm8k_jspace evaluate --run outputs/gsm8k/<run_id>
 python -m gsm8k_jspace compare --baseline <baseline_dir> --candidate <run_dir>
 ```
+
+Output folders are UTC-stamped so reruns do not overwrite each other, for
+example `m1max-mlx-qwen35-4b-smoke5_20260820T001408Z`. `--run-id` is a label;
+`YYYYMMDDTHHMMSSZ` is appended. To resume, pass the full folder name.
 
 ## Run tiers
 

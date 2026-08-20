@@ -21,9 +21,13 @@ class ModelBundle:
     backend: str
     dtype: torch.dtype
     device: torch.device
+    mlx_model: Any = None
+    mlx_library: str | None = None
 
     @property
     def input_device(self) -> torch.device:
+        if self.backend == "mlx":
+            return torch.device("cpu")
         try:
             return self.hf_model.get_input_embeddings().weight.device
         except Exception:
@@ -76,12 +80,31 @@ def load_hf_model(cfg: AppConfig) -> ModelBundle:
 def load_model_bundle(cfg: AppConfig, *, hf_model=None, tokenizer=None) -> ModelBundle:
     if hf_model is not None and tokenizer is not None:
         info = inspect_backend(cfg.runtime.backend, cfg.model.dtype)
-        device = tensor_device(hf_model)
+        try:
+            device = tensor_device(hf_model)
+        except Exception:
+            device = torch.device("cpu")
         return ModelBundle(
             hf_model=hf_model,
             tokenizer=tokenizer,
             backend=info.name,
             dtype=info.dtype,
             device=device,
+            mlx_model=getattr(hf_model, "mlx_model", None),
+        )
+    info = inspect_backend(cfg.runtime.backend, cfg.model.dtype)
+    if info.name == "mlx":
+        from gsm8k_jspace.models.mlx_adapter import load_mlx_model
+
+        memory_preflight(cfg)
+        lens_model, tokenizer, library = load_mlx_model(cfg)
+        return ModelBundle(
+            hf_model=lens_model,
+            tokenizer=tokenizer,
+            backend="mlx",
+            dtype=info.dtype,
+            device=torch.device("cpu"),
+            mlx_model=lens_model.mlx_model,
+            mlx_library=library,
         )
     return load_hf_model(cfg)

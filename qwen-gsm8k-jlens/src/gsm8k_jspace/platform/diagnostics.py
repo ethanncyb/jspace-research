@@ -74,6 +74,8 @@ def collect_environment(
             "accelerate": _package_version("accelerate"),
             "datasets": _package_version("datasets"),
             "jlens": _package_version("jlens"),
+            "mlx": _package_version("mlx"),
+            "mlx_lm": _package_version("mlx-lm"),
         },
         "backend": {
             "requested": cfg.runtime.backend,
@@ -85,6 +87,7 @@ def collect_environment(
             "hip_version": info.hip_version,
             "cuda_version": info.cuda_version,
             "mps_available": info.mps_available,
+            "mlx_available": info.mlx_available,
             "warnings": info.warnings,
         },
         "host_profile": host.name,

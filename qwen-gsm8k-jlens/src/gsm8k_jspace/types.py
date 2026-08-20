@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 Condition = Literal["baseline", "no_op", "intervention"]
 TestType = Literal["full_answer", "gold_next_token"]
-BackendName = Literal["auto", "mps", "cuda", "rocm", "cpu"]
+BackendName = Literal["auto", "mlx", "mps", "cuda", "rocm", "cpu"]
 LayerMode = Literal["late", "all_fitted", "explicit", "range"]
 TokenMode = Literal[
     "prompt_last",
@@ -16,6 +16,7 @@ TokenMode = Literal[
     "generated_stride",
     "word_end",
     "explicit",
+    "full_sequence",
 ]
 
 

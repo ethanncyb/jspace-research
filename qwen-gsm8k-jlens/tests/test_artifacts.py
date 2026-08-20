@@ -6,12 +6,33 @@ from gsm8k_jspace.artifacts.manifest import (
     ResumeError,
     create_run_dir,
     load_completed_ids,
+    make_run_id,
 )
 from gsm8k_jspace.artifacts.writer import append_jsonl
 from gsm8k_jspace.config import load_config
 from gsm8k_jspace.evaluation.evaluator import evaluate_run
 
 CONFIGS = Path(__file__).resolve().parents[1] / "configs"
+
+
+def test_run_id_includes_utc_timestamp():
+    cfg = load_config(CONFIGS / "smoke.yaml")
+    cfg.outputs.run_id = None
+    generated = make_run_id(cfg)
+    stamp = generated.rsplit("_", 1)[-1]
+    assert len(stamp) == 16 and stamp.endswith("Z")
+    assert generated.endswith(f"_{stamp}")
+    assert cfg.experiment.condition in generated[: -len(stamp) - 1]
+    cfg.outputs.run_id = "m1max-mlx-qwen35-4b-smoke5"
+    labeled = make_run_id(cfg)
+    assert labeled.startswith("m1max-mlx-qwen35-4b-smoke5_")
+    assert labeled.rsplit("_", 1)[-1].endswith("Z")
+    stamped = "m1max-mlx-qwen35-4b-smoke5_20260819T171400Z"
+    cfg.outputs.run_id = stamped
+    assert make_run_id(cfg) == stamped
+    legacy = "20260819T171400Z_m1max-mlx-qwen35-4b-smoke5"
+    cfg.outputs.run_id = legacy
+    assert make_run_id(cfg) == legacy
 
 
 def test_create_and_resume_fingerprint(tmp_path: Path):
@@ -21,6 +42,8 @@ def test_create_and_resume_fingerprint(tmp_path: Path):
     selection = [{"example_id": "gsm8k_test_000000", "source_index": 0, "gold_answer": "1"}]
     env = {"backend": {"resolved": "cpu"}}
     run_dir = create_run_dir(cfg, selection, environment=env)
+    assert run_dir.name.startswith("run-a_")
+    assert run_dir.name.rsplit("_", 1)[-1].endswith("Z")
     append_jsonl(
         run_dir / "completions.jsonl",
         {"example_id": "gsm8k_test_000000", "generated_text": "#### 1"},

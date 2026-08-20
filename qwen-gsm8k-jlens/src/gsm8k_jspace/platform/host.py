@@ -19,7 +19,9 @@ class HostProfile:
 
 
 PROFILE_MAP = {
-    "m1-max": HostProfile("m1-max", "mps", ".venv-mps", None),
+    "m1-max": HostProfile(
+        "m1-max", "mlx", ".venv-mlx", None, ("--extra", "apple")
+    ),
     "radeon-8060s": HostProfile(
         "radeon-8060s", "rocm", ".venv-rocm", "auto", ("--torch-backend", "auto")
     ),
@@ -27,6 +29,7 @@ PROFILE_MAP = {
         "nvidia-datacenter", "cuda", ".venv-cuda", "auto", ("--torch-backend", "auto")
     ),
     "cpu": HostProfile("cpu", "cpu", ".venv-cpu", "cpu", ("--torch-backend", "cpu")),
+    "mlx": HostProfile("m1-max", "mlx", ".venv-mlx", None, ("--extra", "apple")),
     "mps": HostProfile("m1-max", "mps", ".venv-mps", None),
     "rocm": HostProfile(
         "radeon-8060s", "rocm", ".venv-rocm", "auto", ("--torch-backend", "auto")

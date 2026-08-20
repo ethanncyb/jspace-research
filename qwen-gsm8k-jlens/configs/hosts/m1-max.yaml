@@ -1,9 +1,11 @@
-# Execution-only overrides for M1 Max / MPS. Scientific settings stay in run YAML.
+# Execution-only overrides for Apple Silicon / MLX.
+# Scientific settings stay in run YAML. PyTorch MPS remains available via
+# `--profile mps` if you explicitly need the torch MPS path.
 
 runtime:
   host_profile: "m1-max"
-  backend: "mps"
-  device: "mps"
+  backend: "mlx"
+  device: "mlx"
   linear_algebra_device: "cpu"
   compatibility_mode: "strict"
   memory_preflight: true
@@ -15,4 +17,4 @@ runtime:
 
 model:
   dtype: "float16"
-  device_map: "mps"
+  device_map: "mlx"

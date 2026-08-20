@@ -77,14 +77,14 @@ enabled. The exact no-op control is a mandatory gate before interpreting any
 intervention result.
 
 Platform support is capability-based. The same benchmark logic must run on
-MPS, CUDA, and ROCm through a device/linear-algebra abstraction, with each run's
+MLX, MPS, CUDA, and ROCm through a device/linear-algebra abstraction, with each run's
 resolved backend and fallbacks recorded. An ordinary 8 GB or 16 GB M1 cannot
 hold the exact 9B experiment entirely on MPS; the implementation must detect
 that constraint and require offload or a smaller model with a matching fitted
 J-Lens.
 
 All dependencies are managed with uv. A host-profile launcher selects isolated
-`.venv-mps`, `.venv-rocm`, `.venv-cuda`, or `.venv-cpu` environments and uses
+`.venv-mlx`, `.venv-rocm`, `.venv-cuda`, or `.venv-cpu` environments and uses
 uv's PyTorch backend selection. Scientific settings remain explicit: M1 Max is
 the small correctness tier, Radeon 8060S is the medium validation/calibration
 tier, and A100/H100 is the full benchmark tier.

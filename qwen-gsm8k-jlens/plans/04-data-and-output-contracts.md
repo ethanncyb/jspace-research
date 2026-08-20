@@ -44,7 +44,7 @@ outputs/gsm8k/
 The run ID should be human-readable plus collision-resistant, for example:
 
 ```text
-20260819T230000Z_baseline_qwen35-9b_7fd29c1a
+baseline_qwen35-9b_7fd29c1a_20260819T230000Z
 ```
 
 Visualization artifacts are derived outputs. Their manifest records notebook
@@ -60,7 +60,7 @@ ends:
 ```json
 {
   "schema_version": 1,
-  "run_id": "20260819T230000Z_baseline_qwen35-9b_7fd29c1a",
+  "run_id": "baseline_qwen35-9b_7fd29c1a_20260819T230000Z",
   "status": "running",
   "condition": "baseline",
   "test_type": "full_answer",

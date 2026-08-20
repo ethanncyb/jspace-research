@@ -1,0 +1,19 @@
+schema_version: 1
+
+capture:
+  enabled: true
+  layers:
+    mode: "all_fitted"
+  tokens:
+    mode: "all_generated"
+    include_prompt: true
+  fields:
+    hidden_norm: true
+    jspace_norm: true
+    top_jspace_tokens: true
+    top_logit_tokens: true
+    top_model_tokens: true
+    hidden_vector: false
+    jspace_vector: false
+    intervention_delta_norm: true
+  top_k_tokens: 10

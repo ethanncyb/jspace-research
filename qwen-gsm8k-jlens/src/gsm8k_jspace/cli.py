@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from gsm8k_jspace.config import (
+    AppConfig,
     apply_cli_overrides,
     config_from_mapping,
     deep_merge,
@@ -34,6 +35,7 @@ def _load(args) -> AppConfig:
         run_id=getattr(args, "run_id", None),
         resume=getattr(args, "resume", False),
         condition=getattr(args, "condition", None),
+        capture=getattr(args, "capture", None),
     )
 
 
@@ -95,9 +97,30 @@ def _add_config_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--host-config", default=None)
     parser.add_argument("--overlay", action="append", default=[])
     parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--run-id", default=None)
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help=(
+            "experiment label; a UTC timestamp is appended to the output "
+            "folder unless the value already ends with YYYYMMDDTHHMMSSZ"
+        ),
+    )
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--condition", default=None)
+    capture = parser.add_mutually_exclusive_group()
+    capture.add_argument(
+        "--capture",
+        action="store_true",
+        dest="capture",
+        help="Record J-Space captures for this run (overrides capture.enabled)",
+    )
+    capture.add_argument(
+        "--no-capture",
+        action="store_false",
+        dest="capture",
+        help="Skip J-Space capture recording (GSM8K completions still saved)",
+    )
+    parser.set_defaults(capture=None)
 
 
 def build_parser() -> argparse.ArgumentParser:

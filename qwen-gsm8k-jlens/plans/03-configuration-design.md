@@ -123,7 +123,7 @@ evaluation:
 
 outputs:
   root_dir: "outputs/gsm8k"
-  run_id: null                  # generated if null
+  run_id: null                  # label only; UTC stamp is appended to the folder
   on_existing: "error"          # error | resume
   completion_format: "jsonl"
   capture_format: "jsonl_gzip"  # jsonl_gzip | parquet
@@ -145,7 +145,7 @@ visualization:
 runtime:
   host_profile: "auto"         # auto | m1-max | radeon-8060s |
                                 # nvidia-datacenter | cpu
-  backend: "auto"              # auto | mps | cuda | rocm | cpu
+  backend: "auto"              # auto | mlx | mps | cuda | rocm | cpu
   device: "auto"
   linear_algebra_device: "auto" # auto | model | cpu
   compatibility_mode: "strict" # strict | compatible

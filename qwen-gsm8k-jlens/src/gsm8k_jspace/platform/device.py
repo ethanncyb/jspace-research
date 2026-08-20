@@ -8,6 +8,8 @@ from gsm8k_jspace.platform.capabilities import inspect_backend
 
 
 def resolve_torch_device(requested: str, backend: str) -> torch.device:
+    if requested in {"mlx"} or backend == "mlx":
+        return torch.device("cpu")
     if requested not in {"auto", ""}:
         return torch.device(requested)
     if backend in {"cuda", "rocm"}:

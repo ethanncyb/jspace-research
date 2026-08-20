@@ -22,7 +22,7 @@ from gsm8k_jspace.interventions import build_controller
 from gsm8k_jspace.models.jlens_adapter import load_jlens
 from gsm8k_jspace.models.loader import load_model_bundle
 from gsm8k_jspace.platform.diagnostics import collect_environment
-from gsm8k_jspace.prompting.gsm8k import render_prompt
+from gsm8k_jspace.prompting.gsm8k import format_model_prompt, render_prompt
 from gsm8k_jspace.runner.generation import generate_completion
 from gsm8k_jspace.types import GSM8KExample
 
@@ -93,7 +93,9 @@ def run_experiment(
             for example in examples:
                 if example.example_id in done:
                     continue
-                prompt = render_prompt(example, cfg)
+                prompt = format_model_prompt(
+                    render_prompt(example, cfg), bundle.tokenizer, cfg
+                )
                 prompt_len = _prompt_len(bundle.tokenizer, prompt)
                 controller.reset_example(example.example_id, prompt_len)
                 capture = None
@@ -108,7 +110,12 @@ def run_experiment(
                         example_id=example.example_id,
                         condition=cfg.experiment.condition,
                     )
-                ctx = capture if capture is not None else nullcontext()
+                live_capture = (
+                    capture is not None
+                    and cfg.capture.tokens.mode
+                    not in JSpaceCapture.REPLAY_TOKEN_MODES
+                )
+                ctx = capture if live_capture else nullcontext()
                 with ctx:
                     result = generate_completion(
                         prompt=prompt,
@@ -118,14 +125,17 @@ def run_experiment(
                     )
                 capture_rel = None
                 if capture is not None:
-                    capture.attach_tokens(result.generated_token_ids, bundle.tokenizer)
-                    if (
-                        cfg.capture.tokens.mode == "generated_last"
-                        and cfg.prompt.final_token_capture == "replay"
-                        and result.generated_token_ids
-                    ):
-                        full_ids = result.extra.get("full_ids")
-                        capture.capture_final_replay(full_ids, bundle.tokenizer)
+                    full_ids = result.extra.get("full_ids")
+                    if cfg.capture.tokens.mode == "full_sequence" and full_ids is not None:
+                        capture.capture_sequence_replay(full_ids, bundle.tokenizer)
+                    else:
+                        capture.attach_tokens(result.generated_token_ids, bundle.tokenizer)
+                        if (
+                            cfg.capture.tokens.mode == "generated_last"
+                            and cfg.prompt.final_token_capture == "replay"
+                            and result.generated_token_ids
+                        ):
+                            capture.capture_final_replay(full_ids, bundle.tokenizer)
                     rel = f"captures/{example.example_id}.jsonl.gz"
                     index_row = capture.save(
                         run_dir / "captures" / f"{example.example_id}.jsonl"

@@ -22,17 +22,24 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff"]
+apple = ["mlx>=0.26", "mlx-lm>=0.26"]
+
+[dependency-groups]
 analysis = [
     "matplotlib>=3.8",
     "seaborn>=0.13",
     "pandas>=2.0",
     "ipykernel",
+    "ipywidgets>=8.0",
     "nbformat",
     "nbclient",
 ]
 
 [project.scripts]
 gsm8k-jspace = "gsm8k_jspace.cli:main"
+
+[tool.uv]
+default-groups = ["analysis"]
 
 [tool.uv.sources]
 jlens = { path = "..", editable = true }

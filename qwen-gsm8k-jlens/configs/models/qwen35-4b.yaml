@@ -1,0 +1,19 @@
+# Model/lens overlay for Qwen3.5-4B (fitted n=1000 J-Lens).
+
+model:
+  name: "Qwen/Qwen3.5-4B"
+
+prompt:
+  use_chat_template: true
+
+jlens:
+  required: true
+  source: "hub"
+  repo: "neuronpedia/jacobian-lens"
+  revision: "qwen-n1000"
+  file: "qwen3.5-4b/jlens/Salesforce-wikitext/Qwen3.5-4B_jacobian_lens_n1000.pt"
+  required: true
+  source: "hub"
+  repo: "neuronpedia/jacobian-lens"
+  revision: "qwen-n1000"
+  file: "qwen3.5-4b/jlens/Salesforce-wikitext/Qwen3.5-4B_jacobian_lens_n1000.pt"

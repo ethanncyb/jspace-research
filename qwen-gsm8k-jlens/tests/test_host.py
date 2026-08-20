@@ -5,7 +5,9 @@ from gsm8k_jspace.platform.host import PROFILE_MAP, detect_host_profile
 
 def test_explicit_profiles():
     assert detect_host_profile("cpu").venv_dir == ".venv-cpu"
-    assert detect_host_profile("m1-max").backend == "mps"
+    assert detect_host_profile("m1-max").backend == "mlx"
+    assert detect_host_profile("m1-max").venv_dir == ".venv-mlx"
+    assert detect_host_profile("mps").backend == "mps"
     assert detect_host_profile("radeon-8060s").backend == "rocm"
     assert detect_host_profile("nvidia-datacenter").backend == "cuda"
 
@@ -21,5 +23,6 @@ def test_unknown_profile():
 
 def test_profile_map_covers_aliases():
     assert "mps" in PROFILE_MAP
+    assert "mlx" in PROFILE_MAP
     assert "cuda" in PROFILE_MAP
     assert "rocm" in PROFILE_MAP

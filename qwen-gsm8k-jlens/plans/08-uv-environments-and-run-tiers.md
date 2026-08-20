@@ -7,7 +7,7 @@ keeping incompatible PyTorch accelerator builds isolated:
 
 | host | environment | PyTorch backend | workload tier |
 |---|---|---|---|
-| M1 Max MacBook Pro | `.venv-mps` | MPS | small smoke runs |
+| M1 Max MacBook Pro | `.venv-mlx` | MLX | small smoke runs |
 | Desktop Framework with Radeon 8060S | `.venv-rocm` | ROCm/HIP | medium validation runs |
 | A100 or H100 server | `.venv-cuda` | CUDA | long, full benchmark runs |
 | developer/CI CPU | `.venv-cpu` | CPU | unit and tiny-model tests |
@@ -66,10 +66,10 @@ capture fields. The final resolved config records both inputs.
 The launcher resolves:
 
 ```text
-Darwin + arm64 + MPS available
-    -> profile=mps
-    -> UV_PROJECT_ENVIRONMENT=.venv-mps
-    -> native macOS PyTorch wheel
+Darwin + arm64
+    -> profile=m1-max
+    -> UV_PROJECT_ENVIRONMENT=.venv-mlx
+    -> Apple MLX (`uv sync --extra apple`); MPS remains `--profile mps`
 
 Linux + torch/driver probe reports HIP/AMD
     -> profile=rocm

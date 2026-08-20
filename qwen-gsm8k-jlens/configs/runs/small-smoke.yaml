@@ -5,7 +5,7 @@ experiment:
   condition: "baseline"
   run_tier: "small"
   tags: ["gsm8k", "small"]
-  notes: "M1 Max 5-example correctness smoke."
+  notes: "M1 Max 5-example correctness smoke with full J-lens trace."
 
 benchmark:
   test_type: "full_answer"
@@ -20,18 +20,22 @@ generation:
   do_sample: false
   seed: 0
 
+prompt:
+  use_chat_template: true
+
 capture:
   enabled: true
   layers:
-    mode: "explicit"
-    values: [10, 18]
+    mode: "all_fitted"
   tokens:
-    mode: "generated_last"
-    include_prompt: false
+    mode: "full_sequence"
+    include_prompt: true
   fields:
     hidden_norm: true
     jspace_norm: true
     top_jspace_tokens: true
+    top_logit_tokens: true
+    top_model_tokens: true
     hidden_vector: false
     jspace_vector: false
     intervention_delta_norm: true

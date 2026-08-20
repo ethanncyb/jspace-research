@@ -22,6 +22,7 @@ KNOWN_TOKEN_MODES = (
     "generated_stride",
     "word_end",
     "explicit",
+    "full_sequence",
 )
 KNOWN_INTERVENTION_METHODS = ("mean_replace", "none")
 KNOWN_FEATURE_MODES = ("top_abs", "explicit", "random_matched")
@@ -76,6 +77,8 @@ class CaptureFields:
     hidden_norm: bool = True
     jspace_norm: bool = True
     top_jspace_tokens: bool = True
+    top_logit_tokens: bool = True
+    top_model_tokens: bool = True
     hidden_vector: bool = False
     jspace_vector: bool = False
     intervention_delta_norm: bool = True
@@ -100,6 +103,7 @@ class ModelSection:
     offload_folder: str | None = None
     attention_implementation: str | None = None
     trust_remote_code: bool = False
+    mlx_repo: str | None = None
 
 
 @dataclass
@@ -134,6 +138,7 @@ class PromptSection:
     few_shot_examples: int = 0
     context_overflow: str = "error"
     final_token_capture: str = "replay"
+    use_chat_template: bool = False
 
 
 @dataclass
@@ -295,7 +300,7 @@ class AppConfig:
         _require_choice(
             "runtime.backend",
             self.runtime.backend,
-            ("auto", "mps", "cuda", "rocm", "cpu"),
+            ("auto", "mlx", "mps", "cuda", "rocm", "cpu"),
         )
         _require_choice(
             "runtime.compatibility_mode",
@@ -422,6 +427,7 @@ def apply_cli_overrides(
     run_id: str | None = None,
     resume: bool = False,
     condition: str | None = None,
+    capture: bool | None = None,
 ) -> AppConfig:
     if limit is not None:
         cfg.benchmark.subset_size = int(limit)
@@ -433,6 +439,8 @@ def apply_cli_overrides(
     if condition is not None:
         cfg.experiment.condition = condition
         cfg.intervention.enabled = condition == "intervention"
+    if capture is not None:
+        cfg.capture.enabled = bool(capture)
     cfg.validate()
     return cfg
 

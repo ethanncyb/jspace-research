@@ -3,6 +3,7 @@ from gsm8k_jspace.artifacts.manifest import (
     finalize_manifest,
     load_completed_ids,
     load_manifest,
+    make_run_id,
 )
 from gsm8k_jspace.artifacts.writer import (
     append_jsonl,
@@ -18,6 +19,7 @@ __all__ = [
     "finalize_manifest",
     "load_completed_ids",
     "load_manifest",
+    "make_run_id",
     "read_json",
     "read_jsonl",
     "write_json",

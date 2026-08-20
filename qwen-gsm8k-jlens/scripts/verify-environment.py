@@ -26,9 +26,14 @@ def main() -> int:
         "dtype": info.dtype_name,
     }
     print(json.dumps(payload, indent=2))
+    apple = {"mlx", "mps"}
     if expected.backend != "cpu" and info.name != expected.backend:
-        print("ERROR: requested/resolved torch backend mismatch", file=sys.stderr)
-        return 2
+        if not (expected.backend in apple and info.name in apple):
+            print("ERROR: requested/resolved backend mismatch", file=sys.stderr)
+            return 2
+        if expected.backend == "mlx" and info.name != "mlx":
+            print("ERROR: Apple host expects MLX; mlx is not importable in this env", file=sys.stderr)
+            return 2
     return 0
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -21,13 +22,34 @@ class ResumeError(ValueError):
     """Existing run is incompatible with the requested configuration."""
 
 
+_RUN_STAMP_PREFIX = re.compile(r"^\d{8}T\d{6}Z(?:_|$)")
+_RUN_STAMP_SUFFIX = re.compile(r"(?:^|_)\d{8}T\d{6}Z$")
+
+
+def utc_run_stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _already_stamped(label: str) -> bool:
+    return bool(_RUN_STAMP_SUFFIX.search(label) or _RUN_STAMP_PREFIX.match(label))
+
+
 def make_run_id(cfg: AppConfig) -> str:
+    """Folder name: experiment label with a UTC timestamp at the end.
+
+    `--run-id` / `outputs.run_id` is a label, not the whole directory name.
+    Pass a value that already ends (or starts) with ``YYYYMMDDTHHMMSSZ`` to
+    resume that exact run.
+    """
+    stamp = utc_run_stamp()
     if cfg.outputs.run_id:
-        return cfg.outputs.run_id
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        label = str(cfg.outputs.run_id).strip().rstrip("_")
+        if _already_stamped(label):
+            return label
+        return f"{label}_{stamp}"
     digest = run_fingerprint(cfg)[-8:]
     model_short = cfg.model.name.split("/")[-1].replace(".", "").lower()
-    return f"{stamp}_{cfg.experiment.condition}_{model_short}_{digest}"
+    return f"{cfg.experiment.condition}_{model_short}_{digest}_{stamp}"
 
 
 def dataset_selection_fingerprint(rows: list[dict[str, Any]]) -> str:
@@ -43,6 +65,7 @@ def create_run_dir(
     extra_manifest: dict[str, Any] | None = None,
 ) -> Path:
     run_id = make_run_id(cfg)
+    cfg.outputs.run_id = run_id
     run_dir = Path(cfg.outputs.root_dir) / run_id
     manifest_path = run_dir / "manifest.json"
     if run_dir.exists() and manifest_path.exists():

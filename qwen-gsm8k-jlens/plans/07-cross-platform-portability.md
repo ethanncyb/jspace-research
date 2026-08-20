@@ -5,9 +5,10 @@
 The implementation must treat hardware as a runtime capability, not as a
 hard-coded CUDA assumption.
 
-| target | PyTorch backend | initial support level | notes |
+| target | execution backend | initial support level | notes |
 |---|---|---|---|
-| Apple Silicon M1/MPS | `mps` | supported | macOS; float16 is the safe default |
+| Apple Silicon M1/MLX | `mlx` | supported | macOS; `mlx` + `mlx-lm`; float16/bf16 weights |
+| Apple Silicon MPS fallback | `mps` | supported | PyTorch MPS if MLX is not used (`--profile mps`) |
 | NVIDIA GPU | CUDA | supported | Linux or Windows with compatible PyTorch/CUDA |
 | AMD Radeon 8060S | ROCm/HIP | supported on validated ROCm OS | PyTorch exposes ROCm through much of the `torch.cuda` API |
 | CPU | CPU | correctness/smoke support | too slow for a normal 9B full run |
@@ -130,7 +131,7 @@ Configuration must separate model execution from J-Lens linear algebra:
 
 ```yaml
 runtime:
-  backend: "auto"                    # auto | mps | cuda | rocm | cpu
+  backend: "auto"                    # auto | mlx | mps | cuda | rocm | cpu
   device: "auto"
   linear_algebra_device: "auto"      # auto | model | cpu
   pinv:
