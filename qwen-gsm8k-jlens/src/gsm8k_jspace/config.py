@@ -236,6 +236,10 @@ class RuntimeSection:
     compatibility_mode: str = "strict"
     memory_preflight: bool = True
     minimum_free_memory_gb: float = 2.0
+    # Physical CUDA/ROCm indices. Empty => resolve to [0].
+    gpus: list[int] = field(default_factory=list)
+    # When true and len(gpus) > 1, shard examples across GPUs (cuda/rocm only).
+    parallel: bool = False
     pinv: PinvSection = field(default_factory=PinvSection)
     offline: bool = False
     deterministic_algorithms: bool = False
@@ -340,6 +344,11 @@ class AppConfig:
             )
         if self.jlens.source == "local" and not self.jlens.local_path:
             raise ConfigError("jlens.local_path is required when source=local")
+        self.runtime.gpus = _normalize_gpu_ids(self.runtime.gpus)
+        if self.runtime.parallel and self.runtime.backend in ("mlx", "mps", "cpu"):
+            raise ConfigError(
+                "runtime.parallel=true requires runtime.backend cuda, rocm, or auto"
+            )
         self.capture.layers.validate("capture.layers")
         self.capture.tokens.validate("capture.tokens")
         self.intervention.layers.validate("intervention.layers")
@@ -420,6 +429,36 @@ def load_config(
     return config_from_mapping(data)
 
 
+def parse_gpus_cli(value: str | None) -> list[int] | None:
+    """Parse ``--gpus 0,1,2`` into a list of ints. ``None`` means no override."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return []
+    parts = [part.strip() for part in text.split(",") if part.strip() != ""]
+    return _normalize_gpu_ids([int(part) for part in parts])
+
+
+def _normalize_gpu_ids(gpus: Any) -> list[int]:
+    if gpus is None:
+        return []
+    if not isinstance(gpus, list):
+        raise ConfigError("runtime.gpus must be a list of non-negative integers")
+    normalized: list[int] = []
+    for item in gpus:
+        if isinstance(item, bool) or not isinstance(item, int):
+            raise ConfigError(
+                f"runtime.gpus entries must be non-negative integers, got {item!r}"
+            )
+        if item < 0:
+            raise ConfigError(f"runtime.gpus entries must be >= 0, got {item}")
+        normalized.append(item)
+    if len(normalized) != len(set(normalized)):
+        raise ConfigError("runtime.gpus must not contain duplicates")
+    return normalized
+
+
 def apply_cli_overrides(
     cfg: AppConfig,
     *,
@@ -428,6 +467,7 @@ def apply_cli_overrides(
     resume: bool = False,
     condition: str | None = None,
     capture: bool | None = None,
+    gpus: list[int] | None = None,
 ) -> AppConfig:
     if limit is not None:
         cfg.benchmark.subset_size = int(limit)
@@ -441,6 +481,10 @@ def apply_cli_overrides(
         cfg.intervention.enabled = condition == "intervention"
     if capture is not None:
         cfg.capture.enabled = bool(capture)
+    if gpus is not None:
+        cfg.runtime.gpus = list(gpus)
+        if len(cfg.runtime.gpus) > 1:
+            cfg.runtime.parallel = True
     cfg.validate()
     return cfg
 

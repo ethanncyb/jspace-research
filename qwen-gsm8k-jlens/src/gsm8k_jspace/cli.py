@@ -14,6 +14,7 @@ from gsm8k_jspace.config import (
     deep_merge,
     dump_resolved_yaml,
     load_yaml_mapping,
+    parse_gpus_cli,
 )
 from gsm8k_jspace.evaluation.compare import compare_runs
 from gsm8k_jspace.evaluation.evaluator import evaluate_run
@@ -36,6 +37,7 @@ def _load(args) -> AppConfig:
         resume=getattr(args, "resume", False),
         condition=getattr(args, "condition", None),
         capture=getattr(args, "capture", None),
+        gpus=parse_gpus_cli(getattr(args, "gpus", None)),
     )
 
 
@@ -107,6 +109,11 @@ def _add_config_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--condition", default=None)
+    parser.add_argument(
+        "--gpus",
+        default=None,
+        help="Comma-separated physical GPU indices, e.g. 0,1 (enables parallel when >1)",
+    )
     capture = parser.add_mutually_exclusive_group()
     capture.add_argument(
         "--capture",

@@ -137,6 +137,8 @@ runtime:
   compatibility_mode: "strict"
   memory_preflight: true
   minimum_free_memory_gb: 2.0
+  gpus: []
+  parallel: false
   pinv:
     compute_device: "cpu"
     cache_device: "cpu"

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
+
 import torch
 
+from gsm8k_jspace.config import AppConfig
 from gsm8k_jspace.platform.capabilities import inspect_backend
 
 
@@ -17,6 +20,31 @@ def resolve_torch_device(requested: str, backend: str) -> torch.device:
     if backend == "mps":
         return torch.device("mps")
     return torch.device("cpu")
+
+
+def resolve_gpus(cfg: AppConfig) -> list[int]:
+    """Return physical GPU indices to use; empty config means ``[0]``."""
+    return list(cfg.runtime.gpus) if cfg.runtime.gpus else [0]
+
+
+def should_run_parallel(cfg: AppConfig, gpus: list[int] | None = None) -> bool:
+    ids = list(gpus) if gpus is not None else resolve_gpus(cfg)
+    return bool(cfg.runtime.parallel and len(ids) > 1)
+
+
+def pin_visible_gpu(gpu_id: int) -> None:
+    """Restrict this process to one physical GPU before CUDA initializes."""
+    value = str(int(gpu_id))
+    os.environ["CUDA_VISIBLE_DEVICES"] = value
+    os.environ["HIP_VISIBLE_DEVICES"] = value
+
+
+def prepare_worker_device_config(cfg: AppConfig) -> AppConfig:
+    """Force whole-model placement on the single visible CUDA device."""
+    cfg.runtime.device = "cuda"
+    if cfg.model.device_map in {"auto", "", None}:
+        cfg.model.device_map = "cuda"
+    return cfg
 
 
 def tensor_device(module) -> torch.device:
