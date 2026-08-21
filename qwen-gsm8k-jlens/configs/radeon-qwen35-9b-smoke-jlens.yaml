@@ -1,12 +1,12 @@
-# Radeon 8060S — Qwen3.5-9B-Base five-example smog with full J-Lens capture.
+# Radeon 8060S — Qwen3.5-9B-Base five-example smoke with full J-Lens capture.
 schema_version: 1
 
 experiment:
-  name: "gsm8k-radeon-qwen35-9b-smog-jlens"
+  name: "gsm8k-radeon-qwen35-9b-smoke-jlens"
   condition: "baseline"
   run_tier: "small"
-  tags: ["gsm8k", "smog", "jlens", "radeon-8060s", "qwen35-9b-pt"]
-  notes: "Five-example Radeon smog with full J-Lens recording (Top-K, norms; vectors off by default)."
+  tags: ["gsm8k", "smoke", "jlens", "radeon-8060s", "qwen35-9b-pt"]
+  notes: "Five-example Radeon smoke with full J-Lens recording (Top-K, norms; vectors off by default)."
 
 model:
   name: "Qwen/Qwen3.5-9B-Base"

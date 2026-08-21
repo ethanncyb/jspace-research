@@ -1,12 +1,12 @@
-# NVIDIA — Qwen3.5-9B five-example basic accuracy smog (no J-Lens).
+# Radeon 8060S — Qwen3.5-9B five-example basic accuracy smoke (no J-Lens).
 schema_version: 1
 
 experiment:
-  name: "gsm8k-nvidia-qwen35-9b-smog-basic"
+  name: "gsm8k-radeon-qwen35-9b-smoke-basic"
   condition: "baseline"
   run_tier: "small"
-  tags: ["gsm8k", "smog", "basic", "nvidia-datacenter", "qwen35-9b"]
-  notes: "Five-example NVIDIA accuracy-only smog (no J-Lens)."
+  tags: ["gsm8k", "smoke", "basic", "radeon-8060s", "qwen35-9b"]
+  notes: "Five-example Radeon accuracy-only smoke (no J-Lens)."
 
 model:
   name: "Qwen/Qwen3.5-9B"
@@ -112,13 +112,13 @@ visualization:
   max_capture_rows_in_memory: 250000
 
 runtime:
-  host_profile: "nvidia-datacenter"
-  backend: "cuda"
+  host_profile: "radeon-8060s"
+  backend: "rocm"
   device: "auto"
   linear_algebra_device: "cpu"
   compatibility_mode: "strict"
   memory_preflight: true
-  minimum_free_memory_gb: 8.0
+  minimum_free_memory_gb: 4.0
   gpus: [0]
   parallel: false
   pinv:

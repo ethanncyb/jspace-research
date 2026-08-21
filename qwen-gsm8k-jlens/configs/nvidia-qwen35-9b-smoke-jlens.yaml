@@ -1,15 +1,15 @@
-# Radeon 8060S — Qwen3.5-9B five-example basic accuracy smog (no J-Lens).
+# NVIDIA — Qwen3.5-9B-Base five-example smoke with full J-Lens capture.
 schema_version: 1
 
 experiment:
-  name: "gsm8k-radeon-qwen35-9b-smog-basic"
+  name: "gsm8k-nvidia-qwen35-9b-smoke-jlens"
   condition: "baseline"
   run_tier: "small"
-  tags: ["gsm8k", "smog", "basic", "radeon-8060s", "qwen35-9b"]
-  notes: "Five-example Radeon accuracy-only smog (no J-Lens)."
+  tags: ["gsm8k", "smoke", "jlens", "nvidia-datacenter", "qwen35-9b-pt"]
+  notes: "Five-example NVIDIA smoke with full J-Lens recording (Top-K, norms; vectors off by default)."
 
 model:
-  name: "Qwen/Qwen3.5-9B"
+  name: "Qwen/Qwen3.5-9B-Base"
   revision: null
   tokenizer_revision: null
   dtype: "bfloat16"
@@ -19,8 +19,8 @@ model:
   trust_remote_code: false
 
 jlens:
-  required: false
-  source: "identity"
+  required: true
+  source: "hub"
   repo: "neuronpedia/jacobian-lens"
   revision: "qwen-n1000"
   file: "qwen3.5-9b-pt/jlens/Salesforce-wikitext/Qwen3.5-9B-Base_jacobian_lens.pt"
@@ -42,7 +42,7 @@ prompt:
   few_shot_examples: 0
   context_overflow: "error"
   final_token_capture: "replay"
-  use_chat_template: true
+  use_chat_template: false
 
 generation:
   mode: "greedy"
@@ -54,19 +54,19 @@ generation:
   stop_strings: []
 
 capture:
-  enabled: false
+  enabled: true
   phases: ["post_layer"]
   layers:
-    mode: "late"
+    mode: "all_fitted"
     values: []
     start: null
     stop: null
     stride: 1
   tokens:
-    mode: "all_generated"
+    mode: "full_sequence"
     stride: 1
     positions: []
-    include_prompt: false
+    include_prompt: true
   fields:
     hidden_norm: true
     jspace_norm: true
@@ -76,7 +76,7 @@ capture:
     hidden_vector: false
     jspace_vector: false
     intervention_delta_norm: true
-  top_k_tokens: 20
+  top_k_tokens: 10
   vector_dtype: "float16"
   capture_pre_intervention: true
   capture_post_intervention: false
@@ -112,13 +112,13 @@ visualization:
   max_capture_rows_in_memory: 250000
 
 runtime:
-  host_profile: "radeon-8060s"
-  backend: "rocm"
+  host_profile: "nvidia-datacenter"
+  backend: "cuda"
   device: "auto"
   linear_algebra_device: "cpu"
   compatibility_mode: "strict"
   memory_preflight: true
-  minimum_free_memory_gb: 4.0
+  minimum_free_memory_gb: 8.0
   gpus: [0]
   parallel: false
   pinv:

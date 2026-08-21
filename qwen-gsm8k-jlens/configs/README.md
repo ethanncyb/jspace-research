@@ -26,16 +26,16 @@ Edit these in the YAML:
 
 ## Radeon 8060S (ROCm)
 
-**5-example smog — basic:**
+**5-example smoke — basic:**
 
 ```bash
-./scripts/uv-env run --config configs/radeon-qwen35-9b-smog-basic.yaml --evaluate
+./scripts/uv-env run --config configs/radeon-qwen35-9b-smoke-basic.yaml --evaluate
 ```
 
-**5-example smog — full J-Lens:**
+**5-example smoke — full J-Lens:**
 
 ```bash
-./scripts/uv-env run --config configs/radeon-qwen35-9b-smog-jlens.yaml --evaluate
+./scripts/uv-env run --config configs/radeon-qwen35-9b-smoke-jlens.yaml --evaluate
 ```
 
 **500-example — basic:**
@@ -61,16 +61,16 @@ Edit these in the YAML:
 500-example (and full) configs default to `runtime.gpus: [0, 1]` and `runtime.parallel: true`.
 Each selected GPU loads a **full model copy**.
 
-**5-example smog — basic:**
+**5-example smoke — basic:**
 
 ```bash
-./scripts/uv-env run --config configs/nvidia-qwen35-9b-smog-basic.yaml --evaluate
+./scripts/uv-env run --config configs/nvidia-qwen35-9b-smoke-basic.yaml --evaluate
 ```
 
-**5-example smog — full J-Lens:**
+**5-example smoke — full J-Lens:**
 
 ```bash
-./scripts/uv-env run --config configs/nvidia-qwen35-9b-smog-jlens.yaml --evaluate
+./scripts/uv-env run --config configs/nvidia-qwen35-9b-smoke-jlens.yaml --evaluate
 ```
 
 **500-example — basic:**
@@ -118,7 +118,7 @@ cat outputs/gsm8k/<run_id>/progress.json
 
 ```bash
 ./scripts/uv-env run python -m gsm8k_jspace inspect-config \
-  --config configs/radeon-qwen35-9b-smog-jlens.yaml
+  --config configs/radeon-qwen35-9b-smoke-jlens.yaml
 ```
 
 Outputs land under `outputs/gsm8k/<run_id>/`.

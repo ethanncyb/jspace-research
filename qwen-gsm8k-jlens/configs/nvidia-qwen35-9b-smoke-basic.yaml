@@ -1,15 +1,15 @@
-# NVIDIA — Qwen3.5-9B-Base five-example smog with full J-Lens capture.
+# NVIDIA — Qwen3.5-9B five-example basic accuracy smoke (no J-Lens).
 schema_version: 1
 
 experiment:
-  name: "gsm8k-nvidia-qwen35-9b-smog-jlens"
+  name: "gsm8k-nvidia-qwen35-9b-smoke-basic"
   condition: "baseline"
   run_tier: "small"
-  tags: ["gsm8k", "smog", "jlens", "nvidia-datacenter", "qwen35-9b-pt"]
-  notes: "Five-example NVIDIA smog with full J-Lens recording (Top-K, norms; vectors off by default)."
+  tags: ["gsm8k", "smoke", "basic", "nvidia-datacenter", "qwen35-9b"]
+  notes: "Five-example NVIDIA accuracy-only smoke (no J-Lens)."
 
 model:
-  name: "Qwen/Qwen3.5-9B-Base"
+  name: "Qwen/Qwen3.5-9B"
   revision: null
   tokenizer_revision: null
   dtype: "bfloat16"
@@ -19,8 +19,8 @@ model:
   trust_remote_code: false
 
 jlens:
-  required: true
-  source: "hub"
+  required: false
+  source: "identity"
   repo: "neuronpedia/jacobian-lens"
   revision: "qwen-n1000"
   file: "qwen3.5-9b-pt/jlens/Salesforce-wikitext/Qwen3.5-9B-Base_jacobian_lens.pt"
@@ -42,7 +42,7 @@ prompt:
   few_shot_examples: 0
   context_overflow: "error"
   final_token_capture: "replay"
-  use_chat_template: false
+  use_chat_template: true
 
 generation:
   mode: "greedy"
@@ -54,19 +54,19 @@ generation:
   stop_strings: []
 
 capture:
-  enabled: true
+  enabled: false
   phases: ["post_layer"]
   layers:
-    mode: "all_fitted"
+    mode: "late"
     values: []
     start: null
     stop: null
     stride: 1
   tokens:
-    mode: "full_sequence"
+    mode: "all_generated"
     stride: 1
     positions: []
-    include_prompt: true
+    include_prompt: false
   fields:
     hidden_norm: true
     jspace_norm: true
@@ -76,7 +76,7 @@ capture:
     hidden_vector: false
     jspace_vector: false
     intervention_delta_norm: true
-  top_k_tokens: 10
+  top_k_tokens: 20
   vector_dtype: "float16"
   capture_pre_intervention: true
   capture_post_intervention: false
