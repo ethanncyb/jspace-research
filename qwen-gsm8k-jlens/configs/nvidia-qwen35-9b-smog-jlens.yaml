@@ -1,12 +1,12 @@
-# NVIDIA — Qwen3.5-9B-Base five-example smog with J-Lens capture.
+# NVIDIA — Qwen3.5-9B-Base five-example smog with full J-Lens capture.
 schema_version: 1
 
 experiment:
-  name: "gsm8k-nvidia-qwen35-9b-smog"
+  name: "gsm8k-nvidia-qwen35-9b-smog-jlens"
   condition: "baseline"
   run_tier: "small"
-  tags: ["gsm8k", "smog", "nvidia-datacenter", "qwen35-9b-pt", "jlens"]
-  notes: "Five-example NVIDIA CUDA smog for Qwen3.5-9B-Base with J-Lens recording."
+  tags: ["gsm8k", "smog", "jlens", "nvidia-datacenter", "qwen35-9b-pt"]
+  notes: "Five-example NVIDIA smog with full J-Lens recording (Top-K, norms; vectors off by default)."
 
 model:
   name: "Qwen/Qwen3.5-9B-Base"
@@ -119,8 +119,8 @@ runtime:
   compatibility_mode: "strict"
   memory_preflight: true
   minimum_free_memory_gb: 8.0
-  gpus: [0, 1]
-  parallel: true
+  gpus: [0]
+  parallel: false
   pinv:
     compute_device: "cpu"
     cache_device: "cpu"

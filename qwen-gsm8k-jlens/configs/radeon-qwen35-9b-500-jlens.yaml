@@ -1,15 +1,15 @@
-# Radeon 8060S — Qwen3.5-9B 500-example GSM8K subset (baseline, no capture).
+# Radeon 8060S — Qwen3.5-9B-Base 500-example full J-Lens capture.
 schema_version: 1
 
 experiment:
-  name: "gsm8k-radeon-qwen35-9b-500"
+  name: "gsm8k-radeon-qwen35-9b-500-jlens"
   condition: "baseline"
   run_tier: "medium"
-  tags: ["gsm8k", "medium", "radeon-8060s", "qwen35-9b"]
-  notes: "Fixed 500-example GSM8K subset on Radeon 8060S for Qwen/Qwen3.5-9B (no J-Lens)."
+  tags: ["gsm8k", "medium", "jlens", "radeon-8060s", "qwen35-9b-pt"]
+  notes: "500-example Radeon run with full J-Lens recording (Top-K, norms; vectors off by default)."
 
 model:
-  name: "Qwen/Qwen3.5-9B"
+  name: "Qwen/Qwen3.5-9B-Base"
   revision: null
   tokenizer_revision: null
   dtype: "bfloat16"
@@ -19,8 +19,8 @@ model:
   trust_remote_code: false
 
 jlens:
-  required: false
-  source: "identity"
+  required: true
+  source: "hub"
   repo: "neuronpedia/jacobian-lens"
   revision: "qwen-n1000"
   file: "qwen3.5-9b-pt/jlens/Salesforce-wikitext/Qwen3.5-9B-Base_jacobian_lens.pt"
@@ -42,7 +42,7 @@ prompt:
   few_shot_examples: 0
   context_overflow: "error"
   final_token_capture: "replay"
-  use_chat_template: true
+  use_chat_template: false
 
 generation:
   mode: "greedy"
@@ -54,19 +54,19 @@ generation:
   stop_strings: []
 
 capture:
-  enabled: false
+  enabled: true
   phases: ["post_layer"]
   layers:
-    mode: "late"
+    mode: "all_fitted"
     values: []
     start: null
     stop: null
     stride: 1
   tokens:
-    mode: "all_generated"
+    mode: "full_sequence"
     stride: 1
     positions: []
-    include_prompt: false
+    include_prompt: true
   fields:
     hidden_norm: true
     jspace_norm: true
@@ -76,7 +76,7 @@ capture:
     hidden_vector: false
     jspace_vector: false
     intervention_delta_norm: true
-  top_k_tokens: 20
+  top_k_tokens: 10
   vector_dtype: "float16"
   capture_pre_intervention: true
   capture_post_intervention: false

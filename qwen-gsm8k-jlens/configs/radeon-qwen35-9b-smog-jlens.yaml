@@ -1,0 +1,131 @@
+# Radeon 8060S — Qwen3.5-9B-Base five-example smog with full J-Lens capture.
+schema_version: 1
+
+experiment:
+  name: "gsm8k-radeon-qwen35-9b-smog-jlens"
+  condition: "baseline"
+  run_tier: "small"
+  tags: ["gsm8k", "smog", "jlens", "radeon-8060s", "qwen35-9b-pt"]
+  notes: "Five-example Radeon smog with full J-Lens recording (Top-K, norms; vectors off by default)."
+
+model:
+  name: "Qwen/Qwen3.5-9B-Base"
+  revision: null
+  tokenizer_revision: null
+  dtype: "bfloat16"
+  device_map: "auto"
+  offload_folder: null
+  attention_implementation: null
+  trust_remote_code: false
+
+jlens:
+  required: true
+  source: "hub"
+  repo: "neuronpedia/jacobian-lens"
+  revision: "qwen-n1000"
+  file: "qwen3.5-9b-pt/jlens/Salesforce-wikitext/Qwen3.5-9B-Base_jacobian_lens.pt"
+  local_path: null
+
+benchmark:
+  test_type: "full_answer"
+  dataset: "openai/gsm8k"
+  dataset_config: "main"
+  split: "test"
+  full_run: false
+  subset_size: 5
+  selection: "first"
+  selection_seed: 0
+
+prompt:
+  template: "zero_shot_cot_v1"
+  answer_marker: "####"
+  few_shot_examples: 0
+  context_overflow: "error"
+  final_token_capture: "replay"
+  use_chat_template: false
+
+generation:
+  mode: "greedy"
+  max_new_tokens: 256
+  do_sample: false
+  temperature: 0.0
+  top_p: 1.0
+  seed: 0
+  stop_strings: []
+
+capture:
+  enabled: true
+  phases: ["post_layer"]
+  layers:
+    mode: "all_fitted"
+    values: []
+    start: null
+    stop: null
+    stride: 1
+  tokens:
+    mode: "full_sequence"
+    stride: 1
+    positions: []
+    include_prompt: true
+  fields:
+    hidden_norm: true
+    jspace_norm: true
+    top_jspace_tokens: true
+    top_logit_tokens: true
+    top_model_tokens: true
+    hidden_vector: false
+    jspace_vector: false
+    intervention_delta_norm: true
+  top_k_tokens: 10
+  vector_dtype: "float16"
+  capture_pre_intervention: true
+  capture_post_intervention: false
+
+intervention:
+  enabled: false
+
+evaluation:
+  parser: "gsm8k_numeric_v1"
+  prefer_answer_marker: true
+  allow_last_number_fallback: true
+  numeric_tolerance: 0.0
+
+outputs:
+  root_dir: "outputs/gsm8k"
+  run_id: null
+  on_existing: "resume"
+  completion_format: "jsonl"
+  capture_format: "jsonl_gzip"
+  save_prompts: true
+  save_generated_token_ids: true
+  flush_every_examples: 1
+
+visualization:
+  enabled: true
+  notebooks:
+    - "run-overview"
+    - "gsm8k-accuracy"
+  export_formats: ["ipynb", "html"]
+  figure_formats: ["png", "svg"]
+  save_backing_tables: true
+  max_examples_in_tables: 100
+  max_capture_rows_in_memory: 250000
+
+runtime:
+  host_profile: "radeon-8060s"
+  backend: "rocm"
+  device: "auto"
+  linear_algebra_device: "cpu"
+  compatibility_mode: "strict"
+  memory_preflight: true
+  minimum_free_memory_gb: 4.0
+  gpus: [0]
+  parallel: false
+  pinv:
+    compute_device: "cpu"
+    cache_device: "cpu"
+    cache_dir: ".cache/jspace/pinv"
+    preload: false
+  offline: false
+  deterministic_algorithms: false
+  log_level: "INFO"

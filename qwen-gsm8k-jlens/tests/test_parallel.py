@@ -134,12 +134,15 @@ def test_merge_parallel_shards(tmp_path: Path):
 
 
 def test_nvidia_ready_configs_enable_parallel():
-    smog = load_config(CONFIGS / "nvidia-qwen35-9b-smog.yaml")
-    full = load_config(CONFIGS / "nvidia-qwen35-9b-full.yaml")
-    assert smog.runtime.gpus == [0, 1]
-    assert smog.runtime.parallel is True
-    assert full.runtime.gpus == [0, 1]
-    assert full.runtime.parallel is True
+    basic = load_config(CONFIGS / "nvidia-qwen35-9b-500-basic.yaml")
+    jlens = load_config(CONFIGS / "nvidia-qwen35-9b-500-jlens.yaml")
+    assert basic.runtime.gpus == [0, 1]
+    assert basic.runtime.parallel is True
+    assert jlens.runtime.gpus == [0, 1]
+    assert jlens.runtime.parallel is True
+    assert basic.capture.enabled is False
+    assert jlens.capture.enabled is True
+    assert jlens.capture.top_k_tokens == 10
 
 
 def test_cli_gpus_flag_parses():

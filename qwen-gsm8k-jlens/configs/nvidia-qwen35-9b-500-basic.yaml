@@ -1,12 +1,12 @@
-# NVIDIA — Qwen3.5-9B 500-example GSM8K subset (baseline, no capture).
+# NVIDIA — Qwen3.5-9B 500-example basic accuracy (no J-Lens).
 schema_version: 1
 
 experiment:
-  name: "gsm8k-nvidia-qwen35-9b-500"
+  name: "gsm8k-nvidia-qwen35-9b-500-basic"
   condition: "baseline"
   run_tier: "medium"
-  tags: ["gsm8k", "medium", "nvidia-datacenter", "qwen35-9b"]
-  notes: "Fixed 500-example GSM8K subset on NVIDIA CUDA for Qwen/Qwen3.5-9B (no J-Lens)."
+  tags: ["gsm8k", "medium", "basic", "nvidia-datacenter", "qwen35-9b"]
+  notes: "Fixed 500-example GSM8K accuracy-only run on NVIDIA CUDA (no J-Lens)."
 
 model:
   name: "Qwen/Qwen3.5-9B"

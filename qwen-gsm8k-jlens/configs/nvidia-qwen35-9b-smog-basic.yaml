@@ -1,15 +1,15 @@
-# Radeon 8060S — Qwen3.5-9B-Base five-example smog with J-Lens capture.
+# NVIDIA — Qwen3.5-9B five-example basic accuracy smog (no J-Lens).
 schema_version: 1
 
 experiment:
-  name: "gsm8k-radeon-qwen35-9b-smog"
+  name: "gsm8k-nvidia-qwen35-9b-smog-basic"
   condition: "baseline"
   run_tier: "small"
-  tags: ["gsm8k", "smog", "radeon-8060s", "qwen35-9b-pt", "jlens"]
-  notes: "Five-example Radeon 8060S smog for Qwen3.5-9B-Base with J-Lens recording."
+  tags: ["gsm8k", "smog", "basic", "nvidia-datacenter", "qwen35-9b"]
+  notes: "Five-example NVIDIA accuracy-only smog (no J-Lens)."
 
 model:
-  name: "Qwen/Qwen3.5-9B-Base"
+  name: "Qwen/Qwen3.5-9B"
   revision: null
   tokenizer_revision: null
   dtype: "bfloat16"
@@ -19,8 +19,8 @@ model:
   trust_remote_code: false
 
 jlens:
-  required: true
-  source: "hub"
+  required: false
+  source: "identity"
   repo: "neuronpedia/jacobian-lens"
   revision: "qwen-n1000"
   file: "qwen3.5-9b-pt/jlens/Salesforce-wikitext/Qwen3.5-9B-Base_jacobian_lens.pt"
@@ -42,7 +42,7 @@ prompt:
   few_shot_examples: 0
   context_overflow: "error"
   final_token_capture: "replay"
-  use_chat_template: false
+  use_chat_template: true
 
 generation:
   mode: "greedy"
@@ -54,19 +54,19 @@ generation:
   stop_strings: []
 
 capture:
-  enabled: true
+  enabled: false
   phases: ["post_layer"]
   layers:
-    mode: "all_fitted"
+    mode: "late"
     values: []
     start: null
     stop: null
     stride: 1
   tokens:
-    mode: "full_sequence"
+    mode: "all_generated"
     stride: 1
     positions: []
-    include_prompt: true
+    include_prompt: false
   fields:
     hidden_norm: true
     jspace_norm: true
@@ -76,7 +76,7 @@ capture:
     hidden_vector: false
     jspace_vector: false
     intervention_delta_norm: true
-  top_k_tokens: 10
+  top_k_tokens: 20
   vector_dtype: "float16"
   capture_pre_intervention: true
   capture_post_intervention: false
@@ -112,13 +112,15 @@ visualization:
   max_capture_rows_in_memory: 250000
 
 runtime:
-  host_profile: "radeon-8060s"
-  backend: "rocm"
+  host_profile: "nvidia-datacenter"
+  backend: "cuda"
   device: "auto"
   linear_algebra_device: "cpu"
   compatibility_mode: "strict"
   memory_preflight: true
-  minimum_free_memory_gb: 4.0
+  minimum_free_memory_gb: 8.0
+  gpus: [0]
+  parallel: false
   pinv:
     compute_device: "cpu"
     cache_device: "cpu"
