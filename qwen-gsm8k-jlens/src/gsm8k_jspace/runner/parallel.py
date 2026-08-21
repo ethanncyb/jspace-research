@@ -118,7 +118,7 @@ def run_parallel_experiment(
     project_root: Path | None = None,
 ) -> Path:
     """Shard incomplete examples across GPUs and merge shard artifacts."""
-    from gsm8k_jspace.artifacts.manifest import finalize_manifest, load_completed_ids
+    from gsm8k_jspace.artifacts.manifest import finalize_manifest, load_completed_ids, write_progress
     from gsm8k_jspace.platform.capabilities import inspect_backend
 
     del project_root  # reserved for parity with run_experiment signature
@@ -133,6 +133,12 @@ def run_parallel_experiment(
     merge_parallel_shards(run_dir, n_workers)
     done = load_completed_ids(run_dir)
     pending = [example for example in examples if example.example_id not in done]
+    write_progress(
+        run_dir,
+        completed_examples=len(done),
+        total_examples=len(examples),
+        status="running",
+    )
     if done:
         print(f"[run] resuming: {len(done)} examples already completed")
     if not pending:
@@ -184,6 +190,12 @@ def run_parallel_experiment(
         write_json(
             run_dir / "intervention" / "summary.json",
             {"method": "parallel_baseline", "workers": n_workers, "gpus": gpus},
+        )
+        write_progress(
+            run_dir,
+            completed_examples=n_written,
+            total_examples=len(examples),
+            status="interrupted" if failures else "complete",
         )
         if failures:
             finalize_manifest(run_dir, completed_examples=n_written, status="interrupted")

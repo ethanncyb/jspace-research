@@ -4,6 +4,7 @@ from gsm8k_jspace.artifacts.manifest import (
     load_completed_ids,
     load_manifest,
     make_run_id,
+    write_progress,
 )
 from gsm8k_jspace.artifacts.writer import (
     append_jsonl,
@@ -24,4 +25,5 @@ __all__ = [
     "read_jsonl",
     "write_json",
     "write_jsonl",
+    "write_progress",
 ]

@@ -121,8 +121,15 @@ def create_run_dir(
         "started_at": datetime.now(timezone.utc).isoformat(),
         "finished_at": None,
         "completed_examples": 0,
+        "total_examples": len(selection),
     }
     write_json(manifest_path, manifest)
+    write_progress(
+        run_dir,
+        completed_examples=0,
+        total_examples=len(selection),
+        status="running",
+    )
     return run_dir
 
 
@@ -140,7 +147,43 @@ def finalize_manifest(run_dir: Path, *, completed_examples: int, status: str = "
     manifest["completed_examples"] = completed_examples
     manifest["finished_at"] = datetime.now(timezone.utc).isoformat()
     write_json(run_dir / "manifest.json", manifest)
-    write_json(
-        run_dir / "progress.json",
-        {"completed_examples": completed_examples, "status": status},
+    write_progress(
+        run_dir,
+        completed_examples=completed_examples,
+        total_examples=manifest.get("total_examples"),
+        status=status,
+        last_example_id=manifest.get("last_example_id"),
     )
+
+
+def write_progress(
+    run_dir: Path,
+    *,
+    completed_examples: int,
+    total_examples: int | None = None,
+    status: str = "running",
+    last_example_id: str | None = None,
+) -> None:
+    """Durable mid-run progress so interrupted jobs can be inspected/resumed."""
+    payload: dict[str, Any] = {
+        "completed_examples": int(completed_examples),
+        "status": status,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if total_examples is not None:
+        payload["total_examples"] = int(total_examples)
+    if last_example_id is not None:
+        payload["last_example_id"] = last_example_id
+    write_json(run_dir / "progress.json", payload)
+    try:
+        manifest = load_manifest(run_dir)
+    except Exception:
+        return
+    manifest["completed_examples"] = int(completed_examples)
+    if last_example_id is not None:
+        manifest["last_example_id"] = last_example_id
+    if total_examples is not None:
+        manifest["total_examples"] = int(total_examples)
+    if status == "running":
+        manifest["status"] = "running"
+    write_json(run_dir / "manifest.json", manifest)

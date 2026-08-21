@@ -12,6 +12,7 @@ from gsm8k_jspace.artifacts.manifest import (
     create_run_dir,
     finalize_manifest,
     load_completed_ids,
+    write_progress,
 )
 from gsm8k_jspace.artifacts.writer import append_jsonl, write_json
 from gsm8k_jspace.capture.hooks import JSpaceCapture
@@ -156,6 +157,14 @@ def _run_examples_loop(
                 record["worker"] = worker_label
             append_jsonl(completions_path, record)
             n_written += 1
+            if worker_label is None:
+                write_progress(
+                    run_dir,
+                    completed_examples=n_written,
+                    total_examples=total_examples,
+                    status="running",
+                    last_example_id=example.example_id,
+                )
             print(
                 f"{prefix} {n_written}/{total_examples} {example.example_id} "
                 f"tokens={len(result.generated_token_ids)}"
@@ -170,13 +179,15 @@ def run_example_shard(
     examples: list[GSM8KExample],
     run_dir: Path,
     worker_id: int,
-    total_examples: int,
+    total_examples: int | None = None,
 ) -> int:
     """Load model on the pinned GPU and evaluate one parallel shard."""
     from gsm8k_jspace.runner.parallel import (
         capture_index_shard_path,
         completions_shard_path,
     )
+
+    del total_examples  # display uses len(examples); kept for call-site compatibility
 
     bundle = load_model_bundle(cfg)
     jlens = None
@@ -199,7 +210,8 @@ def run_example_shard(
         examples=examples,
         run_dir=run_dir,
         done=set(),
-        total_examples=total_examples,
+        # Local shard denominator so logs show e.g. 250/250 per worker, not 250/500.
+        total_examples=len(examples),
         completions_path=completions_shard_path(run_dir, worker_id),
         capture_index_path=capture_index_shard_path(run_dir, worker_id),
         jlens=jlens,
