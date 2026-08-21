@@ -44,10 +44,112 @@ class JSpaceCapture:
         self._call_index = 0
         self._handles: list = []
         self.records: list[dict[str, Any]] = []
+        self._vectors: dict[str, torch.Tensor] = {}
         self.run_id = run_id
         self.example_id = example_id
         self.condition = condition
         self.phase = phase
+
+    def _vector_torch_dtype(self) -> torch.dtype:
+        name = str(self.cfg.vector_dtype).lower()
+        if name in {"float16", "fp16", "half"}:
+            return torch.float16
+        if name in {"bfloat16", "bf16"}:
+            return torch.bfloat16
+        return torch.float32
+
+    def _needs_jspace(self) -> bool:
+        fields = self.cfg.fields
+        return bool(
+            fields.jspace_norm or fields.top_jspace_tokens or fields.jspace_vector
+        )
+
+    def _store_vector(
+        self,
+        record: dict[str, Any],
+        *,
+        kind: str,
+        layer: int,
+        absolute_position: int,
+        tensor: torch.Tensor,
+    ) -> None:
+        key = f"L{int(layer)}_P{int(absolute_position)}_{kind}"
+        self._vectors[key] = tensor.detach().to(self._vector_torch_dtype()).cpu()
+        record[f"{kind}_vector_ref"] = {
+            "path": f"{self.example_id}.vectors.pt",
+            "key": key,
+        }
+
+    def _fill_activation_fields(
+        self,
+        record: dict[str, Any],
+        *,
+        hidden: torch.Tensor,
+        jspace: torch.Tensor | None,
+        layer: int,
+        absolute_position: int,
+        include_logit_tops: bool = True,
+        include_model_tops: bool = False,
+        top_jspace: list[dict[str, Any]] | None = None,
+        top_logit: list[dict[str, Any]] | None = None,
+        top_model: list[dict[str, Any]] | None = None,
+        model_argmax_token_id: int | None = None,
+        model_argmax_text: str | None = None,
+        tokenizer=None,
+    ) -> None:
+        fields = self.cfg.fields
+        k = int(self.cfg.top_k_tokens)
+        last = hidden.detach()
+        z = jspace.detach() if jspace is not None else None
+        if fields.hidden_norm:
+            record["hidden_norm"] = torch.linalg.vector_norm(last.float()).item()
+        if fields.jspace_norm and z is not None:
+            record["jspace_norm"] = torch.linalg.vector_norm(z.float()).item()
+        if fields.top_jspace_tokens:
+            if top_jspace is not None:
+                record["top_jspace_tokens"] = top_jspace
+            else:
+                record["top_jspace_tokens"] = self._jlens.top_jspace_tokens(
+                    last, layer, self._lens_model, k
+                )
+        if include_logit_tops and fields.top_logit_tokens:
+            if top_logit is not None:
+                record["top_logit_tokens"] = top_logit
+            else:
+                record["top_logit_tokens"] = topk_token_rows(
+                    self._lens_model.unembed(last), self._lens_model.tokenizer, k
+                )
+        if include_model_tops and fields.top_model_tokens:
+            if top_model is not None:
+                record["top_model_tokens"] = top_model
+                record["model_argmax_token_id"] = model_argmax_token_id
+                record["model_argmax_text"] = model_argmax_text
+            else:
+                tok = tokenizer or self._lens_model.tokenizer
+                rows = topk_token_rows(self._lens_model.unembed(last), tok, k)
+                record["top_model_tokens"] = rows
+                if rows:
+                    record["model_argmax_token_id"] = rows[0]["token_id"]
+                    record["model_argmax_text"] = rows[0]["text"]
+        if fields.hidden_vector:
+            self._store_vector(
+                record,
+                kind="hidden",
+                layer=layer,
+                absolute_position=absolute_position,
+                tensor=last,
+            )
+        if fields.jspace_vector and z is not None:
+            self._store_vector(
+                record,
+                kind="jspace",
+                layer=layer,
+                absolute_position=absolute_position,
+                tensor=z,
+            )
+        if fields.intervention_delta_norm:
+            record["intervention_delta_jspace_norm"] = 0.0
+            record["intervention_delta_hidden_norm"] = 0.0
 
     def _make_hook(self, layer: int):
         def hook(module, inputs, output) -> None:
@@ -79,7 +181,11 @@ class JSpaceCapture:
                 ):
                     continue
                 last = hidden[0, local_pos].detach()
-                z = self._jlens.project_to_jspace(last, layer)
+                z = (
+                    self._jlens.project_to_jspace(last, layer)
+                    if self._needs_jspace()
+                    else None
+                )
                 record: dict[str, Any] = {
                     "schema_version": SCHEMA_VERSION,
                     "run_id": self.run_id,
@@ -96,17 +202,15 @@ class JSpaceCapture:
                     "capture_event": "prefill" if is_prefill else "decode",
                     "state_token_position": int(abs_pos),
                 }
-                if self.cfg.fields.hidden_norm:
-                    record["hidden_norm"] = torch.linalg.vector_norm(last.float()).item()
-                if self.cfg.fields.jspace_norm:
-                    record["jspace_norm"] = torch.linalg.vector_norm(z.float()).item()
-                if self.cfg.fields.top_jspace_tokens:
-                    record["top_jspace_tokens"] = self._jlens.top_jspace_tokens(
-                        last, layer, self._lens_model, self.cfg.top_k_tokens
-                    )
-                if self.cfg.fields.intervention_delta_norm:
-                    record["intervention_delta_jspace_norm"] = 0.0
-                    record["intervention_delta_hidden_norm"] = 0.0
+                self._fill_activation_fields(
+                    record,
+                    hidden=last,
+                    jspace=z,
+                    layer=layer,
+                    absolute_position=int(abs_pos),
+                    include_logit_tops=True,
+                    include_model_tops=(layer == self.layers[-1]),
+                )
                 self.records.append(record)
             if layer == self.layers[-1]:
                 self._call_index += 1
@@ -164,8 +268,13 @@ class JSpaceCapture:
             def hook(module, inputs, output) -> None:
                 hidden = output if torch.is_tensor(output) else output[0]
                 last = hidden[0, -1].detach()
-                z = self._jlens.project_to_jspace(last, layer)
+                z = (
+                    self._jlens.project_to_jspace(last, layer)
+                    if self._needs_jspace()
+                    else None
+                )
                 token_id = int(input_ids[0, -1].item())
+                abs_pos = int(input_ids.shape[1] - 1)
                 record = {
                     "schema_version": SCHEMA_VERSION,
                     "run_id": self.run_id,
@@ -174,22 +283,24 @@ class JSpaceCapture:
                     "layer": layer,
                     "phase": self.phase,
                     "forward_index": -1,
-                    "absolute_position": int(input_ids.shape[1] - 1),
-                    "generated_position": int(input_ids.shape[1] - 1 - self._prompt_len),
+                    "absolute_position": abs_pos,
+                    "generated_position": abs_pos - self._prompt_len,
                     "word_index": None,
                     "token_id": token_id,
                     "token_text": tokenizer.decode([token_id]),
                     "capture_event": "final_replay",
-                    "state_token_position": int(input_ids.shape[1] - 1),
+                    "state_token_position": abs_pos,
                 }
-                if self.cfg.fields.hidden_norm:
-                    record["hidden_norm"] = torch.linalg.vector_norm(last.float()).item()
-                if self.cfg.fields.jspace_norm:
-                    record["jspace_norm"] = torch.linalg.vector_norm(z.float()).item()
-                if self.cfg.fields.top_jspace_tokens:
-                    record["top_jspace_tokens"] = self._jlens.top_jspace_tokens(
-                        last, layer, self._lens_model, self.cfg.top_k_tokens
-                    )
+                self._fill_activation_fields(
+                    record,
+                    hidden=last,
+                    jspace=z,
+                    layer=layer,
+                    absolute_position=abs_pos,
+                    include_logit_tops=True,
+                    include_model_tops=(layer == self.layers[-1]),
+                    tokenizer=tokenizer,
+                )
                 self.records.append(record)
 
             return hook
@@ -203,12 +314,7 @@ class JSpaceCapture:
                 handle.remove()
 
     def capture_sequence_replay(self, input_ids: torch.Tensor, tokenizer) -> None:
-        """Record J-lens and logit-lens readouts at every token, matching jlens.apply.
-
-        One non-generating forward over the full ``<|im_start|>`` … ``<|im_end|>``
-        sequence (prompt + generated tokens). Per-layer top-k lists are stored so
-        later notebooks can inspect every layer after the run.
-        """
+        """Record J-lens and logit-lens readouts at every token, matching jlens.apply."""
         if input_ids is None:
             return
         if not torch.is_tensor(input_ids):
@@ -259,7 +365,7 @@ class JSpaceCapture:
                 hidden = hidden.unsqueeze(0)
             seq = min(int(hidden.shape[0]), seq_len)
             jspace = None
-            if self.cfg.fields.jspace_norm or self.cfg.fields.top_jspace_tokens:
+            if self._needs_jspace():
                 jspace = self._jlens.project_to_jspace(hidden[:seq], layer)
             j_top = None
             logit_top = None
@@ -291,41 +397,57 @@ class JSpaceCapture:
                     "capture_event": "sequence_replay",
                     "state_token_position": pos,
                 }
-                if self.cfg.fields.hidden_norm:
-                    record["hidden_norm"] = torch.linalg.vector_norm(last.float()).item()
-                if self.cfg.fields.jspace_norm and z is not None:
-                    record["jspace_norm"] = torch.linalg.vector_norm(z.float()).item()
-                if j_top is not None:
-                    record["top_jspace_tokens"] = j_top[pos]
-                if logit_top is not None:
-                    record["top_logit_tokens"] = logit_top[pos]
-                if model_top is not None and layer == self.layers[-1]:
-                    record["top_model_tokens"] = model_top[pos]
-                    record["model_argmax_token_id"] = model_argmax[pos] if model_argmax else None
-                    record["model_argmax_text"] = (
-                        tokenizer.decode([model_argmax[pos]]) if model_argmax else None
-                    )
-                if self.cfg.fields.intervention_delta_norm:
-                    record["intervention_delta_jspace_norm"] = 0.0
-                    record["intervention_delta_hidden_norm"] = 0.0
+                self._fill_activation_fields(
+                    record,
+                    hidden=last,
+                    jspace=z,
+                    layer=layer,
+                    absolute_position=pos,
+                    include_logit_tops=True,
+                    include_model_tops=(
+                        model_top is not None and layer == self.layers[-1]
+                    ),
+                    top_jspace=j_top[pos] if j_top is not None else None,
+                    top_logit=logit_top[pos] if logit_top is not None else None,
+                    top_model=model_top[pos] if model_top is not None else None,
+                    model_argmax_token_id=(
+                        model_argmax[pos] if model_argmax is not None else None
+                    ),
+                    model_argmax_text=(
+                        tokenizer.decode([model_argmax[pos]])
+                        if model_argmax is not None
+                        else None
+                    ),
+                    tokenizer=tokenizer,
+                )
                 self.records.append(record)
 
     def save(self, path: Path) -> dict[str, Any]:
         path.parent.mkdir(parents=True, exist_ok=True)
+        vectors_name = None
+        if self._vectors:
+            vectors_path = path.parent / f"{self.example_id}.vectors.pt"
+            torch.save(self._vectors, vectors_path)
+            vectors_name = vectors_path.name
         payload = "".join(json.dumps(row) + "\n" for row in self.records)
         gz_path = path if str(path).endswith(".gz") else Path(str(path) + ".gz")
         with gzip.open(gz_path, "wt") as handle:
             handle.write(payload)
         digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
         layers = sorted({row["layer"] for row in self.records})
-        return {
+        meta = {
             "example_id": self.example_id,
             "path": str(gz_path.name),
             "rows": len(self.records),
             "layers": layers,
             "token_mode": self.cfg.tokens.mode,
+            "top_k_tokens": int(self.cfg.top_k_tokens),
             "sha256": "sha256:" + digest,
         }
+        if vectors_name is not None:
+            meta["vectors_path"] = vectors_name
+            meta["n_vectors"] = len(self._vectors)
+        return meta
 
 
 def _as_seq_matrix(tensor: torch.Tensor) -> torch.Tensor:

@@ -349,6 +349,8 @@ class AppConfig:
             raise ConfigError(
                 "runtime.parallel=true requires runtime.backend cuda, rocm, or auto"
             )
+        if int(self.capture.top_k_tokens) < 1:
+            raise ConfigError("capture.top_k_tokens must be >= 1")
         self.capture.layers.validate("capture.layers")
         self.capture.tokens.validate("capture.tokens")
         self.intervention.layers.validate("intervention.layers")
