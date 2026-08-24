@@ -13,10 +13,11 @@ MODEL_NAME = "Qwen/Qwen3.5-4B"
 # MODEL_NAME = "Qwen/Qwen3.5-9B-Base"
 LENS_REPO = "neuronpedia/jacobian-lens"
 LENS_REVISION = "qwen-n1000"
-LENS_FILE = {
+LENS_FILES = {
     "Qwen/Qwen3.5-4B": "qwen3.5-4b/jlens/Salesforce-wikitext/Qwen3.5-4B_jacobian_lens_n1000.pt",
     "Qwen/Qwen3.5-9B-Base": "qwen3.5-9b-pt/jlens/Salesforce-wikitext/Qwen3.5-9B-Base_jacobian_lens.pt",
-}[MODEL_NAME]
+}
+LENS_FILE = LENS_FILES[MODEL_NAME]
 # Filesystem-safe tag used in results/ artifact names.
 MODEL_TAG = {
     "Qwen/Qwen3.5-4B": "qwen3.5-4b",
@@ -24,8 +25,8 @@ MODEL_TAG = {
 }[MODEL_NAME]
 
 
-def load_model_and_lens():
-    """Load MODEL_NAME + its Neuronpedia Jacobian lens.
+def load_model_and_lens(model_name: str = MODEL_NAME):
+    """Load ``model_name`` + its Neuronpedia Jacobian lens.
 
     Returns (hf_model, model, lens, tokenizer, device).
     """
@@ -36,11 +37,11 @@ def load_model_and_lens():
     else:
         device, dtype = torch.device("cpu"), torch.float32
 
-    hf = transformers.AutoModelForCausalLM.from_pretrained(MODEL_NAME, dtype=dtype).to(device)
-    tok = transformers.AutoTokenizer.from_pretrained(MODEL_NAME)
+    hf = transformers.AutoModelForCausalLM.from_pretrained(model_name, dtype=dtype).to(device)
+    tok = transformers.AutoTokenizer.from_pretrained(model_name)
     model = jlens.from_hf(hf, tok)
     lens = jlens.JacobianLens.from_pretrained(
-        LENS_REPO, filename=LENS_FILE, revision=LENS_REVISION
+        LENS_REPO, filename=LENS_FILES[model_name], revision=LENS_REVISION
     )
     print(f"loaded {model} on {device} / {dtype}")
     print(f"loaded {lens}")

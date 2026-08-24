@@ -119,3 +119,17 @@ semantic:
   judge_max_tokens: 256
   batch_size: 8
   cache_path: outputs/strong_attacker_eval/semantic_judge_cache.jsonl
+
+# JSpace (Jacobian-lens) injection probe: scripts/build_jspace_dataset.py and
+# scripts/train_jspace_probe.py. Layers are lens source layers (0..30 fitted).
+jspace:
+  layers: "21-30"
+  top_k: 64
+  max_concepts: 8192
+  min_df: 2
+  pooling: max              # max | topm_mass | mean | last_token
+  head: linear              # linear | mlp
+  n_clusters: 64
+  cache_dir: outputs/jspace_cache
+  records_dir: data/experiments/jspace
+  output_dir: outputs/jspace_probe

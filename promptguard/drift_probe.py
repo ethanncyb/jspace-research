@@ -154,7 +154,7 @@ class DriftProbe(nn.Module):
                     f"expected {self.hidden_dim}"
                 )
             target = self.classifiers[str(layer)]
-            value = value.to(target.weight.device)
+            value = value.to(next(target.parameters()).device)
             result[layer] = target(value).squeeze(-1)
         return result
 

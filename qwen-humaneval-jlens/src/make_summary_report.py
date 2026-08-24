@@ -107,6 +107,40 @@ def _plot_flips(arms: list[dict], out_path: Path) -> None:
     plt.close(fig)
 
 
+def _plot_window_profile(baseline: float, arms: list[dict], out_path: Path) -> bool:
+    """pass@1 vs 2-layer window position (the 'which layers matter' figure)."""
+    windows = [a for a in arms if len(a["layers"]) == 2]
+    if not windows:
+        return False
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    x = [a["layers"][0] for a in windows]
+    y = [a["pass_at_1"] for a in windows]
+    doses = [a["rel_change"] for a in windows]
+
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.axhline(baseline, color="#4C9F70", ls="--", lw=1.2,
+               label=f"baseline ({baseline:.3f})")
+    ax.plot(x, y, marker="o", color="#C0504D", label="2-layer ablation")
+    for xi, yi, a in zip(x, y, windows):
+        ax.annotate(f"{yi:.3f}", (xi, yi), textcoords="offset points",
+                    xytext=(0, 8), ha="center", fontsize=9)
+    ax.set_xlabel("first layer of the 2-layer ablated window")
+    ax.set_ylabel("HumanEval pass@1")
+    ax.set_xticks(x)
+    ax.set_title("Which layers carry the effect? pass@1 vs ablated window\n"
+                 "(mean_replace, top-k=50, α=0.05)")
+    ax.grid(alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    return True
+
+
 def make_report(cfg: dict) -> Path:
     out_base = Path(cfg["outputs"]["base_dir"])
     reports = out_base / "reports"
@@ -130,6 +164,7 @@ def make_report(cfg: dict) -> Path:
 
     _plot_pass_at_1(p_base, arms, reports / "pass_at_1_by_arm.png")
     _plot_flips(arms, reports / "flips_by_arm.png")
+    window_plot = _plot_window_profile(p_base, arms, reports / "window_profile.png")
 
     def _rel(a):
         return f"{a['rel_change']:.1%}" if a["rel_change"] is not None else "?"
@@ -249,9 +284,9 @@ def make_report(cfg: dict) -> Path:
         a = by_label["10–26"]
         findings.append(
             f"- **Full band 10–26: pass@1 {a['pass_at_1']:.4f} ({a['broken']} broken, "
-            f"{a['fixed']} fixed).** The strongest interpretable effect. Roughly "
-            "half the band's causal weight sits in the 12–20 core and half in the "
-            "edge layers (10–11, 21–26)."
+            f"{a['fixed']} fixed).** The strongest interpretable effect. The 2-layer "
+            "sweep shows the band's causal weight is concentrated at its FRONT "
+            "(layers 10–13) and decays with depth."
         )
     if "27–30" in by_label:
         a = by_label["27–30"]
@@ -263,6 +298,35 @@ def make_report(cfg: dict) -> Path:
             "downstream computation."
         )
     lines += findings
+
+    windows = [a for a in arms if len(a["layers"]) == 2]
+    if windows:
+        lines += [
+            "",
+            "## Fine-grained 2-layer sweep (windows across the band)",
+            "",
+        ]
+        if window_plot:
+            lines += ["![pass@1 by 2-layer window](window_profile.png)", ""]
+        lines += [
+            "| window | pass@1 | rel. drop | broken | fixed | hidden Δ |",
+            "|---|---|---|---|---|---|",
+            *(
+                f"| layers {a['label']} | {a['pass_at_1']:.4f} "
+                f"| {(p_base - a['pass_at_1']) / p_base:+.1%} | {a['broken']} "
+                f"| {a['fixed']} | {_rel(a)} |"
+                for a in windows
+            ),
+            "",
+            "The effect decays monotonically with depth across the band: ablating",
+            "the front of the band hurts most, the back of the band (20–21) is",
+            "indistinguishable from baseline. Caveat: the hidden-space dose is not",
+            "constant across windows (earlier windows perturb more for the same α),",
+            "so part of the gradient reflects dose; but the broken/fixed balance",
+            "(strongly directional at the front, 5/5 noise at the back) supports a",
+            "genuine positional gradient, not just a dose artifact.",
+            "",
+        ]
     lines += [
         "",
         "**Bottom line:** the causal dependence on J-Space content for HumanEval",

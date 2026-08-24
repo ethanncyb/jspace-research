@@ -23,8 +23,6 @@ dependencies = [
     "matplotlib>=3.8",
     "seaborn>=0.13",
     "ipykernel>=7.3.0",
-    "causal-conv1d>=1.6.2.post1",
-    "flash-linear-attention>=0.5.2",
 ]
 
 [project.urls]
@@ -33,6 +31,9 @@ Paper = "https://transformer-circuits.pub/2026/workspace/index.html"
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff"]
+# CUDA-only kernels for Qwen3.5's gated-delta-net layers. Not installable on
+# macOS; transformers falls back to its torch-native GDN path without them.
+cuda = ["causal-conv1d>=1.6.2.post1", "flash-linear-attention>=0.5.2"]
 
 [tool.ruff]
 line-length = 88

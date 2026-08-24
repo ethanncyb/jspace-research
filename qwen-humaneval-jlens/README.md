@@ -125,6 +125,12 @@ calibration-set means are marked in `src/jspace_intervention.py`.
 | mean_replace α=0.05 k=50 | 12–20 (mid core) | **0.3049** (50/164) | −49.5% | 51 / 2 |
 | mean_replace α=0.05 k=50 | 10–26 (full band) | **0.1098** (18/164) | −81.8% | 81 / 0 |
 | mean_replace α=0.05 k=50 | 27–30 (late edge) | **0.6098** (100/164) | +1.0% (noise) | 9 / 10 |
+| mean_replace α=0.05 k=50 | 10–11 | **0.3780** (62/164) | −37.4% | 39 / 2 |
+| mean_replace α=0.05 k=50 | 12–13 | **0.4512** (74/164) | −25.3% | 28 / 3 |
+| mean_replace α=0.05 k=50 | 14–15 | **0.5427** (89/164) | −10.1% | 16 / 6 |
+| mean_replace α=0.05 k=50 | 16–17 | **0.5549** (91/164) | −8.1% | 14 / 6 |
+| mean_replace α=0.05 k=50 | 18–19 | **0.5793** (95/164) | −4.0% | 9 / 5 |
+| mean_replace α=0.05 k=50 | 20–21 | **0.6037** (99/164) | 0.0% (noise) | 5 / 5 |
 
 The layer map: early-layer ablation (0–9) is catastrophic but uninformative
 about J-Space specificity — early representations are load-bearing for
@@ -132,7 +138,13 @@ everything, and the damage propagates through the whole network. The mid-to-late
 band (10–26, core 12–20) shows the interpretable effect: fluent code, broken
 logic. The final fitted layers (27–30) show no directional effect (9 broken vs
 10 fixed = balanced random flips) — consistent with J-Space there being the
-readout itself rather than content used by downstream computation.
+readout itself rather than content used by downstream computation. The 2-layer
+window sweep shows the effect is concentrated at the FRONT of the band and
+decays monotonically with depth: 10–11 (−37%) → 12–13 (−25%) → 14–15 (−10%) →
+16–17 (−8%) → 18–19 (−4%) → 20–21 (0%). Caveat: the hidden-space dose is not
+constant across windows (27% at 10–11 down to 8% at 20–21 for the same α), so
+the gradient partly reflects dose — but the broken/fixed balance (39/2 at the
+front, 5/5 at the back) supports a genuine positional gradient.
 
 Per-arm details: `outputs/intervention_layers_<first>_<last>/comparison/`.
 

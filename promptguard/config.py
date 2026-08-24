@@ -148,6 +148,20 @@ class SemanticConfig:
 
 
 @dataclass
+class JSpaceConfig:
+    layers: str = "21-30"
+    top_k: int = 64
+    max_concepts: int = 8192
+    min_df: int = 2
+    pooling: str = "max"
+    head: str = "linear"
+    n_clusters: int = 64
+    cache_dir: str = "outputs/jspace_cache"
+    records_dir: str = "data/experiments/jspace"
+    output_dir: str = "outputs/jspace_probe"
+
+
+@dataclass
 class ResearchConfig:
     model: ModelConfig = field(default_factory=ModelConfig)
     probe: ProbeConfig = field(default_factory=ProbeConfig)
@@ -161,6 +175,7 @@ class ResearchConfig:
     baselines: BaselineConfig = field(default_factory=BaselineConfig)
     metrics: MetricsConfig = field(default_factory=MetricsConfig)
     semantic: SemanticConfig = field(default_factory=SemanticConfig)
+    jspace: JSpaceConfig = field(default_factory=JSpaceConfig)
 
 
 def _construct(cls: type, values: dict[str, Any] | None):
@@ -193,6 +208,7 @@ def load_config(path: str | Path) -> ResearchConfig:
         "baselines": BaselineConfig,
         "metrics": MetricsConfig,
         "semantic": SemanticConfig,
+        "jspace": JSpaceConfig,
     }
     unknown = set(raw) - set(sections)
     if unknown:
