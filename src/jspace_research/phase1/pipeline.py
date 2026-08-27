@@ -12,10 +12,18 @@ import pandas as pd
 import torch
 from tqdm.auto import tqdm
 
+from .adapters import (
+    HuggingFaceModelAdapter,
+    JacobianLensAdapter,
+    load_tokenizer,
+    validate_lens_for_layers,
+    validate_model_lens,
+)
 from .cache import (
     atomic_write_json,
     ensure_cache_metadata,
     load_done,
+    open_memmap,
     open_uint16_memmap,
     read_json,
     save_done,
@@ -56,29 +64,22 @@ def _package_version(name: str) -> str | None:
 
 def _base_provenance(config: Phase1Config, manifest_digest: str) -> dict[str, Any]:
     return {
-        "model": {
-            "id": config.model.id,
-            "revision": config.model.revision,
-            "precision": config.model.precision,
-        },
-        "lens": {
-            "repository": config.lens.repository,
-            "revision": config.lens.revision,
-            "filename": config.lens.filename,
-            "sha256": config.lens.sha256,
-        },
-        "dependencies": {
-            "jacobian_lens_revision": config.dependencies.jacobian_lens_revision,
-            "bipia_revision": config.dependencies.bipia_revision,
-        },
-        "experiment": {
-            "seed": config.seed,
-            "tasks": list(config.tasks),
-            "train_pairs_per_task": config.train_pairs_per_task,
-            "validation_pairs_per_task": config.validation_pairs_per_task,
-            "max_input_tokens": config.max_input_tokens,
+        "schema_version": 1,
+        "phase": 1,
+        "run_id": _run_id(config, manifest_digest),
+        "resolved_config": config.scientific_dict(),
+        "decomposition": {
+            "method": "screened_nonnegative_greedy_approximation",
+            "dictionary_l2_normalized": True,
             "sparsity_k": config.sparsity_k,
             "screen_candidates": config.screen_candidates,
+        },
+        "dtypes": {
+            "model": config.model.precision,
+            "activation_cache": "bfloat16",
+            "reconstruction_cache": "bfloat16",
+            "coefficient_cache": "float32",
+            "support_id_cache": "int32",
         },
         "config_sha256": config.identity_hash(),
         "manifest_sha256": manifest_digest,
@@ -87,6 +88,10 @@ def _base_provenance(config: Phase1Config, manifest_digest: str) -> dict[str, An
             for name in ("jspace-research", "jlens", "torch", "transformers")
         },
     }
+
+
+def _run_id(config: Phase1Config, manifest_digest: str) -> str:
+    return f"phase1-{config.identity_hash()[:12]}-{manifest_digest[:12]}"
 
 
 def _write_or_validate_provenance(
@@ -104,33 +109,15 @@ def _write_or_validate_provenance(
                 raise RuntimeError(f"Provenance mismatch at {path}; use a new output directory")
         value = current
     else:
-        value = base
+        value = {
+            **base,
+            "selected_layer": None,
+            "run_layers": None,
+            "gpu": None,
+        }
     if updates:
         value.update(updates)
     atomic_write_json(path, value)
-
-
-def _load_tokenizer(config: Phase1Config) -> Any:
-    from transformers import AutoTokenizer
-
-    return AutoTokenizer.from_pretrained(config.model.id, revision=config.model.revision)
-
-
-def _load_lens(config: Phase1Config) -> tuple[Any, Path]:
-    from huggingface_hub import hf_hub_download
-    from jlens import JacobianLens
-
-    path = Path(
-        hf_hub_download(
-            repo_id=config.lens.repository,
-            filename=config.lens.filename,
-            revision=config.lens.revision,
-        )
-    )
-    actual = sha256_file(path)
-    if actual != config.lens.sha256:
-        raise RuntimeError(f"Lens SHA-256 mismatch: expected {config.lens.sha256}, found {actual}")
-    return JacobianLens.load(str(path)), path
 
 
 def _select_run_layers(source_layers: list[int], count: int | None) -> list[int]:
@@ -143,7 +130,7 @@ def _select_run_layers(source_layers: list[int], count: int | None) -> list[int]
 def _load_prepared(
     config: Phase1Config,
 ) -> tuple[Path, list[dict[str, Any]], list[dict[str, Any]], str]:
-    config.validate(require_data_files=True)
+    config.validate()
     manifest_path = config.output_dir / "pair_manifest.jsonl"
     if not manifest_path.exists():
         raise RuntimeError("Run the prepare stage before capture or analysis")
@@ -156,7 +143,7 @@ def _load_prepared(
 
 def prepare(config: Phase1Config) -> Path:
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    tokenizer = _load_tokenizer(config)
+    tokenizer = load_tokenizer(config)
     manifest_path, rows = prepare_manifest(config, tokenizer)
     validate_pair_manifest(rows, config)
     digest = manifest_sha256(manifest_path)
@@ -165,51 +152,20 @@ def prepare(config: Phase1Config) -> Path:
     return manifest_path
 
 
-def _load_model(config: Phase1Config) -> Any:
-    from transformers import AutoModelForCausalLM
-
-    kwargs = {
-        "revision": config.model.revision,
-        "dtype": torch.bfloat16,
-        "device_map": "auto",
-        "low_cpu_mem_usage": True,
-    }
-    try:
-        return AutoModelForCausalLM.from_pretrained(config.model.id, **kwargs)
-    except Exception as causal_error:
-        try:
-            from transformers import AutoModelForMultimodalLM
-
-            print(
-                "AutoModelForCausalLM failed; trying AutoModelForMultimodalLM: "
-                f"{type(causal_error).__name__}"
-            )
-            return AutoModelForMultimodalLM.from_pretrained(config.model.id, **kwargs)
-        except Exception:
-            raise causal_error from None
-
-
 def capture(config: Phase1Config) -> Path:
     if not torch.cuda.is_available():
         raise RuntimeError("The capture stage requires a CUDA GPU")
     _, _, examples, manifest_digest = _load_prepared(config)
-    tokenizer = _load_tokenizer(config)
-    lens, _ = _load_lens(config)
-
-    import jlens
-
-    hf_model = _load_model(config)
-    hf_model.eval()
-    lens_model = jlens.from_hf(hf_model, tokenizer, compile=False)
-    if lens_model.d_model != lens.d_model:
-        raise RuntimeError(f"Model/lens width mismatch: {lens_model.d_model} != {lens.d_model}")
-    if max(lens.source_layers) >= lens_model.n_layers:
-        raise RuntimeError("The fitted lens contains an out-of-range source layer")
+    tokenizer = load_tokenizer(config)
+    lens = JacobianLensAdapter.load(config)
+    model = HuggingFaceModelAdapter.load(config, tokenizer)
+    validate_model_lens(model, lens)
 
     run_layers = _select_run_layers(list(lens.source_layers), config.smoke_layer_count)
     number_examples = len(examples)
-    width = lens_model.d_model
+    width = model.hidden_width
     cache_identity = {
+        "cache_schema_version": 2,
         "config_sha256": config.identity_hash(),
         "manifest_sha256": manifest_digest,
         "number_examples": number_examples,
@@ -218,6 +174,8 @@ def capture(config: Phase1Config) -> Path:
         "model_id": config.model.id,
         "model_revision": config.model.revision,
         "lens_sha256": config.lens.sha256,
+        "dtype": "bfloat16",
+        "decision_point": "final_non_padding_prompt_token_before_generation",
     }
     cache_dir = config.output_dir / "cache"
     ensure_cache_metadata(cache_dir / "activations.json", cache_identity)
@@ -232,24 +190,14 @@ def capture(config: Phase1Config) -> Path:
         input_ids = render_ids(tokenizer, examples[example_index]["messages"])
         if input_ids.shape[-1] > config.max_input_tokens:
             raise RuntimeError(f"Frozen example {example_index} exceeds max_input_tokens")
-        input_ids = input_ids.to(lens_model.input_device)
-        with (
-            torch.no_grad(),
-            jlens.ActivationRecorder(lens_model.layers, at=run_layers) as recorder,
-        ):
-            lens_model.forward(input_ids)
-        if set(recorder.activations) != set(run_layers):
-            raise RuntimeError(f"Missing captured layers for example {example_index}")
-        stack = torch.stack(
-            [recorder.activations[layer][0, -1, :].detach() for layer in run_layers]
-        )
+        stack = model.capture_final_prompt_token(input_ids, run_layers)
         activations[example_index] = tensor_to_bfloat16_bits(stack)
         activations.flush()
         done[example_index] = True
         save_done(done_path, done)
 
     unembedding_path = cache_dir / "unembedding_weight_bf16.pt"
-    unembedding = lens_model._lm_head.weight.detach().to("cpu", dtype=torch.bfloat16).contiguous()
+    unembedding = model.unembedding()
     if unembedding_path.exists():
         existing = torch.load(unembedding_path, map_location="cpu", weights_only=True)
         if existing.shape != unembedding.shape or existing.dtype != unembedding.dtype:
@@ -257,19 +205,30 @@ def capture(config: Phase1Config) -> Path:
     else:
         torch.save(unembedding, unembedding_path)
 
-    gpu = torch.cuda.get_device_properties(0)
+    gpu_devices = []
+    for index in range(torch.cuda.device_count()):
+        properties = torch.cuda.get_device_properties(index)
+        gpu_devices.append(
+            {
+                "index": index,
+                "name": torch.cuda.get_device_name(index),
+                "total_memory_bytes": int(properties.total_memory),
+            }
+        )
     _write_or_validate_provenance(
         config,
         manifest_digest,
         updates={
             "gpu": {
-                "name": torch.cuda.get_device_name(0),
-                "total_memory_bytes": int(gpu.total_memory),
+                "device_count": len(gpu_devices),
+                "devices": gpu_devices,
+                "model_input_device": str(model.input_device),
+                "analysis_device": "cuda:0",
             },
             "run_layers": run_layers,
         },
     )
-    del lens_model, hf_model, unembedding, activations
+    del model, lens, unembedding, activations
     gc.collect()
     torch.cuda.empty_cache()
     print(f"Activation cache complete: {activation_path}")
@@ -286,10 +245,22 @@ def _read_cache_batch(
     return read_bfloat16_bits(bits)
 
 
+def _decomposition_paths(output_dir: Path, layer: int) -> dict[str, Path]:
+    layer_dir = output_dir / "cache" / "decompositions"
+    stem = f"layer_{layer:03d}"
+    return {
+        "metadata": layer_dir / f"{stem}.json",
+        "reconstruction": layer_dir / f"{stem}_bfloat16.dat",
+        "support_ids": layer_dir / f"{stem}_support_ids_i32.dat",
+        "coefficients": layer_dir / f"{stem}_coefficients_f32.dat",
+        "done": layer_dir / f"{stem}_done.npy",
+    }
+
+
 def _decompose_layer(
     *,
     config: Phase1Config,
-    lens: Any,
+    lens: JacobianLensAdapter,
     unembedding: torch.Tensor,
     activations: np.memmap,
     layer: int,
@@ -299,23 +270,39 @@ def _decompose_layer(
 ) -> np.memmap:
     number_examples = activations.shape[0]
     width = activations.shape[2]
-    layer_dir = config.output_dir / "cache" / "decompositions"
-    layer_path = layer_dir / f"layer_{layer:03d}_bfloat16.dat"
-    done_path = layer_dir / f"layer_{layer:03d}_done.npy"
+    paths = _decomposition_paths(config.output_dir, layer)
     metadata = {
         **cache_identity,
+        "cache_schema_version": 2,
         "layer": layer,
         "layer_position": layer_position,
-        "shape": [number_examples, width],
+        "reconstruction_shape": [number_examples, width],
+        "sparse_shape": [number_examples, config.sparsity_k],
+        "reconstruction_dtype": "bfloat16",
+        "support_id_dtype": "int32",
+        "coefficient_dtype": "float32",
     }
-    ensure_cache_metadata(layer_dir / f"layer_{layer:03d}.json", metadata)
-    decompositions = open_uint16_memmap(layer_path, (number_examples, width))
-    done = load_done(done_path, number_examples)
+    ensure_cache_metadata(paths["metadata"], metadata)
+    decompositions = open_uint16_memmap(paths["reconstruction"], (number_examples, width))
+    support_ids = open_memmap(
+        paths["support_ids"],
+        (number_examples, config.sparsity_k),
+        dtype=np.int32,
+        fill_value=-1,
+    )
+    coefficients = open_memmap(
+        paths["coefficients"],
+        (number_examples, config.sparsity_k),
+        dtype=np.float32,
+        fill_value=0.0,
+    )
+    done = load_done(paths["done"], number_examples)
     if bool(done.all()):
+        del support_ids, coefficients
         return decompositions
 
     dictionary = build_normalized_dictionary(
-        lens=lens,
+        jacobian=lens.jacobian(layer),
         unembedding=unembedding,
         layer=layer,
         device=device,
@@ -327,17 +314,21 @@ def _decompose_layer(
         desc=f"Decompose L{layer}",
     ):
         hidden = _read_cache_batch(activations, indices, layer_position)
-        reconstructed, _, _ = screened_nonnegative_pursuit(
+        reconstructed, batch_support_ids, batch_coefficients = screened_nonnegative_pursuit(
             hidden,
             dictionary,
             sparsity_k=config.sparsity_k,
             screen_candidates=config.screen_candidates,
         )
         decompositions[indices] = tensor_to_bfloat16_bits(reconstructed)
+        support_ids[indices] = batch_support_ids.numpy().astype(np.int32, copy=False)
+        coefficients[indices] = batch_coefficients.numpy().astype(np.float32, copy=False)
         decompositions.flush()
+        support_ids.flush()
+        coefficients.flush()
         done[indices] = True
-        save_done(done_path, done)
-    del dictionary
+        save_done(paths["done"], done)
+    del dictionary, support_ids, coefficients
     gc.collect()
     torch.cuda.empty_cache()
     return decompositions
@@ -429,11 +420,77 @@ def _save_plots(
     plt.close(figure)
 
 
+def _build_selected_result(
+    *,
+    config: Phase1Config,
+    manifest_digest: str,
+    run_layers: list[int],
+    selected_layer: int,
+    selection_value: float,
+    macro_auroc: float,
+    direction_norm: float,
+    direction_path: Path,
+) -> dict[str, Any]:
+    selected_layer_position = run_layers.index(selected_layer)
+    selected_cache_paths = _decomposition_paths(config.output_dir, selected_layer)
+
+    def relative(path: Path) -> str:
+        return str(path.relative_to(config.output_dir))
+
+    direction_sha256 = sha256_file(direction_path)
+    return {
+        "schema_version": 1,
+        "phase": 1,
+        "run_id": _run_id(config, manifest_digest),
+        "frozen": True,
+        "selected_layer": selected_layer,
+        "selected_layer_position": selected_layer_position,
+        "selection_metric": "macro_task_auprc",
+        "selection_value": selection_value,
+        "macro_auroc": macro_auroc,
+        "direction_norm": direction_norm,
+        "direction_artifact": direction_path.name,
+        "resolved_config": config.scientific_dict(),
+        "config_sha256": config.identity_hash(),
+        "manifest_sha256": manifest_digest,
+        "decomposition": {
+            "method": "screened_nonnegative_greedy_approximation",
+            "dictionary_l2_normalized": True,
+            "sparsity_k": config.sparsity_k,
+            "screen_candidates": config.screen_candidates,
+        },
+        "artifacts": {
+            "provenance": "provenance.json",
+            "pair_manifest": "pair_manifest.jsonl",
+            "direction": {
+                "path": direction_path.name,
+                "sha256": direction_sha256,
+            },
+            "activations": {
+                "metadata": "cache/activations.json",
+                "residuals": "cache/activations_bf16.dat",
+                "completion": "cache/activations_done.npy",
+                "unembedding": "cache/unembedding_weight_bf16.pt",
+                "layer_position": selected_layer_position,
+            },
+            "selected_layer_decomposition": {
+                "metadata": relative(selected_cache_paths["metadata"]),
+                "reconstruction": relative(selected_cache_paths["reconstruction"]),
+                "support_ids": relative(selected_cache_paths["support_ids"]),
+                "coefficients": relative(selected_cache_paths["coefficients"]),
+                "completion": relative(selected_cache_paths["done"]),
+            },
+            "metrics": "layer_metrics.csv",
+            "validation_scores": "validation_scores.parquet",
+        },
+    }
+
+
 def analyze(config: Phase1Config) -> Path:
     if not torch.cuda.is_available():
         raise RuntimeError("The analyze stage requires a CUDA GPU")
     _, _, examples, manifest_digest = _load_prepared(config)
-    lens, _ = _load_lens(config)
+    lens = JacobianLensAdapter.load(config)
     cache_dir = config.output_dir / "cache"
     activation_metadata = read_json(cache_dir / "activations.json")
     if (
@@ -444,6 +501,7 @@ def analyze(config: Phase1Config) -> Path:
     run_layers = [int(layer) for layer in activation_metadata["layers"]]
     number_examples = int(activation_metadata["number_examples"])
     width = int(activation_metadata["d_model"])
+    validate_lens_for_layers(lens, width, run_layers)
     activation_done = load_done(cache_dir / "activations_done.npy", number_examples)
     if not bool(activation_done.all()):
         raise RuntimeError("Activation capture is incomplete")
@@ -509,17 +567,29 @@ def analyze(config: Phase1Config) -> Path:
         },
         selected_tensor_path,
     )
-    selected_result = {
-        "selected_layer": selected_layer,
-        "selection_metric": "macro_task_auprc",
-        "selection_value": float(best.auprc),
-        "macro_auroc": float(best.auroc),
-        "direction_artifact": selected_tensor_path.name,
-    }
+    selected_result = _build_selected_result(
+        config=config,
+        manifest_digest=manifest_digest,
+        run_layers=run_layers,
+        selected_layer=selected_layer,
+        selection_value=float(best.auprc),
+        macro_auroc=float(best.auroc),
+        direction_norm=float(selected_artifact["d_norm"]),
+        direction_path=selected_tensor_path,
+    )
+    direction_sha256 = selected_result["artifacts"]["direction"]["sha256"]
     selected_path = config.output_dir / "selected_layer.json"
     atomic_write_json(selected_path, selected_result)
     _save_plots(config, metrics, validation_scores, selected_layer)
-    _write_or_validate_provenance(config, manifest_digest, updates={"run_layers": run_layers})
+    _write_or_validate_provenance(
+        config,
+        manifest_digest,
+        updates={
+            "run_layers": run_layers,
+            "selected_layer": selected_layer,
+            "selected_direction_sha256": direction_sha256,
+        },
+    )
     print(json.dumps(selected_result, indent=2))
     return selected_path
 

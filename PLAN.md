@@ -1,34 +1,177 @@
-# Focused Experimental Plan: J-Space Monitoring for Prompt Injection
+# PLAN.md — J-Space Prompt-Injection Experiment
 
 ## 1. Research Question
 
-> **Does prompt injection produce a reproducible representation in an LLM's J-space, and can that representation be used to detect, causally influence, or block prompt-injection behavior while preserving clean-task utility?**
+> **Does prompt injection produce a reproducible representation in an LLM's J-space, and can that representation be used to detect or causally reduce attack success?**
 
-The experiment is intentionally narrow.
+The experiment is intentionally focused. It answers this question through seven sequential phases:
 
-It follows one sequence:
+1. **Layer Selection**
+2. **Disrupt Selected J-Space Representation**
+3. **Train Both Detectors and Freeze**
+4. **Held-Out and Cross-Benchmark Transfer**
+5. **Recognition vs Compliance**
+6. **Injection-Specific Causal Intervention**
+7. **Read-Only Monitoring and Utility**
 
-\[
-\boxed{\text{Locate the signal}}
-\rightarrow
-\boxed{\text{Test whether it generalizes}}
-\rightarrow
-\boxed{\text{Relate it to behavior}}
-\rightarrow
-\boxed{\text{Manipulate it}}
-\rightarrow
-\boxed{\text{Use it as a monitor}}
-\]
-
-The project should not expand into unrelated interpretability, reasoning, reward-modeling, or general safety experiments.
+The experiment ends after Phase 7. Do not add monitor-evasion experiments, large baseline suites, extra probe architectures, multi-layer detectors, decomposition sweeps, or additional model families unless the plan is explicitly revised.
 
 ---
 
-# 2. Core Experimental Principle
+# 2. Experimental Logic
 
-The initial POC searched for a small hand-selected set of words such as `injection`, `malicious`, or `attack`.
+The experiment moves from a broad observation to increasingly specific tests:
 
-The new experiment instead uses the model's **sparse J-space representation**.
+\[
+\boxed{\text{Where is the injection signal?}}
+\]
+
+\[
+\downarrow
+\]
+
+\[
+\boxed{\text{Does J-space at that layer matter to behavior?}}
+\]
+
+\[
+\downarrow
+\]
+
+\[
+\boxed{\text{Can we learn simple injection detectors from it?}}
+\]
+
+\[
+\downarrow
+\]
+
+\[
+\boxed{\text{Do the frozen detectors generalize?}}
+\]
+
+\[
+\downarrow
+\]
+
+\[
+\boxed{\text{Can the signal be present while the model still follows the attack?}}
+\]
+
+\[
+\downarrow
+\]
+
+\[
+\boxed{\text{Does manipulating the learned injection representation change behavior?}}
+\]
+
+\[
+\downarrow
+\]
+
+\[
+\boxed{\text{Can the signal be used as a practical read-only monitor?}}
+\]
+
+Each phase must consume frozen outputs from earlier phases. Later evaluation data must not be used to revise earlier choices.
+
+---
+
+# 3. Primary Model, Lens, and Reproducibility Pins
+
+## 3.1 Primary model
+
+- Model: `google/gemma-4-12B-it`
+- Revision: `5926caa4ec0cac5cbfadaf4077420520de1d5205`
+- Precision: BF16
+- Quantization: none for the primary experiment
+
+## 3.2 Primary fitted J-lens
+
+- Repository: `solarkyle/jspace-lenses`
+- Revision: `1d95a2fc8a5c5a26c75a8c01c145173353e5fb65`
+- File: `gemma-4-12b-it/lens.pt`
+- SHA-256: `214ba70486c648d97cccb3c88d05cfb17adf9467c93b5d1f268fc4902e360048`
+
+The fitted lens is a fixed measurement instrument. Do not fit a new J-lens as part of this experiment.
+
+## 3.3 External code pins
+
+- BIPIA commit: `a004b69ec0dd446e0afd461d98cb5e96e120a5d0`
+- Anthropic Jacobian-lens commit: `581d398613e5602a5af361e1c34d3a92ea82ba8e`
+
+Save these pins in the resolved run configuration and provenance artifact.
+
+---
+
+# 4. Model/Lens-Agnostic End-to-End Contract
+
+The scientific pipeline must not contain Gemma-specific experimental logic outside the model/lens adapter layer.
+
+A different model/lens pair can run the experiment end to end if it satisfies the following interface.
+
+## 4.1 Model adapter requirements
+
+A model adapter must provide:
+
+- tokenizer and chat-template formatting;
+- model revision/provenance;
+- transformer residual-block access;
+- hidden width;
+- vocabulary size;
+- output/unembedding matrix \(W_U\);
+- no-gradient forward pass with residual activation capture;
+- generation from a formatted prompt;
+- intervention hook that replaces the selected residual-stream state before the remaining forward computation;
+- identification of the final non-padding prompt token.
+
+## 4.2 Lens adapter requirements
+
+A lens adapter must provide:
+
+- lens revision/provenance;
+- fitted source layers;
+- J-lens map \(J_\ell\) for each supported layer;
+- compatible hidden width and vocabulary;
+- construction of the layer dictionary:
+
+\[
+D_\ell = W_U J_\ell
+\]
+
+The implementation must reject incompatible model/lens pairs rather than silently adapting dimensions.
+
+## 4.3 Benchmark adapter requirements
+
+A benchmark adapter must provide:
+
+- clean and attacked examples;
+- prompt construction;
+- attack/clean label;
+- benchmark-native task scoring;
+- attack-success scoring where the benchmark defines it;
+- the correct pre-action decision point.
+
+## 4.4 Re-running with another model/lens
+
+A new model/lens pair must rerun **all seven phases from Phase 1**.
+
+The following are model/lens specific and must never be reused across model families:
+
+- selected layer \(\ell^*\);
+- J-space decompositions;
+- clean means;
+- learned directions;
+- detector parameters;
+- thresholds;
+- intervention scales.
+
+The methodology and metrics remain unchanged.
+
+---
+
+# 5. J-Space Representation
 
 At layer \(\ell\), let the residual-stream activation at the decision point be:
 
@@ -36,112 +179,62 @@ At layer \(\ell\), let the residual-stream activation at the decision point be:
 h_\ell
 \]
 
-Approximate the J-space component as a sparse nonnegative combination of J-lens directions:
+The sparse J-space reconstruction is:
 
 \[
 h_\ell^J
 =
-\sum_{j \in S} c_j v_j,
-\qquad
+\sum_{j \in S} c_j v_j
+\]
+
+with:
+
+\[
 c_j \ge 0,
 \qquad
-|S|\le k
+|S| \le k
 \]
 
-where:
-
-- \(v_j\) is a J-lens direction;
-- \(c_j\) is its coefficient;
-- \(k\) is the sparsity limit.
-
-Use:
+Use one fixed sparsity setting throughout the experiment:
 
 \[
-k=25
+\boxed{k=25}
 \]
 
-as the primary setting.
-
-The remaining reconstruction residual is:
+Define:
 
 \[
-h_\ell^R=h_\ell-h_\ell^J
+h_\ell^R = h_\ell-h_\ell^J
 \]
 
-Version 1 may use a scalable screened nonnegative sparse-pursuit approximation for \(h_\ell^J\). The implementation must document the approximation clearly and should not describe it as an exact orthogonal projection.
+so that:
 
-Decoded vocabulary concepts and token ranks are **interpretability diagnostics only**. They do not define the detector.
+\[
+h_\ell=h_\ell^J+h_\ell^R
+\]
 
----
+This is a sparse reconstruction, not an orthogonal projection.
 
-# 3. Models and J-Lenses
+## 5.1 Fixed decomposition procedure
 
-The experiment should be configuration-driven so the same code can run with any causal language model that has a compatible fitted J-lens.
+Use the same decomposition procedure in every phase:
 
-## Primary model
+1. construct \(D_\ell=W_UJ_\ell\);
+2. L2-normalize the dictionary directions;
+3. compute full-dictionary correlations;
+4. retain the top 512 positive candidates;
+5. run screened nonnegative greedy pursuit;
+6. stop at \(k=25\) or when no positive residual correlation remains.
 
-- Model: `google/gemma-4-12B-it`
-- Revision: `5926caa4ec0cac5cbfadaf4077420520de1d5205`
-- Precision: BF16
+The implementation must describe this as the experiment's **screened nonnegative greedy approximation**, not as Anthropic's exact gradient-pursuit decomposition.
 
-## Primary fitted lens
-
-- Repository: `solarkyle/jspace-lenses`
-- Revision: `1d95a2fc8a5c5a26c75a8c01c145173353e5fb65`
-- File: `gemma-4-12b-it/lens.pt`
-- SHA-256: `214ba70486c648d97cccb3c88d05cfb17adf9467c93b5d1f268fc4902e360048`
-
-Do **not** fit a new J-lens as part of the core experiment.
-
-The released fitted lens is treated as a fixed measurement instrument.
-
-## Replication model
-
-A second instruction-tuned model with a compatible fitted J-lens may be run through the same experimental pipeline after the primary-model implementation is stable.
-
-The methodology must not change between models.
+Do not tune \(k\), candidate count, or decomposition method after Phase 1 begins.
 
 ---
 
-# 4. Hardware and Execution
+# 6. Benchmarks and Data Boundaries
 
-The same experiment code should run on:
-
-- Google Colab GPU;
-- remote Linux CUDA hosts;
-- local machines for small smoke tests.
-
-Use GPU for:
-
-- model inference;
-- residual-stream capture;
-- J-space reconstruction;
-- activation interventions.
-
-Use CPU for:
-
-- AUPRC/AUROC;
-- simple statistical analysis;
-- plotting;
-- lightweight detector logic.
-
-The experiment should be implemented as normal Python code with a thin Colab launcher, not as Colab-only logic.
-
----
-
-# 5. Benchmarks
-
-## Development benchmark
-
-**BIPIA**
-
-Use BIPIA for:
-
-- layer selection;
-- learning the clean-to-injection direction;
-- validation;
-- selecting the detector threshold;
-- selecting intervention strength.
+## 6.1 Development benchmark — BIPIA
 
 Use all five BIPIA tasks:
 
@@ -151,99 +244,150 @@ Use all five BIPIA tasks:
 - Summarization
 - CodeQA
 
-Use BIPIA training data for development and leave the official BIPIA test split untouched until the frozen detector is evaluated.
+BIPIA is used for:
 
-For WebQA and Summarization, use researcher-provided BIPIA-format source files reconstructed according to the benchmark instructions.
+- Phase 1 layer selection;
+- Phase 2 coarse J-space disruption;
+- Phase 3 detector training and validation;
+- Phase 6 intervention-strength development.
 
-## Transfer benchmarks
+Use only BIPIA **training contexts and training attacks** for development.
 
-After BIPIA development is complete:
+The official BIPIA test split remains untouched until Phase 4.
+
+For WebQA and Summarization, require researcher-provided BIPIA-format files. Do not add source-dataset download or reconstruction logic to the experiment.
+
+## 6.2 Transfer benchmarks
+
+Use:
 
 - AgentDojo
 - InjecAgent
 
-No retraining or threshold adjustment is allowed on these transfer benchmarks.
+These are evaluation benchmarks only.
+
+No detector retraining, layer reselection, threshold adjustment, decomposition change, or feature remapping is allowed after Phase 3.
 
 ---
 
-# 6. Decision Point
+# 7. Decision Point
 
-Read J-space after the model has processed the untrusted content and before it acts on that content.
+The internal state must be read after all untrusted content has been processed and before the model acts on it.
 
-For BIPIA:
+## BIPIA
 
-> capture the residual-stream activation at the final non-padding prompt token immediately before response generation.
+Capture the residual-stream activation at the final non-padding prompt token immediately before generation.
 
-For agent benchmarks:
+## AgentDojo / InjecAgent
 
-> capture the residual-stream state immediately after the untrusted tool result and before the next model action.
+Capture the residual-stream activation immediately after the untrusted tool result or observation and before the next model action.
+
+The same decision-point convention must be used for detection and intervention.
+
+---
+
+# 8. Compute and Execution Compatibility
+
+All scientific logic must live in importable Python modules. Colab notebooks are launchers only.
+
+The same configuration and phase code must run on:
+
+- Google Colab with CUDA;
+- a remote Linux CUDA machine accessed through SSH;
+- a local CUDA machine;
+- local CPU for unit tests and CPU-only analysis.
+
+No phase may depend on a Colab-only API.
+
+## 8.1 Colab workflow
+
+A thin Colab notebook may:
+
+1. clone the experiment repository;
+2. install the package;
+3. clone/verify pinned BIPIA;
+4. authenticate to Hugging Face;
+5. optionally mount Google Drive;
+6. set external dataset/output paths;
+7. invoke the same CLI used on a remote machine;
+8. display saved results.
+
+Persistent outputs should be written to Drive or another mounted persistent directory if a Colab session may end.
+
+## 8.2 Remote SSH workflow
+
+On a Linux CUDA host:
+
+1. clone the same repository;
+2. create the same Python environment;
+3. authenticate to Hugging Face;
+4. set dataset/output paths in YAML or CLI overrides;
+5. invoke the same phase commands;
+6. resume from saved caches after disconnects or preemption.
+
+The experiment must not assume notebook state.
+
+## 8.3 Phase-by-phase compute requirements
+
+| Phase | GPU required? | Main GPU work | CPU work | Resume requirement |
+|---|---:|---|---|---|
+| 1 | Yes | model forward, activation capture, J-space reconstruction | metrics, plots | activation/decomposition caches |
+| 2 | Yes | intervention generation across \(\alpha\) | aggregation, plots | per-example/per-\(\alpha\) results |
+| 3 | No if Phase 1 caches exist | none normally | mean detector, sparse logistic regression, thresholds | detector artifacts |
+| 4 | Yes | capture J-space on held-out/transfer examples; generate behavior once for reuse in Phase 5 | detector metrics | benchmark-level shards |
+| 5 | No if Phase 4 outputs exist | none | quadrant/conditional analysis | analysis artifacts |
+| 6 | Yes | directional interventions and generation | aggregation, plots | per-example/per-\(\alpha\)/direction results |
+| 7 | Yes | normal generation for unblocked examples | gating metrics, utility | per-example gate results |
 
 ---
 
 # Phase 1 — Layer Selection
 
-## Goal
+## Research question
 
 > **Which J-lens layer contains the most reproducible prompt-injection signal in sparse J-space?**
 
-This phase is intentionally self-contained.
+## Theory
 
-Its pipeline is:
+If prompt injection creates a systematic change in the model's verbalizable workspace, the mean J-space state for attacked prompts should differ from the mean state for matched benign controls.
 
-\[
-\boxed{
-\text{BIPIA pairs}
-\rightarrow
-h_\ell^J
-\rightarrow
-d_\ell
-\rightarrow
-\text{validation scores}
-\rightarrow
-\text{macro-AUPRC by layer}
-\rightarrow
-\ell^*
-}
-\]
+The layer where this training-derived shift most reliably separates held-out examples is the best single layer for downstream experiments.
 
-## 1.1 BIPIA train/validation pairs
+Do **not** select layers based on raw J-space activity.
 
-Use only BIPIA training contexts and training attacks.
+## Methodology
 
-With seed `42`:
+### Data
 
-- create 500 training pairs per task;
-- create 250 validation pairs per task;
-- keep source contexts disjoint between train and validation;
-- keep exact attack prompt variants disjoint between train and validation where possible;
-- balance attack categories and insertion positions.
+Using BIPIA training data and seed `42`:
+
+- 500 training attack/control pairs per task;
+- 250 validation attack/control pairs per task;
+- all five tasks;
+- source contexts disjoint between train and validation;
+- exact attack variants disjoint between train and validation;
+- attack categories and insertion positions balanced.
 
 Each pair contains:
 
-1. an attacked prompt;
-2. a matched benign control using the same task, context, question, formatting, and insertion position, with the attack replaced by unrelated benign content of approximately matched token length.
+1. attacked prompt;
+2. matched benign control with the same task, context, question, formatting, and insertion position, with the attack replaced by unrelated benign content of approximately matched token length.
 
-Freeze and save the pair manifest before activation extraction.
+Freeze the pair manifest before activation extraction.
 
-## 1.2 Extract J-space at every eligible layer
+### J-space extraction
 
-For every prompt and every fitted J-lens layer:
+For every example and every fitted J-lens layer:
 
-1. capture \(h_\ell\);
-2. reconstruct \(h_\ell^J\).
+\[
+h_\ell \rightarrow h_\ell^J
+\]
 
-A practical Version 1 reconstruction may use:
+using the fixed \(k=25\) decomposition.
 
-- full-dictionary correlation screening;
-- top 512 positive candidates;
-- nonnegative sparse pursuit;
-- maximum sparsity \(k=25\).
+### Learn one direction per layer
 
-Cache activations/decompositions so interrupted runs can resume.
-
-## 1.3 Learn one clean-to-injection direction per layer
-
-Using the combined, task-balanced training set:
+Using the combined task-balanced training set:
 
 \[
 d_\ell
@@ -253,18 +397,21 @@ d_\ell
 \mu_{\ell,\text{clean}}^J
 \]
 
-Store both the raw direction and its norm.
-
-For scoring, use the normalized direction when the norm is nonzero:
+Store:
 
 \[
-\hat d_\ell=
-\frac{d_\ell}{\|d_\ell\|}
+d_\ell,
+\qquad
+\|d_\ell\|,
+\qquad
+\hat d_\ell=\frac{d_\ell}{\|d_\ell\|}
 \]
 
-There is **one shared direction per layer**, not one direction per task.
+when the norm is nonzero.
 
-## 1.4 Score held-out validation examples
+There is one shared direction per layer, not one direction per task.
+
+### Validation score
 
 For validation example \(x\):
 
@@ -273,23 +420,22 @@ s_\ell(x)
 =
 \hat d_\ell^\top
 \left(
-h_\ell^J(x)
--
-\mu_{\ell,\text{clean}}^J
+h_\ell^J(x)-\mu_{\ell,\text{clean}}^J
 \right)
 \]
 
-Higher scores mean the example lies farther in the learned clean-to-injection direction.
+The test is whether attacked validation examples receive systematically higher scores than matched controls.
 
-The goal is not for every attack example to point exactly along \(d_\ell\). The goal is for the attack and matched-control score distributions to separate.
+## Metrics
 
-## 1.5 Measure detection quality
+For every eligible layer:
 
-For each layer:
+- per-task AUPRC;
+- per-task AUROC;
+- macro-AUPRC across the five tasks;
+- macro-AUROC as a secondary summary.
 
-- calculate AUPRC separately for each BIPIA task;
-- calculate AUROC separately for each BIPIA task;
-- calculate macro-AUPRC across the five tasks.
+Primary selection metric:
 
 \[
 \operatorname{MacroAUPRC}(\ell)
@@ -302,456 +448,999 @@ For each layer:
 Select:
 
 \[
+\boxed{
 \ell^*
 =
 \arg\max_\ell
 \operatorname{MacroAUPRC}(\ell)
+}
 \]
 
-Freeze one primary layer for the rest of the experiment.
+Exact numerical tie: choose the lower layer index.
 
-## Phase 1 output
+## Outputs
 
-Save:
+Required:
 
-- selected layer \(\ell^*\);
-- selected-layer clean mean;
-- selected-layer raw and normalized mean-difference directions;
-- layer-wise per-task AUPRC/AUROC;
-- macro-AUPRC curve;
-- validation scores;
-- pair manifest;
-- model/lens/configuration provenance.
+- `pair_manifest.jsonl`
+- activation/decomposition caches
+- `layer_metrics.csv`
+- `validation_scores.parquet`
+- layer-wise macro-AUPRC plot
+- per-task AUPRC curves
+- selected-layer score-distribution plot
+- selected-layer clean mean
+- selected-layer raw direction
+- selected-layer normalized direction
+- selected-layer direction norm
+- `selected_layer.json`
+
+`selected_layer.json` must contain enough provenance to load \(\ell^*\) independently in later phases.
+
+## Freeze boundary
+
+After Phase 1:
+
+\[
+\boxed{\ell^*\text{ is frozen}}
+\]
+
+No later phase may reselect the layer.
 
 ---
 
-# Phase 2 — Freeze the Injection Detector
+# Phase 2 — Disrupt the Selected J-Space Representation
 
-## Goal
+## Research question
 
-> **Can the J-space direction selected during development serve as a reproducible injection detector?**
+> **What happens to prompt-injection behavior and normal task performance when we progressively remove the entire reconstructed J-space component at the selected layer?**
 
-Use the frozen layer:
+## Theory
+
+Phase 1 shows that injection information is readable from J-space at \(\ell^*\).
+
+Phase 2 asks a simpler functional question before training specialized detectors:
+
+> Is the J-space component at this layer behaviorally important at all?
+
+This is a **coarse J-space disruption** experiment. It is not injection-specific causality.
+
+## Methodology
+
+Use the frozen layer from Phase 1:
 
 \[
 \ell^*
 \]
 
-and the frozen direction learned in Phase 1:
+For each BIPIA validation example, compute:
 
 \[
-d_{\text{inj}} = d_{\ell^*}
+h_{\ell^*}
+=
+h_{\ell^*}^J+h_{\ell^*}^R
 \]
 
-The primary detector score is:
+Then intervene:
 
 \[
-s(x)
+\boxed{
+h'_{\ell^*}
 =
-\hat d_{\text{inj}}^\top
-\left(
-h_{\ell^*}^J(x)
+h_{\ell^*}
 -
-\mu_{\text{clean}}^J
+\alpha h_{\ell^*}^J
+}
+\]
+
+equivalently:
+
+\[
+h'_{\ell^*}
+=
+(1-\alpha)h_{\ell^*}^J+h_{\ell^*}^R
+\]
+
+Use the fixed sweep:
+
+\[
+\boxed{
+\alpha\in\{0,\ 0.25,\ 0.5,\ 0.75,\ 1.0\}
+}
+\]
+
+Interpretation:
+
+- \(\alpha=0\): unchanged model;
+- \(\alpha=0.25\): remove 25% of the reconstructed J-space component;
+- \(\alpha=0.5\): remove 50%;
+- \(\alpha=0.75\): remove 75%;
+- \(\alpha=1\): remove the full reconstructed J-space component.
+
+Run both:
+
+- attacked BIPIA validation prompts;
+- matched benign/clean validation prompts.
+
+Use benchmark-native generation and scoring.
+
+## Metrics
+
+### Attack behavior
+
+Primary:
+
+- Attack Success Rate (ASR) at each \(\alpha\).
+
+Report:
+
+\[
+\Delta ASR(\alpha)
+=
+ASR(\alpha)-ASR(0)
+\]
+
+### Clean utility
+
+For each BIPIA task, report its benchmark-native clean-task score at each \(\alpha\).
+
+Also report utility retention relative to the no-intervention baseline:
+
+\[
+U_{\text{retained},t}(\alpha)
+=
+\frac{U_t(\alpha)}{U_t(0)}
+\]
+
+when the task metric has a meaningful nonzero baseline.
+
+Do not combine incompatible native metrics into an uncalibrated raw average.
+
+### Output behavior
+
+Report:
+
+- refusal rate;
+- malformed/invalid-output rate where the benchmark defines valid structure.
+
+## Outputs
+
+Required:
+
+- `phase2_results.parquet`
+  - example ID
+  - task
+  - attack/control condition
+  - \(\alpha\)
+  - baseline/intervened generation
+  - attack-success outcome
+  - task score
+  - refusal/validity fields
+- `phase2_summary.csv`
+- ASR-vs-\(\alpha\) plot
+- clean-utility-vs-\(\alpha\) plot
+- concise example output table for qualitative inspection
+
+## Interpretation boundary
+
+A Phase 2 effect means:
+
+> the selected layer's reconstructed J-space component is functionally involved in model behavior.
+
+It does **not** mean:
+
+> the learned prompt-injection direction itself is causal.
+
+That question belongs to Phase 6.
+
+---
+
+# Phase 3 — Train Both Detectors and Freeze
+
+## Research question
+
+> **Can the selected layer's sparse J-space state detect prompt injection using two simple linear constructions?**
+
+Train exactly two detectors.
+
+Do not add neural probes, nonlinear classifiers, multi-layer features, or extra detector families.
+
+## Detector A — Mean-Difference Direction
+
+Use:
+
+\[
+d_{\text{mean}}
+=
+\mu_{\text{attack}}^J-\mu_{\text{clean}}^J
+\]
+
+at the frozen layer.
+
+Score:
+
+\[
+s_{\text{mean}}(x)
+=
+\hat d_{\text{mean}}^\top
+\left(
+h_{\ell^*}^J(x)-\mu_{\text{clean}}^J
 \right)
 \]
 
-Select a binary threshold:
+This asks:
+
+> What is the average direction in which injection moves J-space?
+
+## Detector B — Logistic Regression on Sparse Coefficients
+
+Let:
 
 \[
-\tau
+c(x)\in\mathbb{R}^{|V|}
 \]
 
-using BIPIA validation data only.
+be the sparse coefficient vector from the \(k=25\) decomposition at \(\ell^*\), with zero for inactive J-lens directions.
 
-After selecting \(\tau\), freeze:
+Train:
 
-- layer;
-- direction;
-- clean mean;
-- threshold;
-- J-space decomposition settings.
+\[
+P(y=1\mid c)
+=
+\sigma(w^\top c+b)
+\]
 
-Do not add a more complex detector unless the simple mean-direction detector is clearly inadequate.
+Use:
+
+- L2-regularized logistic regression;
+- fixed `C = 1.0`;
+- deterministic seed `42`;
+- sparse feature storage;
+- no additional hyperparameter sweep.
+
+This asks:
+
+> What linear boundary best separates clean and injected sparse J-space states?
+
+## Training methodology
+
+Use the same BIPIA development split created in Phase 1.
+
+### Mean detector
+
+Reuse the Phase 1 selected-layer training clean mean and mean-difference direction.
+
+Do not relearn it using validation data.
+
+### Logistic detector
+
+Fit \(w,b\) on BIPIA training examples only.
+
+### Validation
+
+Evaluate both detectors on BIPIA validation examples.
+
+Each detector receives one **global** threshold shared across all five BIPIA tasks.
+
+Choose threshold \(\tau\) by maximizing **macro balanced accuracy** across the five BIPIA validation tasks:
+
+\[
+BA_t(\tau)
+=
+\frac{TPR_t(\tau)+TNR_t(\tau)}{2}
+\]
+
+\[
+\operatorname{MacroBA}(\tau)
+=
+\frac{1}{5}\sum_t BA_t(\tau)
+\]
+
+Choose:
+
+\[
+\boxed{
+\tau^*
+=
+\arg\max_\tau \operatorname{MacroBA}(\tau)
+}
+\]
+
+Tie rule: choose the higher threshold.
+
+This threshold-selection rule must be identical for both detectors.
+
+## Metrics
+
+For each detector on BIPIA validation:
+
+- per-task AUPRC;
+- per-task AUROC;
+- macro-AUPRC;
+- macro-AUROC;
+- macro balanced accuracy at frozen \(\tau\);
+- TPR and FPR at frozen \(\tau\).
+
+The threshold-free AUPRC/AUROC evaluate ranking quality. The frozen threshold is used by later binary decisions.
+
+## Outputs
+
+### Mean detector artifact
+
+Save:
+
+- \(\ell^*\);
+- \(\mu_{\text{clean}}^J\);
+- raw direction;
+- normalized direction;
+- direction norm;
+- threshold \(\tau_{\text{mean}}\);
+- decomposition metadata;
+- model/lens provenance.
+
+### Logistic detector artifact
+
+Save:
+
+- \(\ell^*\);
+- feature-index mapping;
+- weights \(w\);
+- intercept \(b\);
+- threshold \(\tau_{\text{logistic}}\);
+- regularization settings;
+- decomposition metadata;
+- model/lens provenance.
+
+Also save:
+
+- `phase3_validation_scores.parquet`
+- `phase3_metrics.csv`
+- detector comparison plot
+
+## Freeze boundary
+
+After Phase 3, freeze:
+
+\[
+\boxed{
+\ell^*,\ k,\ \text{decomposition},\
+d_{\text{mean}},\
+w,b,\
+\tau_{\text{mean}},\
+\tau_{\text{logistic}}
+}
+\]
+
+No evaluation benchmark may modify them.
 
 ---
 
-# Phase 3 — Held-Out and Cross-Benchmark Transfer
+# Phase 4 — Held-Out and Cross-Benchmark Transfer
 
-## Goal
+## Research question
 
-> **Does the BIPIA-learned J-space signal transfer without retraining?**
+> **Do the two BIPIA-trained J-space detectors generalize without retraining?**
 
-Evaluate the frozen detector on:
+## Theory
 
-1. BIPIA official test;
+A detector that only separates the BIPIA development distribution may be exploiting benchmark-specific structure.
+
+Transfer tests whether the same internal signal remains readable when:
+
+- source tasks change;
+- attack wording changes;
+- interaction structure changes.
+
+## Methodology
+
+Run both frozen detectors on:
+
+1. BIPIA official test split;
 2. AgentDojo;
 3. InjecAgent.
 
-Do not retrain the detector or adjust \(\tau\).
+For every example:
 
-For benchmarks with both attack and clean examples, report:
+\[
+h_{\ell^*}
+\rightarrow
+h_{\ell^*}^J
+\rightarrow
+\begin{cases}
+s_{\text{mean}}(x)\\
+s_{\text{logistic}}(x)
+\end{cases}
+\]
+
+Use the exact frozen thresholds from Phase 3.
+
+Do not:
+
+- retrain;
+- recalibrate;
+- alter feature mappings;
+- change \(\ell^*\);
+- change \(k\);
+- change the decomposition;
+- choose benchmark-specific thresholds.
+
+### Efficiency rule
+
+When a transfer benchmark also provides behavioral attack outcomes needed for Phase 5, run the model once:
+
+- capture the decision-point activation;
+- compute both detector scores;
+- generate the benchmark behavior;
+- save all fields.
+
+Phase 4 analyzes detector generalization. Phase 5 reuses the saved behavior.
+
+## Metrics
+
+Where both clean and attacked examples exist:
+
+For each detector and benchmark:
 
 - AUPRC;
 - AUROC;
-- detection rate at the frozen threshold.
+- TPR at frozen threshold;
+- FPR at frozen threshold;
+- balanced accuracy at frozen threshold.
 
-If a benchmark does not provide an appropriate clean condition, report:
+Where an appropriate clean condition is not available:
 
 - attack score distribution;
-- true-positive rate at the BIPIA-frozen threshold.
+- TPR at the frozen threshold;
+- subgroup breakdown only where the benchmark already defines meaningful subgroups.
 
-This phase evaluates the **internal J-space signal**.
+Do not tune from these results.
 
-It does not yet require a causal claim.
+## Outputs
+
+Required:
+
+- `phase4_predictions.parquet`
+  - benchmark
+  - example ID
+  - attack/clean label where available
+  - both detector scores
+  - both detector decisions
+  - generated behavior/outcome when available
+- `phase4_metrics.csv`
+- detector-by-benchmark comparison plot
 
 ---
 
-# Phase 4 — Recognition vs Compliance
+# Phase 5 — Recognition vs Compliance
 
-## Goal
+## Research question
 
-> **Can a model have a high injection-related J-space score and still follow the attack?**
+> **Can injection-related information be strongly readable from J-space even when the model still follows the attack?**
 
-For every attacked example, record:
+## Theory
 
-- frozen J-space detector score;
-- detector decision;
-- actual model output/action;
-- benchmark attack-success result.
+Detection and behavioral control are different questions.
 
-Analyze:
+A model may contain a strong internal injection-related representation and still comply with the malicious instruction.
+
+The experiment therefore separates:
+
+- **internal detectability**;
+- **external behavior**.
+
+Use "recognition vs compliance" as shorthand, but interpret high scores only as:
+
+> injection-related information is readable from J-space.
+
+Do not claim subjective awareness.
+
+## Methodology
+
+Reuse Phase 4 attacked examples and their saved model outcomes.
+
+For each detector, classify every attacked example using its frozen threshold.
+
+Cross detector decision with attack outcome:
 
 | Internal signal | Behavior | Interpretation |
 |---|---|---|
-| Low | Resists | resistance without measured J-space signal |
-| High | Resists | high injection signal + resistance |
-| Low | Follows | detector failure |
+| Low | Resists | resistance without measured signal |
+| High | Resists | high signal + resistance |
+| Low | Follows | detector miss |
 | High | Follows | recognition-compliance gap |
 
-The important result is whether successful attacks occur despite a strong internal injection-related signal.
+## Metrics
 
-Use cautious language:
+For each detector and benchmark:
 
-> "Injection-related information is readable from J-space."
+1. count and proportion in each of the four cells;
+2. proportion of all attacked examples that are **High + Follows**;
+3. conditional ASR among high-signal examples:
 
-Do not claim subjective awareness or consciousness.
+\[
+P(\text{Follow}\mid\text{High})
+\]
+
+4. conditional ASR among low-signal examples:
+
+\[
+P(\text{Follow}\mid\text{Low})
+\]
+
+These are descriptive behavioral relationships. Do not treat them as causal.
+
+## Outputs
+
+Required:
+
+- `phase5_recognition_compliance.csv`
+- 2x2 table per detector/benchmark
+- stacked or grouped quadrant plot
+- conditional ASR summary
+
+The central reported quantity is the prevalence of:
+
+\[
+\boxed{\text{High detector signal + attack succeeds}}
+\]
 
 ---
 
-# Phase 5 — Injection-Specific Causal Intervention
+# Phase 6 — Injection-Specific Causal Intervention
 
-## Goal
+## Research question
 
-> **Does changing the learned injection-associated J-space direction change attack behavior?**
+> **Does directly manipulating a learned injection-associated J-space direction change attack success?**
 
-At the frozen layer, intervene along the learned direction:
+## Theory
+
+Phase 2 removes all reconstructed J-space at \(\ell^*\).
+
+Phase 6 is more specific: it changes only a learned injection-associated direction.
+
+If changing that direction systematically changes attack behavior more than a matched random perturbation, this provides evidence that the learned representation is causally involved under the tested intervention.
+
+## Direction A — Mean-Difference Direction
+
+Use the raw mean-difference vector:
+
+\[
+d_{\text{mean}}
+=
+\mu_{\text{attack}}^J-\mu_{\text{clean}}^J
+\]
+
+Intervene:
 
 \[
 h'_{\ell^*}
 =
 h_{\ell^*}
 +
-\alpha \hat d_{\text{inj}}
+\alpha d_{\text{mean}}
 \]
 
-and:
+with:
+
+\[
+\boxed{
+\alpha\in\{-1,\ -0.5,\ 0,\ 0.5,\ 1\}
+}
+\]
+
+The sign is not assumed to be safer in advance.
+
+## Direction B — Logistic-Regression Direction
+
+Map the logistic weights into activation space using the normalized J-lens dictionary directions:
+
+\[
+d_{\text{logistic}}
+=
+\sum_j w_j v_j
+\]
+
+Then rescale it to match the norm of the mean-difference direction:
+
+\[
+\tilde d_{\text{logistic}}
+=
+\frac{d_{\text{logistic}}}{\|d_{\text{logistic}}\|}
+\|d_{\text{mean}}\|
+\]
+
+Intervene with the same \(\alpha\) values:
 
 \[
 h'_{\ell^*}
 =
 h_{\ell^*}
--
-\alpha \hat d_{\text{inj}}
++
+\alpha \tilde d_{\text{logistic}}
 \]
 
-Sweep a small set of positive and negative intervention strengths chosen on development data.
+This makes intervention magnitude comparable between the two learned directions.
 
-Do not assume beforehand which sign should improve safety.
+## Random control
 
-## Required controls
+For each learned direction, construct a fixed random vector at \(\ell^*\) with the same L2 norm.
 
-Keep controls minimal:
+Use the same \(\alpha\) sweep.
 
-1. no intervention;
-2. same-norm random direction.
+The minimum conditions are therefore:
 
-The purpose of the random control is to distinguish an injection-direction-specific effect from generic activation disruption.
+- no intervention;
+- mean-direction intervention;
+- logistic-direction intervention;
+- same-norm random control.
 
-## Measure
+Do not add unrelated intervention baselines in the current plan.
+
+## Development data
+
+Use BIPIA development data.
+
+Intervention-strength interpretation is based on BIPIA only. Do not tune \(\alpha\) using AgentDojo or InjecAgent.
+
+## Metrics
+
+For every direction and \(\alpha\):
+
+### Attack behavior
 
 - Attack Success Rate;
-- clean benchmark utility;
-- malformed/refusal rate if relevant.
+- absolute change from no intervention:
 
-A useful causal result requires the injection-direction intervention to change attack behavior more than the matched random perturbation.
+\[
+\Delta ASR(\alpha)
+=
+ASR(\alpha)-ASR(0)
+\]
+
+### Clean utility
+
+- benchmark-native clean-task score;
+- utility retention relative to \(\alpha=0\).
+
+### Output validity
+
+- refusal rate;
+- malformed/invalid-output rate where relevant.
+
+### Causal comparison
+
+The key comparison is:
+
+\[
+\Delta ASR_{\text{learned direction}}(\alpha)
+\]
+
+versus:
+
+\[
+\Delta ASR_{\text{random}}(\alpha)
+\]
+
+A generic degradation that is equally large for random perturbations is not evidence for an injection-specific causal role.
+
+## Outputs
+
+Required:
+
+- `phase6_results.parquet`
+- `phase6_summary.csv`
+- ASR-vs-\(\alpha\) curves for both learned directions and random control
+- clean-utility-vs-\(\alpha\) curves
+- output-validity summary
 
 ---
 
-# Phase 6 — Read-Only Gate and Utility
+# Phase 7 — Read-Only Monitoring and Utility
 
-## Goal
+## Research question
 
-> **Can the frozen J-space detector be used as a practical pre-action monitor?**
+> **Can either frozen detector serve as a useful prompt-injection monitor without modifying the model's internal state?**
 
-Before the model acts:
+## Theory
+
+A read-only monitor is practically useful if it can block attacks based only on the internal J-space signal while rarely blocking legitimate inputs.
+
+This phase evaluates detector utility separately from causal intervention.
+
+## Methodology
+
+Evaluate the two frozen Phase 3 detectors independently.
+
+For detector \(m\):
 
 \[
-s(x)
-=
-\text{J-space injection score}
+s_m(x)>\tau_m
 \]
 
-If:
+means the monitor flags the example.
 
-\[
-s(x)>\tau
-\]
+### Gate behavior
 
-route the example to a safe action such as block/refuse.
+If flagged:
 
-The gate does **not** modify the model's internal state.
+- return the experiment's fixed safe block/refusal action;
+- do not execute the normal model action.
 
-Evaluate:
+If not flagged:
+
+- allow the model to continue normally.
+
+The gate does not alter \(h_{\ell^*}\).
+
+Use the frozen thresholds. Do not sweep thresholds on transfer data.
+
+## Evaluation data
+
+Use the held-out/transfer evaluation examples from Phase 4:
+
+- BIPIA official test;
+- AgentDojo;
+- InjecAgent.
+
+Use each benchmark's clean/no-attack examples where available.
+
+## Metrics
+
+For each detector and benchmark:
+
+### Security
 
 - attack block rate;
 - Attack Success Rate after gating;
-- false block rate on clean examples;
-- benchmark-native clean-task utility.
+- absolute ASR reduction relative to ungated behavior.
 
-The primary result is the tradeoff:
+### Clean utility
+
+- false block rate;
+- benchmark-native task performance after gating;
+- utility retention relative to the ungated model.
+
+When a clean prompt is blocked, the fixed refusal/block output is scored using the benchmark's normal task scoring. This makes the utility result reflect the actual gated system.
+
+## Outputs
+
+Required:
+
+- `phase7_gate_results.parquet`
+- `phase7_metrics.csv`
+- attack-reduction vs false-block/utility plot
+- side-by-side comparison of mean and logistic detectors
+
+The core practical result is:
 
 \[
 \boxed{
-\text{attack blocking}
+\text{attack reduction}
 \quad\text{vs}\quad
-\text{clean utility}
+\text{clean-task utility}
 }
 \]
 
-Primary utility evaluation should use the same benchmarks' clean/no-attack tasks.
-
-Broad capability benchmarks such as GSM8K, MATH, or HumanEval are optional extensions and are not required for the core experiment.
+The experiment ends here.
 
 ---
 
-# 7. Minimal Baseline
+# 9. Artifact Dependency Chain
 
-To determine whether J-space provides anything beyond an ordinary hidden-state signal, include one simple baseline after the primary experiment works:
-
-> **Mean-difference detector on the full residual-stream activation \(h_{\ell^*}\) at the same frozen layer.**
-
-Use the same:
-
-- BIPIA train/validation split;
-- scoring method;
-- threshold-selection procedure;
-- held-out benchmarks.
-
-This baseline answers:
-
-> Is the J-space representation competitive with simply reading the full hidden state?
-
-Do not add a large collection of probe architectures unless needed.
-
----
-
-# 8. Interpretability Diagnostics
-
-Decoded J-lens concepts are useful for understanding the learned direction, but they are not the detector.
-
-For selected examples, optionally report:
-
-- top decoded J-space concepts;
-- sparse coefficients;
-- clean vs attack token ranks;
-- percentage rank improvement.
-
-For a token rank changing from \(r_c\) to \(r_a\):
-
-\[
-\text{Rank Improvement}
-=
-\frac{r_c-r_a}{r_c}\times100
-\]
-
-These diagnostics help explain the learned signal but do not determine whether an example is classified as an attack.
-
----
-
-# 9. Experimental Outputs
-
-The complete experiment should produce:
-
-## Phase 1
-
-- layer-wise macro-AUPRC curve;
-- per-task AUPRC/AUROC;
-- selected-layer artifact.
-
-## Phase 3
-
-- BIPIA-test detection metrics;
-- AgentDojo transfer metrics;
-- InjecAgent transfer metrics.
-
-## Phase 4
-
-- recognition-vs-compliance table/plot.
-
-## Phase 5
-
-- intervention strength vs Attack Success Rate;
-- random-direction control.
-
-## Phase 6
-
-- attack-block-rate vs clean-utility curve.
-
-## Baseline
-
-- J-space detector vs full-residual detector at the same frozen layer.
-
----
-
-# 10. Experimental Order
-
-Implement incrementally.
+Each phase must read frozen artifacts rather than recomputing earlier choices.
 
 ```text
-1. Layer selection
-   BIPIA → h_l^J → d_l → validation scores → macro-AUPRC → l*
+Phase 1
+selected_layer.json
+        |
+        v
+Phase 2
+coarse J-space disruption results
+        |
+        v
+Phase 3
+mean_detector artifact
+logistic_detector artifact
+frozen thresholds
+        |
+        v
+Phase 4
+held-out/transfer predictions + behavior
+        |
+        v
+Phase 5
+recognition/compliance analysis
 
-2. Freeze detector
-   l* + d_inj + validation threshold
+Phase 3 detector directions
+        |
+        v
+Phase 6
+causal intervention results
 
-3. Held-out / transfer
-   BIPIA test → AgentDojo → InjecAgent
-
-4. Recognition vs compliance
-   internal score + actual attack outcome
-
-5. Causal intervention
-   ± d_inj vs matched random direction
-
-6. Read-only gate
-   threshold detector before model action
-
-7. Utility
-   clean benchmark performance
-
-8. Minimal baseline
-   full residual-stream mean-difference detector
+Phase 3 frozen detectors
++
+Phase 4 evaluation sets
+        |
+        v
+Phase 7
+read-only monitoring + utility
 ```
 
-Do not build later phases until the earlier phase works.
+Phase 2 is intentionally diagnostic and does not alter the Phase 3 detector training procedure.
 
 ---
 
-# 11. Core Hypotheses
+# 10. Run Identity and Cache Safety
 
-## H1 — Localization
+Every phase output must record:
 
-Prompt injection is distinguishable from matched benign content using J-space representations at one or more fitted layers.
+- experiment/run ID;
+- model ID and revision;
+- lens repo/revision/hash;
+- BIPIA/Jacobian-lens source commits where relevant;
+- config hash;
+- relevant manifest hash;
+- selected layer;
+- \(k=25\);
+- decomposition settings;
+- random seed;
+- dtype;
+- device/GPU metadata.
 
-## H2 — Generalization
+A cache must not be reused when any identity-defining field differs.
 
-The frozen BIPIA-learned J-space detector transfers to held-out BIPIA data and external prompt-injection benchmarks without retraining.
+This is reproducibility metadata, not a separate experimental phase.
 
-## H3 — Recognition/compliance dissociation
+---
+
+# 11. End-to-End Execution
+
+The implementation should support the same sequence on Colab or a remote CUDA host.
+
+Conceptually:
+
+```bash
+# Phase 1
+run phase1 --config <model_lens_experiment.yaml>
+
+# Phase 2
+run phase2 --config <same_config> --phase1 <phase1_output>
+
+# Phase 3
+run phase3 --config <same_config> --phase1 <phase1_output>
+
+# Phase 4
+run phase4 --config <same_config> --detectors <phase3_output>
+
+# Phase 5
+run phase5 --phase4 <phase4_output>
+
+# Phase 6
+run phase6 --config <same_config> --detectors <phase3_output>
+
+# Phase 7
+run phase7 --config <same_config> --detectors <phase3_output> --phase4 <phase4_output>
+```
+
+Exact CLI names may follow the repository's existing package conventions, but:
+
+- scientific code must be identical between Colab and SSH;
+- all long GPU phases must be resumable;
+- notebooks may only configure, launch, and display;
+- no scientific state may live only in notebook memory.
+
+An optional end-to-end dispatcher may execute Phases 1–7 sequentially, but it must call the same phase modules and honor every freeze boundary.
+
+---
+
+# 12. Phase Completion Criteria
+
+## Phase 1 is complete when
+
+- all eligible lens layers have validation metrics;
+- one layer is selected by macro-AUPRC;
+- `selected_layer.json` is loadable independently.
+
+## Phase 2 is complete when
+
+- all five \(\alpha\) values have attack and clean results;
+- ASR and clean utility are summarized against \(\alpha=0\).
+
+## Phase 3 is complete when
+
+- both detectors are trained;
+- both validation thresholds are selected using the fixed rule;
+- both detector artifacts can be loaded independently.
+
+## Phase 4 is complete when
+
+- both frozen detectors have predictions on BIPIA test, AgentDojo, and InjecAgent;
+- no evaluation benchmark has changed detector parameters.
+
+## Phase 5 is complete when
+
+- detector decisions are paired with actual attack outcomes;
+- four-quadrant and conditional-ASR results are produced.
+
+## Phase 6 is complete when
+
+- both learned directions and matched random controls have completed the fixed \(\alpha\) sweep;
+- ASR and clean utility are summarized.
+
+## Phase 7 is complete when
+
+- both frozen monitors have security and clean-utility results;
+- the attack-reduction/utility tradeoff is reported.
+
+---
+
+# 13. Core Hypotheses
+
+## H1 — Layer localization
+
+Prompt injection produces a reproducible sparse J-space shift that is more detectable at some fitted layers than others.
+
+## H2 — Coarse functional relevance
+
+Suppressing the entire selected-layer J-space reconstruction changes attack behavior and/or clean-task behavior in a dose-dependent way.
+
+## H3 — Detectability
+
+Both a mean-difference direction and a linear classifier over sparse J-space coefficients can distinguish injected from matched-clean states.
+
+## H4 — Generalization
+
+The two detectors trained only on BIPIA retain useful detection performance on held-out BIPIA and external prompt-injection benchmarks without retraining.
+
+## H5 — Signal/compliance dissociation
 
 Some successful attacks occur despite high frozen J-space injection scores.
 
-## H4 — Causality
+## H6 — Injection-specific causal involvement
 
-Manipulating the learned J-space injection direction changes Attack Success Rate more than a same-norm random-direction intervention.
+Manipulating a learned injection-associated J-space direction changes attack success more systematically than a same-norm random-direction intervention.
 
-## H5 — Practical utility
+## H7 — Practical monitoring
 
-A read-only J-space gate reduces attack success while retaining useful clean-task performance.
+A read-only J-space monitor reduces attack success while retaining useful clean-task performance.
 
 ---
 
-# 12. What the Experiment Does Not Claim
+# 14. Interpretation Boundaries
 
-The experiment does not assume or attempt to prove that:
+The experiment does not claim that:
 
 - J-space is the model's entire reasoning process;
-- a decoded concept proves the model "knows" something consciously;
-- detection implies causality;
-- a useful detector is automatically adversarially robust;
-- J-space must outperform every possible hidden-state probe;
-- one benchmark establishes universal prompt-injection defense.
+- a decoded concept proves conscious recognition;
+- high detector performance establishes causality;
+- Phase 2's removal of all J-space establishes injection-specific causality;
+- one benchmark or one model establishes universal prompt-injection defense;
+- a useful detector is necessarily robust to adaptive evasion.
 
-Claims should remain tied to the tested models, fitted lenses, benchmarks, detector, and intervention.
+Use language tied to what is measured:
 
----
-
-# 13. Optional Follow-Up Only If Core Results Are Positive
-
-These are **not part of the core experiment**:
-
-- adaptive monitor evasion;
-- additional model families;
-- refitting a new J-lens;
-- multiple probe architectures;
-- full-residual and reconstruction-residual probe suites;
-- large general-capability benchmark suites;
-- alternative sparse-decomposition algorithms;
-- multi-layer detectors.
-
-Only pursue these after the focused experiment establishes a useful signal.
+- "injection-related information is readable from J-space";
+- "the selected J-space component is functionally involved under this intervention";
+- "the learned direction shows causal effects relative to the matched random control";
+- "the frozen detector transfers to the tested benchmark."
 
 ---
 
-# 14. Final Experimental Thesis
+# 15. Explicit Scope Boundary
 
-The experiment tests one coherent chain:
+The current experiment contains exactly seven phases.
 
-\[
-\boxed{
-\text{Can we locate a prompt-injection signal in J-space?}
-}
-\]
+Do **not** add:
 
-\[
-\downarrow
-\]
+- monitor-evasion experiments;
+- residual-stream baseline suites;
+- reconstruction-residual baseline suites;
+- multi-layer detectors;
+- neural/nonlinear probe families;
+- \(k\)-sweeps;
+- decomposition-method sweeps;
+- new model families;
+- broad general-capability benchmark suites;
+- reward-modeling or post-training experiments.
 
-\[
-\boxed{
-\text{Does the same signal generalize?}
-}
-\]
-
-\[
-\downarrow
-\]
-
-\[
-\boxed{
-\text{Can the signal be present even when the attack succeeds?}
-}
-\]
-
-\[
-\downarrow
-\]
-
-\[
-\boxed{
-\text{Does manipulating the signal change behavior?}
-}
-\]
-
-\[
-\downarrow
-\]
-
-\[
-\boxed{
-\text{Can we use the signal to block attacks without breaking clean tasks?}
-}
-\]
-
-This progression keeps the project focused on the original research question while moving from **readability → generalization → behavior → causality → practical defense**.
+Those may be future work only after the seven-phase experiment is complete.

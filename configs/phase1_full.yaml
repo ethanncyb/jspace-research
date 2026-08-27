@@ -2,6 +2,7 @@ model:
   id: google/gemma-4-12B-it
   revision: 5926caa4ec0cac5cbfadaf4077420520de1d5205
   precision: bfloat16
+  quantization: "none"
 
 lens:
   repository: solarkyle/jspace-lenses

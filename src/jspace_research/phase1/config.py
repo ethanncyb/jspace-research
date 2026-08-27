@@ -18,6 +18,7 @@ class ModelConfig:
     id: str
     revision: str
     precision: str = "bfloat16"
+    quantization: str = "none"
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,8 @@ class Phase1Config:
             raise ValueError("At least one BIPIA task is required")
         if len(set(self.tasks)) != len(self.tasks):
             raise ValueError("BIPIA tasks must be unique")
+        if self.seed != 42:
+            raise ValueError("Phase 1 requires the fixed random seed 42")
         if self.train_pairs_per_task <= 0 or self.validation_pairs_per_task <= 0:
             raise ValueError("Pair counts must be positive")
         if self.max_input_tokens <= 0:
@@ -76,12 +79,24 @@ class Phase1Config:
             raise ValueError("token_match_tolerance cannot be negative")
         if not 0 < self.sparsity_k <= self.screen_candidates:
             raise ValueError("Require 0 < sparsity_k <= screen_candidates")
+        if self.sparsity_k != 25 or self.screen_candidates != 512:
+            raise ValueError("Phase 1 requires fixed sparsity_k=25 and screen_candidates=512")
         if self.decomposition_batch_size <= 0 or self.dictionary_chunk_size <= 0:
             raise ValueError("Batch and dictionary chunk sizes must be positive")
         if self.smoke_layer_count is not None and self.smoke_layer_count <= 0:
             raise ValueError("smoke_layer_count must be positive when set")
+        if self.smoke_layer_count is None and (
+            set(self.tasks) != set(SUPPORTED_TASKS)
+            or self.train_pairs_per_task != 500
+            or self.validation_pairs_per_task != 250
+        ):
+            raise ValueError(
+                "A full Phase 1 run requires all five tasks and 500/250 pairs per task"
+            )
         if self.model.precision != "bfloat16":
             raise ValueError("Phase 1 is specified to use bfloat16 model precision")
+        if self.model.quantization != "none":
+            raise ValueError("The primary Phase 1 experiment does not permit quantization")
         if len(self.lens.sha256) != 64:
             raise ValueError("lens.sha256 must be a 64-character SHA-256 digest")
         if self.dependencies.jacobian_lens_revision != EXPECTED_JLENS_REVISION:
@@ -105,8 +120,16 @@ class Phase1Config:
     def as_dict(self) -> dict[str, Any]:
         return _jsonable(asdict(self))
 
+    def scientific_dict(self) -> dict[str, Any]:
+        """Return the resolved scientific settings, excluding machine-local paths."""
+
+        value = self.as_dict()
+        value.pop("data")
+        value.pop("output_dir")
+        return value
+
     def identity_hash(self) -> str:
-        payload = json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":"))
+        payload = json.dumps(self.scientific_dict(), sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 

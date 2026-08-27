@@ -67,11 +67,27 @@ def save_done(path: str | Path, done: np.ndarray) -> None:
     os.replace(temporary, target)
 
 
-def open_uint16_memmap(path: str | Path, shape: tuple[int, ...]) -> np.memmap:
+def open_memmap(
+    path: str | Path,
+    shape: tuple[int, ...],
+    *,
+    dtype: Any,
+    fill_value: int | float | None = None,
+) -> np.memmap:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    mode = "r+" if target.exists() else "w+"
-    expected_bytes = int(np.prod(shape)) * np.dtype(np.uint16).itemsize
-    if target.exists() and target.stat().st_size != expected_bytes:
+    existed = target.exists()
+    mode = "r+" if existed else "w+"
+    numpy_dtype = np.dtype(dtype)
+    expected_bytes = int(np.prod(shape)) * numpy_dtype.itemsize
+    if existed and target.stat().st_size != expected_bytes:
         raise RuntimeError(f"Cache shape mismatch for {target}")
-    return np.memmap(target, dtype=np.uint16, mode=mode, shape=shape)
+    memory_map = np.memmap(target, dtype=numpy_dtype, mode=mode, shape=shape)
+    if not existed and fill_value is not None:
+        memory_map.fill(fill_value)
+        memory_map.flush()
+    return memory_map
+
+
+def open_uint16_memmap(path: str | Path, shape: tuple[int, ...]) -> np.memmap:
+    return open_memmap(path, shape, dtype=np.uint16)

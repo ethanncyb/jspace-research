@@ -25,6 +25,27 @@ def test_sparse_pursuit_recovers_positive_identity_atoms() -> None:
     assert bool((coefficients >= 0).all())
 
 
+def test_sparse_pursuit_refits_nonorthogonal_positive_atoms() -> None:
+    diagonal = 2**-0.5
+    dictionary = torch.tensor([[1.0, 0.0], [diagonal, diagonal]])
+    hidden = dictionary[0:1] + 2 * dictionary[1:2]
+    reconstruction, token_ids, coefficients = screened_nonnegative_pursuit(
+        hidden, dictionary, sparsity_k=2, screen_candidates=2
+    )
+    torch.testing.assert_close(reconstruction, hidden, atol=1e-5, rtol=1e-5)
+    assert set(token_ids[0].tolist()) == {0, 1}
+    assert bool((coefficients >= 0).all())
+
+
+def test_sparse_pursuit_excludes_nonpositive_screen_candidates() -> None:
+    dictionary = torch.tensor([[0.8, 0.6], [0.0, -1.0]])
+    hidden = torch.tensor([[1.0, 0.0]])
+    _, token_ids, _ = screened_nonnegative_pursuit(
+        hidden, dictionary, sparsity_k=2, screen_candidates=2
+    )
+    assert token_ids[0].tolist() == [0, -1]
+
+
 def test_task_balanced_direction_and_scores() -> None:
     representations = torch.tensor(
         [
@@ -57,6 +78,7 @@ def test_metrics_and_layer_tie_breaking() -> None:
                 ]
             )
     metrics = compute_layer_metrics(pd.DataFrame(rows), [3, 7], ["a", "b"], {"a": "A", "b": "B"})
+    assert set(metrics.scope) == {"task", "macro"}
     selected = select_layer(metrics)
     assert selected.layer == 3
     assert selected.auprc == pytest.approx(1.0)

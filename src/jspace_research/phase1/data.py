@@ -379,6 +379,7 @@ def validate_pair_manifest(rows: Sequence[dict[str, Any]], config: Phase1Config)
     prompt_hashes: set[str] = set()
     contexts: dict[tuple[str, str], set[str]] = {}
     variants: dict[tuple[str, str], set[tuple[str, int]]] = {}
+    categories: dict[tuple[str, str], set[str]] = {}
     cell_counts: dict[tuple[str, str, str, str], int] = {}
 
     for row in rows:
@@ -397,12 +398,22 @@ def validate_pair_manifest(rows: Sequence[dict[str, Any]], config: Phase1Config)
             > config.token_match_tolerance
         ):
             raise ValueError(f"Token-length mismatch for {row['pair_id']}")
+        if max(row["attack_prompt_tokens"], row["control_prompt_tokens"]) > config.max_input_tokens:
+            raise ValueError(f"Overlength prompt for {row['pair_id']}")
+        if row["position"] not in POSITIONS:
+            raise ValueError(f"Invalid insertion position for {row['pair_id']}")
         contexts.setdefault(key, set()).add(row["context_id"])
-        variants.setdefault(key, set()).add((row["attack_category"], int(row["attack_variant_id"])))
+        category = row["attack_category"]
+        variant_id = int(row["attack_variant_id"])
+        allowed_variants = {0, 1, 2} if row["split"] == "train" else {3, 4}
+        if variant_id not in allowed_variants:
+            raise ValueError(f"Invalid {row['split']} attack variant for {row['pair_id']}")
+        variants.setdefault(key, set()).add((category, variant_id))
+        categories.setdefault(key, set()).add(category)
         cell = (
             row["task"],
             row["split"],
-            row["attack_category"],
+            category,
             row["position"],
         )
         cell_counts[cell] = cell_counts.get(cell, 0) + 1
@@ -414,13 +425,17 @@ def validate_pair_manifest(rows: Sequence[dict[str, Any]], config: Phase1Config)
             raise ValueError(f"Source-context leakage for task {task}")
         if not variants[(task, "train")].isdisjoint(variants[(task, "validation")]):
             raise ValueError(f"Attack-variant leakage for task {task}")
+        if categories[(task, "train")] != categories[(task, "validation")]:
+            raise ValueError(f"Attack-category mismatch across splits for task {task}")
         for split in ("train", "validation"):
-            values = [
-                count
-                for (cell_task, cell_split, _, _), count in cell_counts.items()
-                if cell_task == task and cell_split == split
+            cells = [
+                (category, position)
+                for category in sorted(categories[(task, split)])
+                for position in POSITIONS
             ]
-            if values and max(values) - min(values) > 1:
+            quotas = balanced_quotas(cells, expected[(task, split)])
+            actual = {cell: cell_counts.get((task, split, cell[0], cell[1]), 0) for cell in cells}
+            if actual != quotas:
                 raise ValueError(f"Unbalanced category-position cells for {task}/{split}")
 
 

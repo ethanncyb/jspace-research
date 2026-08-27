@@ -22,13 +22,13 @@ def tensor_to_bfloat16_bits(tensor: torch.Tensor) -> np.ndarray:
 @torch.no_grad()
 def build_normalized_dictionary(
     *,
-    lens: Any,
+    jacobian: torch.Tensor,
     unembedding: torch.Tensor,
     layer: int,
     device: torch.device,
     chunk_size: int,
 ) -> torch.Tensor:
-    jacobian = lens.jacobians[layer].to(device=device, dtype=torch.float32)
+    jacobian = jacobian.to(device=device, dtype=torch.float32)
     vocabulary, width = unembedding.shape
     storage_dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
     dictionary = torch.empty((vocabulary, width), dtype=storage_dtype, device=device)
@@ -71,9 +71,10 @@ def screened_nonnegative_pursuit(
     batch_size = hidden.shape[0]
     candidate_count = min(screen_candidates, dictionary.shape[0])
     screen_scores = hidden.to(dictionary.dtype) @ dictionary.T
-    _, top_ids = torch.topk(screen_scores, k=candidate_count, dim=1)
+    top_values, top_ids = torch.topk(screen_scores, k=candidate_count, dim=1)
+    candidate_valid = top_values > 0
     candidate_atoms = dictionary[top_ids].float()
-    del screen_scores
+    del screen_scores, top_values
 
     residual = hidden.clone()
     chosen = torch.zeros((batch_size, candidate_count), dtype=torch.bool, device=device)
@@ -81,7 +82,7 @@ def screened_nonnegative_pursuit(
 
     for _ in range(sparsity_k):
         correlations = torch.einsum("bmd,bd->bm", candidate_atoms, residual)
-        correlations.masked_fill_(chosen, -torch.inf)
+        correlations.masked_fill_(chosen | ~candidate_valid, -torch.inf)
         values, positions = correlations.max(dim=1)
         active = values > 0
         if not bool(active.any()):
@@ -90,7 +91,22 @@ def screened_nonnegative_pursuit(
             position = int(positions[batch_index])
             supports[batch_index].append(position)
             chosen[batch_index, position] = True
-            residual[batch_index] -= values[batch_index] * candidate_atoms[batch_index, position]
+
+            support = torch.tensor(supports[batch_index], device=device, dtype=torch.long)
+            while support.numel() > 0:
+                atoms = candidate_atoms[batch_index, support].T
+                coefficients = torch.linalg.lstsq(atoms, hidden[batch_index]).solution
+                positive = coefficients > 0
+                if bool(positive.all()):
+                    break
+                support = support[positive]
+            supports[batch_index] = support.tolist()
+            if support.numel() == 0:
+                residual[batch_index] = hidden[batch_index]
+            else:
+                atoms = candidate_atoms[batch_index, support].T
+                coefficients = torch.linalg.lstsq(atoms, hidden[batch_index]).solution.clamp_min(0)
+                residual[batch_index] = hidden[batch_index] - atoms @ coefficients
 
     reconstructions = torch.zeros_like(hidden)
     token_ids_out = torch.full((batch_size, sparsity_k), -1, dtype=torch.long)
@@ -99,16 +115,7 @@ def screened_nonnegative_pursuit(
     for batch_index, support_values in enumerate(supports):
         if not support_values:
             continue
-        support = torch.tensor(sorted(set(support_values)), device=device, dtype=torch.long)
-        while support.numel() > 0:
-            atoms = candidate_atoms[batch_index, support].T
-            coefficients = torch.linalg.lstsq(atoms, hidden[batch_index]).solution
-            positive = coefficients > 0
-            if bool(positive.all()):
-                break
-            support = support[positive]
-        if support.numel() == 0:
-            continue
+        support = torch.tensor(support_values, device=device, dtype=torch.long)
         atoms = candidate_atoms[batch_index, support].T
         coefficients = torch.linalg.lstsq(atoms, hidden[batch_index]).solution.clamp_min(0)
         reconstructions[batch_index] = atoms @ coefficients
@@ -211,16 +218,6 @@ def compute_layer_metrics(
                 "task_display": "Macro",
                 "auprc": float(np.mean(task_auprc)),
                 "auroc": float(np.mean(task_auroc)),
-            }
-        )
-        records.append(
-            {
-                "layer": layer,
-                "scope": "pooled",
-                "task": None,
-                "task_display": "Pooled",
-                "auprc": float(average_precision_score(layer_scores.label, layer_scores.score)),
-                "auroc": float(roc_auc_score(layer_scores.label, layer_scores.score)),
             }
         )
     return pd.DataFrame(records)

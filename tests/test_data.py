@@ -95,7 +95,7 @@ def test_manifest_invariants_and_duplicate_rejection(tmp_path: Path) -> None:
     validate_pair_manifest(rows, config)
 
     leaked = [rows[0], {**rows[1], "attack_variant_id": 0}]
-    with pytest.raises(ValueError, match="Attack-variant leakage"):
+    with pytest.raises(ValueError, match="Invalid validation attack variant"):
         validate_pair_manifest(leaked, config)
 
     duplicate = [rows[0], {**rows[1], "attack_prompt_hash": "attack-train"}]
@@ -105,6 +105,30 @@ def test_manifest_invariants_and_duplicate_rejection(tmp_path: Path) -> None:
     mismatch_config = replace(config, token_match_tolerance=0)
     with pytest.raises(ValueError, match="Token-length mismatch"):
         validate_pair_manifest(rows, mismatch_config)
+
+    overlength_config = replace(config, max_input_tokens=100)
+    with pytest.raises(ValueError, match="Overlength prompt"):
+        validate_pair_manifest(rows, overlength_config)
+
+
+def test_manifest_rejects_unbalanced_category_position_cells(tmp_path: Path) -> None:
+    config = replace(
+        make_config(tmp_path),
+        train_pairs_per_task=3,
+        validation_pairs_per_task=3,
+    )
+    rows = []
+    for split, context, variant in (("train", "ctx-train", 0), ("validation", "ctx-val", 3)):
+        for index in range(3):
+            rows.append(
+                {
+                    **row(split, context, variant, f"{split}-{index}"),
+                    "pair_id": f"email:{split}:{index:05d}",
+                    "position": "start",
+                }
+            )
+    with pytest.raises(ValueError, match="Unbalanced category-position"):
+        validate_pair_manifest(rows, config)
 
 
 def test_manifest_is_written_exclusively(tmp_path: Path) -> None:

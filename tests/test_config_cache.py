@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +10,7 @@ import pytest
 from jspace_research.phase1.cache import (
     ensure_cache_metadata,
     load_done,
+    open_memmap,
     open_uint16_memmap,
     save_done,
 )
@@ -69,6 +71,13 @@ def test_load_config_and_path_overrides(tmp_path: Path) -> None:
     assert config.sparsity_k == 25
     assert len(config.identity_hash()) == 64
 
+    relocated = load_config(
+        path,
+        bipia_root=tmp_path / "elsewhere" / "BIPIA" / "benchmark",
+        output_dir=tmp_path / "relocated-output",
+    )
+    assert relocated.identity_hash() == config.identity_hash()
+
 
 def test_config_rejects_wrong_jlens_revision(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
@@ -77,6 +86,20 @@ def test_config_rejects_wrong_jlens_revision(tmp_path: Path) -> None:
     path.write_text(text, encoding="utf-8")
     with pytest.raises(ValueError, match="Jacobian-lens"):
         load_config(path)
+
+
+def test_config_enforces_fixed_scientific_settings(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    write_config(path, tmp_path / "output")
+    config = load_config(path)
+    with pytest.raises(ValueError, match="seed 42"):
+        replace(config, seed=41).validate()
+    with pytest.raises(ValueError, match="sparsity_k=25"):
+        replace(config, sparsity_k=24).validate()
+    with pytest.raises(ValueError, match="does not permit quantization"):
+        replace(config, model=replace(config.model, quantization="int8")).validate()
+    with pytest.raises(ValueError, match="all five tasks"):
+        replace(config, smoke_layer_count=None).validate()
 
 
 def test_cache_metadata_mismatch_fails(tmp_path: Path) -> None:
@@ -103,3 +126,21 @@ def test_completion_bitmap_and_memmap_resume(tmp_path: Path) -> None:
     np.testing.assert_array_equal(second[0], [1, 2, 3])
     with pytest.raises(RuntimeError, match="shape mismatch"):
         open_uint16_memmap(data_path, (3, 3))
+
+
+def test_typed_sparse_memmaps_have_safe_initial_values(tmp_path: Path) -> None:
+    support_path = tmp_path / "support.dat"
+    coefficient_path = tmp_path / "coefficient.dat"
+    support = open_memmap(support_path, (2, 3), dtype=np.int32, fill_value=-1)
+    coefficients = open_memmap(coefficient_path, (2, 3), dtype=np.float32, fill_value=0.0)
+    np.testing.assert_array_equal(support, np.full((2, 3), -1, dtype=np.int32))
+    np.testing.assert_array_equal(coefficients, np.zeros((2, 3), dtype=np.float32))
+
+    support[0, 0] = 7
+    coefficients[0, 0] = 1.5
+    support.flush()
+    coefficients.flush()
+    reopened_support = open_memmap(support_path, (2, 3), dtype=np.int32, fill_value=-1)
+    reopened_coefficients = open_memmap(coefficient_path, (2, 3), dtype=np.float32, fill_value=0.0)
+    assert reopened_support[0, 0] == 7
+    assert reopened_coefficients[0, 0] == pytest.approx(1.5)
