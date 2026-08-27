@@ -1,0 +1,116 @@
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from jspace_research.phase1.config import (
+    DataConfig,
+    DependencyConfig,
+    LensConfig,
+    ModelConfig,
+    Phase1Config,
+)
+from jspace_research.phase1.data import (
+    balanced_quotas,
+    partition_attack_variants,
+    read_jsonl,
+    split_contexts,
+    validate_pair_manifest,
+    write_jsonl_exclusive,
+)
+
+
+def make_config(tmp_path: Path) -> Phase1Config:
+    return Phase1Config(
+        model=ModelConfig("model", "a" * 40),
+        lens=LensConfig("lens", "b" * 40, "lens.pt", "c" * 64),
+        dependencies=DependencyConfig(
+            "581d398613e5602a5af361e1c34d3a92ea82ba8e",
+            "a004b69ec0dd446e0afd461d98cb5e96e120a5d0",
+        ),
+        data=DataConfig(tmp_path / "BIPIA" / "benchmark"),
+        output_dir=tmp_path / "output",
+        seed=42,
+        tasks=("email",),
+        train_pairs_per_task=1,
+        validation_pairs_per_task=1,
+        max_input_tokens=4096,
+        token_match_tolerance=1,
+        sparsity_k=25,
+        screen_candidates=512,
+        decomposition_batch_size=8,
+        dictionary_chunk_size=4096,
+    )
+
+
+def row(split: str, context: str, variant: int, suffix: str) -> dict:
+    return {
+        "pair_id": f"email:{split}:00000",
+        "task": "email",
+        "split": split,
+        "context_id": context,
+        "attack_category": "direct",
+        "attack_variant_id": variant,
+        "position": "start",
+        "attack_prompt_hash": f"attack-{suffix}",
+        "control_prompt_hash": f"control-{suffix}",
+        "attack_prompt_tokens": 100,
+        "control_prompt_tokens": 101,
+    }
+
+
+def test_split_contexts_is_deterministic_and_disjoint() -> None:
+    records = [{"context_id": str(index)} for index in range(12)]
+    train_a, validation_a = split_contexts(records, 42)
+    train_b, validation_b = split_contexts(records, 42)
+    assert train_a == train_b
+    assert validation_a == validation_b
+    assert {item["context_id"] for item in train_a}.isdisjoint(
+        {item["context_id"] for item in validation_a}
+    )
+
+
+def test_attack_variants_are_strictly_disjoint() -> None:
+    train, validation = partition_attack_variants(
+        {"direct": ["zero", "one", "two", "three", "four"]}
+    )
+    assert {index for index, _ in train["direct"]} == {0, 1, 2}
+    assert {index for index, _ in validation["direct"]} == {3, 4}
+    with pytest.raises(ValueError, match="at least five"):
+        partition_attack_variants({"direct": ["zero", "one", "two", "three"]})
+
+
+def test_balanced_quotas_differ_by_at_most_one() -> None:
+    keys = [("a", "start"), ("a", "middle"), ("a", "end")]
+    quotas = balanced_quotas(keys, 8)
+    assert sum(quotas.values()) == 8
+    assert max(quotas.values()) - min(quotas.values()) == 1
+
+
+def test_manifest_invariants_and_duplicate_rejection(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    rows = [row("train", "ctx-train", 0, "train"), row("validation", "ctx-val", 3, "val")]
+    validate_pair_manifest(rows, config)
+
+    leaked = [rows[0], {**rows[1], "attack_variant_id": 0}]
+    with pytest.raises(ValueError, match="Attack-variant leakage"):
+        validate_pair_manifest(leaked, config)
+
+    duplicate = [rows[0], {**rows[1], "attack_prompt_hash": "attack-train"}]
+    with pytest.raises(ValueError, match="Duplicate prompt hash"):
+        validate_pair_manifest(duplicate, config)
+
+    mismatch_config = replace(config, token_match_tolerance=0)
+    with pytest.raises(ValueError, match="Token-length mismatch"):
+        validate_pair_manifest(rows, mismatch_config)
+
+
+def test_manifest_is_written_exclusively(tmp_path: Path) -> None:
+    path = tmp_path / "pair_manifest.jsonl"
+    rows = [{"pair_id": "one"}]
+    write_jsonl_exclusive(path, rows)
+    assert read_jsonl(path) == rows
+    with pytest.raises(RuntimeError, match="already exists"):
+        write_jsonl_exclusive(path, rows)
