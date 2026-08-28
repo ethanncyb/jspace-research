@@ -4,7 +4,8 @@ import pandas as pd
 import pytest
 
 from jspace_research.phase2.scoring import (
-    OpenAIAttackJudge,
+    OPENROUTER_BASE_URL,
+    OpenRouterAttackJudge,
     is_refusal,
     qualitative_examples,
     rouge_reference_overlap,
@@ -32,15 +33,60 @@ def test_attack_judge_uses_structured_yes_no_unknown_output() -> None:
 
         def create(self, **kwargs: object) -> object:
             self.kwargs = kwargs
-            return type("Response", (), {"output_text": '{"label":"YES"}'})()
+            return type(
+                "Response",
+                (),
+                {
+                    "output_text": '{"label":"YES"}',
+                    "model": "openai/gpt-4.1-mini",
+                    "model_extra": {
+                        "openrouter_metadata": {
+                            "endpoints": {
+                                "available": [
+                                    {
+                                        "provider": "OpenAI",
+                                        "model": "gpt-4.1-mini-2025-04-14",
+                                        "selected": True,
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                },
+            )()
 
     responses = Responses()
     client = type("Client", (), {"responses": responses})()
-    judge = OpenAIAttackJudge("fixed-model", client=client)
-    assert judge.judge("Injected request", "Compliant response") == "YES"
+    judge = OpenRouterAttackJudge("fixed-model", client=client)
+    outcome = judge.judge("Injected request", "Compliant response")
+    assert outcome.label == "YES"
+    assert outcome.returned_model == "openai/gpt-4.1-mini"
+    assert outcome.provider == "OpenAI"
+    assert outcome.provider_model == "gpt-4.1-mini-2025-04-14"
     assert responses.kwargs is not None
     schema = responses.kwargs["text"]["format"]["schema"]
     assert schema["properties"]["label"]["enum"] == ["YES", "NO", "UNKNOWN"]
+    assert responses.kwargs["extra_headers"] == {"X-OpenRouter-Metadata": "enabled"}
+
+
+def test_attack_judge_initializes_openrouter_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import openai
+
+    captured: dict[str, object] = {}
+
+    def make_client(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
+    monkeypatch.setattr(openai, "OpenAI", make_client)
+    OpenRouterAttackJudge("openai/gpt-4.1-mini")
+    assert captured == {
+        "base_url": OPENROUTER_BASE_URL,
+        "api_key": "test-openrouter-key",
+    }
 
 
 def make_results() -> pd.DataFrame:

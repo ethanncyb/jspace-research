@@ -27,8 +27,9 @@ from ..runtime import (
 from .artifacts import Phase1Handoff, load_phase1_handoff
 from .config import Phase2Config
 from .scoring import (
+    JUDGE_GATEWAY,
     JUDGE_RUBRIC_SHA256,
-    OpenAIAttackJudge,
+    OpenRouterAttackJudge,
     qualitative_examples,
     score_generation,
     summarize_results,
@@ -77,7 +78,8 @@ def _base_provenance(config: Phase2Config, handoff: Phase1Handoff) -> dict[str, 
         "resolved_config": config.scientific_dict(),
         "config_sha256": config.identity_hash(),
         "judge": {
-            "model": config.judge_model,
+            "gateway": JUDGE_GATEWAY,
+            "requested_model": config.judge_model,
             "rubric_sha256": JUDGE_RUBRIC_SHA256,
             "labels": ["YES", "NO", "UNKNOWN"],
             "successful_label": "YES",
@@ -98,6 +100,7 @@ def _write_or_validate_provenance(
             "generation_gpu": None,
             "generation_packages": None,
             "analysis_packages": None,
+            "judge_runtime": None,
         },
         updates=updates,
     )
@@ -290,6 +293,7 @@ def _expected_judgment_fields(
         "phase1_run_id": record["phase1_run_id"],
         "manifest_sha256": record["manifest_sha256"],
         "selected_layer": record["selected_layer"],
+        "judge_gateway": JUDGE_GATEWAY,
         "judge_model": config.judge_model,
         "judge_rubric_sha256": JUDGE_RUBRIC_SHA256,
         "generation_sha256": record["generation_sha256"],
@@ -318,6 +322,9 @@ def _load_judgment_records(
             raise RuntimeError(f"Judgment cache is incomplete at {path}")
         if value.get("attack_success") != (value["judge_label"] == "YES"):
             raise RuntimeError(f"Judgment cache outcome is inconsistent at {path}")
+        for field in ("returned_model", "provider", "provider_model"):
+            if value.get(field) is not None and not isinstance(value[field], str):
+                raise RuntimeError(f"Judgment cache metadata is invalid at {path}")
         cached_by_id[job_id] = value
     return cached_by_id
 
@@ -333,17 +340,39 @@ def _load_or_create_judgment(
     if job_id in cached_by_id:
         return cached_by_id[job_id]
     expected = _expected_judgment_fields(config, record)
-    label = judge.judge(record["attack_text"], record["generation"])
-    if label not in {"YES", "NO", "UNKNOWN"}:
-        raise RuntimeError(f"Judge returned an invalid label: {label!r}")
+    outcome = judge.judge(record["attack_text"], record["generation"])
+    if outcome.label not in {"YES", "NO", "UNKNOWN"}:
+        raise RuntimeError(f"Judge returned an invalid label: {outcome.label!r}")
     value = {
         **expected,
-        "judge_label": label,
-        "attack_success": label == "YES",
+        "judge_label": outcome.label,
+        "attack_success": outcome.label == "YES",
+        "returned_model": outcome.returned_model,
+        "provider": outcome.provider,
+        "provider_model": outcome.provider_model,
     }
     append_jsonl(_judgment_path(config), value)
     cached_by_id[job_id] = value
     return value
+
+
+def _judge_runtime_metadata(
+    judgments: dict[str, dict[str, Any]],
+) -> dict[str, list[str]]:
+    return {
+        provenance_field: sorted(
+            {
+                str(value[cache_field])
+                for value in judgments.values()
+                if value.get(cache_field) is not None
+            }
+        )
+        for provenance_field, cache_field in (
+            ("returned_models", "returned_model"),
+            ("providers", "provider"),
+            ("provider_models", "provider_model"),
+        )
+    }
 
 
 def _save_plots(config: Phase2Config, summary: pd.DataFrame) -> None:
@@ -398,7 +427,7 @@ def analyze(config: Phase2Config, *, judge: Any | None = None) -> Path:
         judge_label: str | None = None
         if record["condition"] == "attack":
             if active_judge is None and record["job_id"] not in judgments:
-                active_judge = OpenAIAttackJudge(config.judge_model)
+                active_judge = OpenRouterAttackJudge(config.judge_model)
             judgment = _load_or_create_judgment(
                 config=config,
                 record=record,
@@ -494,6 +523,7 @@ def analyze(config: Phase2Config, *, judge: Any | None = None) -> Path:
             },
             "analysis_packages": existing_analysis_packages
             or package_versions(PACKAGE_NAMES),
+            "judge_runtime": _judge_runtime_metadata(judgments),
         },
     )
     print(f"Phase 2 results: {results_path}")

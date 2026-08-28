@@ -26,7 +26,7 @@ The repository pins:
 - BIPIA to `a004b69ec0dd446e0afd461d98cb5e96e120a5d0`;
 - the model and fitted lens to the revisions and hashes in the Phase 1 YAML configurations.
 
-Gemma and the released lens may require accepting their licenses and authenticating with Hugging Face. Phase 2 attack scoring also requires an `OPENAI_API_KEY`; it uses the pinned `gpt-4.1-mini-2025-04-14` judge and stores no credential in artifacts. The smoke run needs only the pinned BIPIA checkout. The full run additionally requires researcher-provided WebQA and Summarization files in BIPIA `train.jsonl` format. In accordance with the experiment plan, the pipeline does not download or reconstruct those licensed source datasets.
+Gemma and the released lens may require accepting their licenses and authenticating with Hugging Face. Phase 2 attack scoring also requires an `OPENROUTER_API_KEY`; it uses `openai/gpt-4.1-mini` through OpenRouter and stores no credential in artifacts. The smoke run needs only the pinned BIPIA checkout. The full run additionally requires researcher-provided WebQA and Summarization files in BIPIA `train.jsonl` format. In accordance with the experiment plan, the pipeline does not download or reconstruct those licensed source datasets.
 
 Always start with the end-to-end smoke run. It uses EmailQA, 12 training pairs, 6 validation pairs, six fitted layers, and the three Phase 2 conditions: intact (`0.0`), partial removal (`0.5`), and full removal (`1.0`). It also requires exact token equality between ordinary no-hook generation and the zero-strength hook. It verifies the pipeline but is not the final scientific experiment. The full configuration uses all five tasks and all fitted layers.
 
@@ -36,7 +36,7 @@ Open the canonical [`notebooks/JSpace_End_to_End_Colab.ipynb`](notebooks/JSpace_
 
 1. In Colab, select **Runtime → Change runtime type → GPU**. An A100-class runtime is recommended.
 2. Run the installation cell. It clones the `prompt-injection-experiment` branch, installs the package, checks out pinned BIPIA, and prints the resolved revisions.
-3. Authenticate with Hugging Face and add `OPENAI_API_KEY` to Colab Secrets.
+3. Authenticate with Hugging Face and add `OPENROUTER_API_KEY` to Colab Secrets.
 4. Leave `RUN_MODE = "smoke"` for the first run. Use `RUN_MODE = "full"` only after smoke succeeds and the two external task files are available.
 5. Run and inspect Phase 1, run the separate Phase 2 generation and analysis cells, then run the CPU-only Phase 3 cell.
 
@@ -96,7 +96,7 @@ pip install -e '.[test]'
 git clone https://github.com/microsoft/BIPIA.git /path/to/BIPIA
 git -C /path/to/BIPIA checkout a004b69ec0dd446e0afd461d98cb5e96e120a5d0
 hf auth login
-export OPENAI_API_KEY='your-api-key'
+export OPENROUTER_API_KEY='your-openrouter-api-key'
 ```
 
 Verify CUDA before running:
@@ -197,7 +197,7 @@ jspace-phase2 \
 `generate` requires Gemma to fit on one CUDA GPU. It appends and flushes each completed example/condition/alpha result to `generations.jsonl`; it never silently offloads model layers to CPU or disk. After copying the complete run root to another machine, run CPU/API scoring without loading Gemma:
 
 ```bash
-export OPENAI_API_KEY='your-api-key'
+export OPENROUTER_API_KEY='your-openrouter-api-key'
 jspace-phase2 \
   --config configs/phase1_full.yaml \
   --phase1 artifacts/full/phase1/selected_layer.json \

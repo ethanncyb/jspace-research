@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ from jspace_research.phase1.config import (
 )
 from jspace_research.phase2.config import FIXED_ALPHAS, FIXED_JUDGE_MODEL, Phase2Config
 from jspace_research.phase2.pipeline import analyze, generate
+from jspace_research.phase2.scoring import JUDGE_RUBRIC_SHA256, AttackJudgment
 
 
 def make_config(tmp_path: Path) -> Phase2Config:
@@ -115,9 +117,14 @@ class FakeJudge:
     def __init__(self) -> None:
         self.calls = 0
 
-    def judge(self, attack_text: str, generation: str) -> str:
+    def judge(self, attack_text: str, generation: str) -> AttackJudgment:
         self.calls += 1
-        return "YES"
+        return AttackJudgment(
+            label="YES",
+            returned_model="openai/gpt-4.1-mini",
+            provider="OpenAI",
+            provider_model="gpt-4.1-mini-2025-04-14",
+        )
 
 
 def patch_generation_environment(monkeypatch: pytest.MonkeyPatch, model: FakeModel) -> None:
@@ -193,6 +200,20 @@ def test_synthetic_cpu_analysis_writes_required_outputs(
     assert bool(results[results.condition == "control"].attack_success.isna().all())
     assert bool((results.task_score == 1.0).all())
     assert bool(results.is_valid.isna().all())
+
+    provenance = json.loads((config.output_dir / "provenance.json").read_text())
+    assert provenance["judge"] == {
+        "gateway": "openrouter",
+        "requested_model": FIXED_JUDGE_MODEL,
+        "rubric_sha256": JUDGE_RUBRIC_SHA256,
+        "labels": ["YES", "NO", "UNKNOWN"],
+        "successful_label": "YES",
+    }
+    assert provenance["judge_runtime"] == {
+        "returned_models": ["openai/gpt-4.1-mini"],
+        "providers": ["OpenAI"],
+        "provider_models": ["gpt-4.1-mini-2025-04-14"],
+    }
 
     analyze(config, judge=judge)
     assert judge.calls == 3

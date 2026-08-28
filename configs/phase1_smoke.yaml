@@ -37,7 +37,7 @@ phase2:
   max_new_tokens: 512
   do_sample: false
   generation_batch_size: 1
-  judge_model: gpt-4.1-mini-2025-04-14
+  judge_model: openai/gpt-4.1-mini
 
 phase3:
   penalty: l2
