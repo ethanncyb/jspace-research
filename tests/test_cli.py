@@ -1,6 +1,5 @@
 from jspace_research.phase1.cli import build_parser
 from jspace_research.phase2.cli import build_parser as build_phase2_parser
-from jspace_research.run import build_parser as build_run_parser
 
 
 def test_cli_exposes_only_phase1_stages_and_path_overrides() -> None:
@@ -37,18 +36,3 @@ def test_phase2_cli_exposes_only_generation_analysis_stages() -> None:
     )
     assert args.stage == "generate"
     assert args.phase1.endswith("selected_layer.json")
-
-
-def test_end_to_end_cli_uses_one_run_root() -> None:
-    args = build_run_parser().parse_args(
-        [
-            "--config",
-            "config.yaml",
-            "--run-dir",
-            "/run",
-            "--bipia-root",
-            "/data/BIPIA/benchmark",
-        ]
-    )
-    assert args.run_dir == "/run"
-    assert args.bipia_root == "/data/BIPIA/benchmark"

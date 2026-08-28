@@ -32,13 +32,13 @@ Always start with the end-to-end smoke run. It uses EmailQA, 12 training pairs, 
 
 ## Option A: Google Colab
 
-Open [`notebooks/JSpace_End_to_End_Colab.ipynb`](notebooks/JSpace_End_to_End_Colab.ipynb), or [launch it directly in Colab](https://colab.research.google.com/github/ethanncyb/jspace-research/blob/prompt-injection-experiment/notebooks/JSpace_End_to_End_Colab.ipynb). The original [`notebooks/JSpace_Layer_Selection_Colab.ipynb`](notebooks/JSpace_Layer_Selection_Colab.ipynb) remains available for Phase 1 alone.
+Open the canonical [`notebooks/JSpace_End_to_End_Colab.ipynb`](notebooks/JSpace_End_to_End_Colab.ipynb), or [launch it directly in Colab](https://colab.research.google.com/github/ethanncyb/jspace-research/blob/prompt-injection-experiment/notebooks/JSpace_End_to_End_Colab.ipynb).
 
 1. In Colab, select **Runtime → Change runtime type → GPU**. An A100-class runtime is recommended.
 2. Run the installation cell. It clones the `prompt-injection-experiment` branch, installs the package, checks out pinned BIPIA, and prints the resolved revisions.
 3. Authenticate with Hugging Face and add `OPENAI_API_KEY` to Colab Secrets.
 4. Leave `RUN_MODE = "smoke"` for the first run. Use `RUN_MODE = "full"` only after smoke succeeds and the two external task files are available.
-5. Run the dispatcher and inspect both the frozen layer selection and Phase 2 results.
+5. Run the Phase 1 cell, inspect its frozen layer selection, then run the separate Phase 2 generation and analysis cells.
 
 Confirm the selected runtime before starting the expensive stages:
 
@@ -106,32 +106,58 @@ nvidia-smi
 python -c 'import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))'
 ```
 
-Run both phases with one command:
+Run the smoke experiment phase by phase. Each command resumes compatible work in the same directory:
 
 ```bash
-jspace-run \
+jspace-phase1 \
   --config configs/phase1_smoke.yaml \
   --bipia-root /path/to/BIPIA/benchmark \
-  --run-dir ./artifacts/e2e-smoke
+  --output-dir ./artifacts/smoke/phase1 \
+  --stage all
+
+jspace-phase2 \
+  --config configs/phase1_smoke.yaml \
+  --phase1 ./artifacts/smoke/phase1/selected_layer.json \
+  --output-dir ./artifacts/smoke/phase2 \
+  --stage generate
+
+jspace-phase2 \
+  --config configs/phase1_smoke.yaml \
+  --phase1 ./artifacts/smoke/phase1/selected_layer.json \
+  --output-dir ./artifacts/smoke/phase2 \
+  --stage analyze
 ```
 
 Then run the full five-task experiment:
 
 ```bash
-jspace-run \
+jspace-phase1 \
   --config configs/phase1_full.yaml \
   --bipia-root /path/to/BIPIA/benchmark \
   --webqa-train /path/to/webqa/train.jsonl \
   --summarization-train /path/to/summarization/train.jsonl \
-  --run-dir ./artifacts/e2e-full
+  --output-dir ./artifacts/full/phase1 \
+  --stage all
+
+jspace-phase2 \
+  --config configs/phase1_full.yaml \
+  --phase1 ./artifacts/full/phase1/selected_layer.json \
+  --output-dir ./artifacts/full/phase2 \
+  --stage generate
+
+jspace-phase2 \
+  --config configs/phase1_full.yaml \
+  --phase1 ./artifacts/full/phase1/selected_layer.json \
+  --output-dir ./artifacts/full/phase2 \
+  --stage analyze
 ```
 
 After a completed stage or run, copy the output to the local repository from a terminal on the laptop:
 
 ```bash
 rsync -av --partial \
-  user@gpu-server:/remote/path/jspace-research/artifacts/e2e-full/ \
-  /local/path/jspace-research/artifacts/e2e-full/
+  user@gpu-server:/remote/path/jspace-research/artifacts/full/ \
+  /local/path/jspace-research/artifacts/full/
 ```
 
 Replace the example user, host, and paths with those supplied by the GPU provider. Do not rely on an instance's temporary boot disk for the only copy of a run.
@@ -148,13 +174,13 @@ jspace-phase1 --config configs/phase1_smoke.yaml --bipia-root /path/to/BIPIA/ben
 
 The activation and decomposition caches are resumable. Reuse the exact same output directory to resume the same run. Scientific identity excludes machine-local dataset and output paths, so a complete run directory can be moved between machines without changing its identity. The source datasets are required for `prepare`; after the manifest is frozen, `capture` and `analyze` read the manifest and do not require the original source files. If a scientific setting, manifest, model, lens, layer, or cache shape changes, the pipeline stops rather than silently reusing stale data; create a new output directory for a different run.
 
-Phase 2 can also be run separately from a frozen Phase 1 handoff:
+Phase 2 reads the frozen Phase 1 result directly from the same run root:
 
 ```bash
 jspace-phase2 \
   --config configs/phase1_full.yaml \
-  --phase1 artifacts/e2e-full/phase1/selected_layer.json \
-  --output-dir artifacts/e2e-full/phase2 \
+  --phase1 artifacts/full/phase1/selected_layer.json \
+  --output-dir artifacts/full/phase2 \
   --stage generate
 ```
 
@@ -164,14 +190,14 @@ jspace-phase2 \
 export OPENAI_API_KEY='your-api-key'
 jspace-phase2 \
   --config configs/phase1_full.yaml \
-  --phase1 artifacts/e2e-full/phase1/selected_layer.json \
-  --output-dir artifacts/e2e-full/phase2 \
+  --phase1 artifacts/full/phase1/selected_layer.json \
+  --output-dir artifacts/full/phase2 \
   --stage analyze
 ```
 
 `--stage all` runs both stages. Generation and judgments resume from exact-identity cache entries; mismatched config, parent handoff, prompt, generation, judge model, or rubric causes a hard failure.
 
-## Outputs and handoff
+## Outputs and phase boundaries
 
 At each fitted layer, the pipeline constructs normalized token directions from rows of `W_U @ J_l`. It reconstructs the final-prompt-token residual as a sparse nonnegative combination using a screened greedy approximation: 512 positive candidates, at most 25 selected atoms, and an iterative nonnegative support refit. This is an approximation, not an exact orthogonal projection and not Anthropic's exact gradient-pursuit implementation.
 
@@ -186,7 +212,7 @@ The output directory contains:
 - `selected_layer.json` and `selected_layer_direction.pt`;
 - the macro-AUPRC and selected-layer score-distribution plots.
 
-Keep the complete full-run directory for auditability and resumption. The revised Phase 2 performs coarse removal of the selected layer's reconstructed J-space component, so its handoff includes the selected-layer activation and decomposition caches—not only the selected direction. `selected_layer.json` records the frozen run identity, direction hash, selected-layer cache locations, decomposition settings, and relative artifact paths so later phases can load the handoff without notebook state. Phase 3 can reuse the saved sparse support IDs and coefficients without repeating J-space reconstruction.
+Keep the complete full-run directory for auditability and resumption. Phase 2 receives the path to `phase1/selected_layer.json`; no manual conversion or notebook-state transfer is required. That file records the frozen run identity, direction hash, selected-layer cache locations, decomposition settings, and relative artifact paths. Phase 2 validates those artifacts before use, and Phase 3 can reuse the saved sparse support IDs and coefficients without repeating J-space reconstruction.
 
 Phase 2 reads only that frozen handoff. Its directory contains:
 
@@ -205,7 +231,7 @@ Verify and load a copied handoff with:
 from jspace_research.phase1 import load_selected_layer
 
 selection, direction = load_selected_layer(
-    "artifacts/e2e-full/phase1/selected_layer.json"
+    "artifacts/full/phase1/selected_layer.json"
 )
 print(selection["run_id"], selection["selected_layer"])
 ```
@@ -213,7 +239,7 @@ print(selection["run_id"], selection["selected_layer"])
 When moving between Colab, a cloud GPU, and a local machine, preserve the directory structure. A conventional local destination is:
 
 ```text
-jspace-research/artifacts/e2e-full/
+jspace-research/artifacts/full/
 ```
 
 The repository ignores `artifacts/`, generated outputs, and caches so experimental data is not accidentally committed.

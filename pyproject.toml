@@ -33,7 +33,6 @@ test = ["pytest>=8", "ruff>=0.6"]
 [project.scripts]
 jspace-phase1 = "jspace_research.phase1.cli:main"
 jspace-phase2 = "jspace_research.phase2.cli:main"
-jspace-run = "jspace_research.run:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
