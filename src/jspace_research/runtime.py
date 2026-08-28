@@ -63,6 +63,36 @@ def atomic_write_csv(path: str | Path, frame: Any) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def atomic_torch_save(path: str | Path, value: Any) -> None:
+    import torch
+
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        suffix=".pt", dir=target.parent, delete=False
+    ) as handle:
+        temporary = Path(handle.name)
+    try:
+        torch.save(value, temporary)
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def atomic_save_figure(path: str | Path, figure: Any, **savefig_kwargs: Any) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        suffix=target.suffix, dir=target.parent, delete=False
+    ) as handle:
+        temporary = Path(handle.name)
+    try:
+        figure.savefig(temporary, **savefig_kwargs)
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def read_json(path: str | Path) -> dict[str, Any]:
     with Path(path).open("r", encoding="utf-8") as handle:
         value = json.load(handle)

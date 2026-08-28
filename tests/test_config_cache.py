@@ -21,6 +21,7 @@ from jspace_research.phase1.config import (
 )
 from jspace_research.phase2.config import FIXED_ALPHAS
 from jspace_research.phase2.config import load_config as load_phase2_config
+from jspace_research.phase3.config import load_config as load_phase3_config
 
 
 def write_config(path: Path, output_dir: Path) -> None:
@@ -60,6 +61,15 @@ phase2:
   do_sample: false
   generation_batch_size: 1
   judge_model: gpt-4.1-mini-2025-04-14
+phase3:
+  penalty: l2
+  regularization_c: 1.0
+  solver: liblinear
+  fit_intercept: true
+  class_weight: null
+  random_state: 42
+  max_iter: 1000
+  tol: 0.0001
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -129,6 +139,27 @@ def test_phase2_config_uses_fixed_sweep_and_shared_phase1_identity(tmp_path: Pat
             path,
             phase1_selected_path=tmp_path / "phase1" / "selected_layer.json",
             output_dir=tmp_path / "phase2-other",
+        )
+
+
+def test_phase3_config_pins_logistic_settings_and_phase1_identity(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    write_config(path, tmp_path / "phase1")
+    config = load_phase3_config(
+        path,
+        phase1_selected_path=tmp_path / "phase1" / "selected_layer.json",
+        output_dir=tmp_path / "phase3",
+    )
+    assert config.solver == "liblinear"
+    assert config.regularization_c == 1.0
+    assert config.phase1.identity_hash() == load_config(path).identity_hash()
+
+    path.write_text(path.read_text().replace("regularization_c: 1.0", "regularization_c: 0.5"))
+    with pytest.raises(ValueError, match="fixed logistic settings"):
+        load_phase3_config(
+            path,
+            phase1_selected_path=tmp_path / "phase1" / "selected_layer.json",
+            output_dir=tmp_path / "phase3-other",
         )
 
 

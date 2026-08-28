@@ -8,7 +8,7 @@ The experiment is intentionally focused. It answers this question through seven 
 
 1. **Layer Selection**
 2. **Disrupt Selected J-Space Representation**
-3. **Train Both Detectors and Freeze**
+3. **Construct and Freeze Two Detectors**
 4. **Held-Out and Cross-Benchmark Transfer**
 5. **Recognition vs Compliance**
 6. **Injection-Specific Causal Intervention**
@@ -687,15 +687,17 @@ That question belongs to Phase 6.
 
 ---
 
-# Phase 3 — Train Both Detectors and Freeze
+# Phase 3 — Construct and Freeze Two Detectors
 
 ## Research question
 
 > **Can the selected layer's sparse J-space state detect prompt injection using two simple linear constructions?**
 
-Train exactly two detectors.
+Construct exactly two detectors.
 
 Do not add neural probes, nonlinear classifiers, multi-layer features, or extra detector families.
+
+Phase 3 is a CPU-only consumer of the frozen Phase 1 handoff. It does not load Gemma or the lens, recompute J-space, require the original BIPIA source files, or consume Phase 2 outputs.
 
 ## Detector A — Mean-Difference Direction
 
@@ -726,13 +728,15 @@ This asks:
 
 ## Detector B — Logistic Regression on Sparse Coefficients
 
-Let:
+Let \(F_{\text{train}}\) be the sorted unique token IDs present in the selected-layer training supports, and let:
 
 \[
-c(x)\in\mathbb{R}^{|V|}
+c(x)\in\mathbb{R}^{|F_{\text{train}}|}
 \]
 
 be the sparse coefficient vector from the \(k=25\) decomposition at \(\ell^*\), with zero for inactive J-lens directions.
+
+Construct a CSR sparse matrix directly from Phase 1's selected-layer support IDs and nonnegative coefficients. Save the token-ID-to-column mapping with the detector. Validation-only token IDs are unseen features and therefore contribute zero. Use the raw cached coefficients without feature scaling.
 
 Train:
 
@@ -742,13 +746,29 @@ P(y=1\mid c)
 \sigma(w^\top c+b)
 \]
 
+Use the pre-sigmoid logit as the canonical continuous detector score for ranking, threshold selection, saved validation scores, and all later evaluations:
+
+\[
+\boxed{
+s_{\text{logistic}}(x)=w^\top c(x)+b
+}
+\]
+
+The sigmoid probability is derived from this score but is not a separate scoring convention.
+
 Use:
 
 - L2-regularized logistic regression;
 - fixed `C = 1.0`;
+- `solver = "liblinear"`;
+- `fit_intercept = true`;
+- `class_weight = null` because the frozen attack/control data are paired and balanced;
 - deterministic seed `42`;
+- `max_iter = 1000` and `tol = 1e-4`;
 - sparse feature storage;
 - no additional hyperparameter sweep.
+
+Treat failure to converge as an error rather than silently accepting a partially fitted detector.
 
 This asks:
 
@@ -760,7 +780,7 @@ Use the same BIPIA development split created in Phase 1.
 
 ### Mean detector
 
-Reuse the Phase 1 selected-layer training clean mean and mean-difference direction.
+Reuse the Phase 1 selected-layer task-balanced training clean mean and mean-difference direction.
 
 Do not relearn it using validation data.
 
@@ -772,9 +792,17 @@ Fit \(w,b\) on BIPIA training examples only.
 
 Evaluate both detectors on BIPIA validation examples.
 
-Each detector receives one **global** threshold shared across all five BIPIA tasks.
+Each detector receives one **global** threshold shared across all five BIPIA tasks in the scientific run. The smoke run applies the identical procedure across its configured task set, which is EmailQA only.
 
-Choose threshold \(\tau\) by maximizing **macro balanced accuracy** across the five BIPIA validation tasks:
+For both detectors, predict attack when:
+
+\[
+s(x)\geq\tau
+\]
+
+Evaluate each distinct validation score as a candidate threshold, plus one finite candidate immediately above the maximum score to represent an all-negative prediction. This enumerates every distinct validation partition without introducing a threshold grid or another hyperparameter.
+
+Choose threshold \(\tau\) by maximizing **macro balanced accuracy** across the configured BIPIA validation tasks:
 
 \[
 BA_t(\tau)
@@ -785,8 +813,10 @@ BA_t(\tau)
 \[
 \operatorname{MacroBA}(\tau)
 =
-\frac{1}{5}\sum_t BA_t(\tau)
+\frac{1}{|T|}\sum_{t\in T} BA_t(\tau)
 \]
+
+Here \(T\) is the configured task set: all five BIPIA tasks in the scientific run and EmailQA in smoke mode.
 
 Choose:
 
@@ -802,6 +832,12 @@ Tie rule: choose the higher threshold.
 
 This threshold-selection rule must be identical for both detectors.
 
+The validation set is used both for Phase 1 layer selection and Phase 3 threshold selection. Therefore these are development metrics, not an unbiased final estimate. Phase 4 supplies the held-out evaluation and may not revise either detector or threshold.
+
+### Smoke validation
+
+Run Phase 3 smoke from a completed Phase 1 smoke directory. It must exercise both detector paths, sparse feature construction, threshold selection, artifact loading, metrics, and plotting on the EmailQA 12/6-pair split. Smoke validates integration only; the scientific Phase 3 result requires the completed five-task Phase 1 run.
+
 ## Metrics
 
 For each detector on BIPIA validation:
@@ -811,43 +847,59 @@ For each detector on BIPIA validation:
 - macro-AUPRC;
 - macro-AUROC;
 - macro balanced accuracy at frozen \(\tau\);
-- TPR and FPR at frozen \(\tau\).
+- per-task balanced accuracy, TPR, and FPR at frozen \(\tau\).
 
 The threshold-free AUPRC/AUROC evaluate ranking quality. The frozen threshold is used by later binary decisions.
 
 ## Outputs
 
-### Mean detector artifact
+### `mean_detector.pt`
 
 Save:
 
+- Phase 1 run identity and Phase 3 config hash;
 - \(\ell^*\);
 - \(\mu_{\text{clean}}^J\);
 - raw direction;
 - normalized direction;
 - direction norm;
 - threshold \(\tau_{\text{mean}}\);
-- decomposition metadata;
-- model/lens provenance.
+- \(k\) and decomposition settings.
 
-### Logistic detector artifact
+### `logistic_detector.pt`
 
 Save:
 
+- Phase 1 run identity and Phase 3 config hash;
 - \(\ell^*\);
-- feature-index mapping;
+- sorted training-support token IDs defining the feature columns;
 - weights \(w\);
 - intercept \(b\);
 - threshold \(\tau_{\text{logistic}}\);
-- regularization settings;
-- decomposition metadata;
-- model/lens provenance.
+- the fixed solver and regularization settings;
+- \(k\) and decomposition settings.
 
 Also save:
 
-- `phase3_validation_scores.parquet`
-- `phase3_metrics.csv`
-- detector comparison plot
+- `phase3_validation_scores.parquet`, containing example identity, task, condition, label, both continuous scores, and both frozen-threshold decisions;
+- `phase3_metrics.csv` in long form by detector, scope, task, and metric;
+- `phase3_detector_comparison.png`, showing per-task and macro validation AUPRC for the two detectors;
+- lightweight `provenance.json` containing the shared model/lens/source pins and Phase 1/Phase 3 run identities without duplicating the scientific result tables.
+
+Write final artifacts atomically using the existing runtime helpers. Phase 3 is a short CPU computation and does not need a stage dispatcher, append-only cache, or resumable training machinery.
+
+Load the manifest, direction, support IDs, coefficients, shapes, and completion state through the producer-owned Phase 1 artifact boundary. Phase 2 and Phase 3 should share this validated handoff code rather than independently reimplementing it. Do not create a general artifact framework.
+
+The implementation interface is:
+
+```bash
+jspace-phase3 \
+  --config <yaml> \
+  --phase1 <run-root>/phase1/selected_layer.json \
+  --output-dir <run-root>/phase3
+```
+
+The canonical end-to-end notebook should add one Phase 3 cell that invokes this same command and displays the saved metrics and comparison plot.
 
 ## Freeze boundary
 
@@ -864,6 +916,8 @@ w,b,\
 \]
 
 No evaluation benchmark may modify them.
+
+Both detector artifacts must load independently and validate their direct Phase 1 run identity, Phase 3 config identity, selected layer, feature/tensor shapes, and frozen threshold. Keep these as direct completeness checks rather than a graph of cross-artifact hashes.
 
 ---
 
@@ -1284,41 +1338,30 @@ Each phase must read frozen artifacts rather than recomputing earlier choices.
 ```text
 Phase 1
 selected_layer.json
-        |
-        v
-Phase 2
-coarse J-space disruption results
-        |
-        v
-Phase 3
-mean_detector artifact
-logistic_detector artifact
-frozen thresholds
-        |
-        v
-Phase 4
-held-out/transfer predictions + behavior
-        |
-        v
-Phase 5
-recognition/compliance analysis
-
-Phase 3 detector directions
-        |
-        v
-Phase 6
-causal intervention results
-
-Phase 3 frozen detectors
-+
-Phase 4 evaluation sets
-        |
-        v
-Phase 7
-read-only monitoring + utility
+  |
+  +--> Phase 2
+  |    coarse J-space disruption results
+  |
+  +--> Phase 3
+       mean_detector artifact
+       logistic_detector artifact
+       frozen thresholds
+         |
+         +--> Phase 4
+         |    held-out/transfer predictions + behavior
+         |      |
+         |      +--> Phase 5
+         |      |    recognition/compliance analysis
+         |      |
+         |      +--------------------------+
+         |                                 |
+         +--> Phase 6                      v
+         |    causal intervention results  Phase 7
+         |                                 read-only monitoring + utility
+         +---------------------------------+
 ```
 
-Phase 2 is intentionally diagnostic and does not alter the Phase 3 detector training procedure.
+Phase 2 and Phase 3 are independent consumers of the frozen Phase 1 output. Phase 2 is intentionally diagnostic and does not alter the Phase 3 detector construction or thresholds. Phase 7 consumes the frozen Phase 3 detectors together with the Phase 4 evaluation sets.
 
 ---
 
@@ -1419,9 +1462,11 @@ Maintain one canonical end-to-end notebook. It should expose separate resumable 
 
 ## Phase 3 is complete when
 
-- both detectors are trained;
+- Phase 3 smoke completes from a frozen Phase 1 smoke handoff without loading the model or lens;
+- the Phase 1 mean detector is reused unchanged and the sparse logistic detector is fitted on training examples only;
 - both validation thresholds are selected using the fixed rule;
-- both detector artifacts can be loaded independently.
+- both detector artifacts can be loaded independently;
+- the scientific Phase 3 result is produced from the completed five-task Phase 1 run.
 
 ## Phase 4 is complete when
 

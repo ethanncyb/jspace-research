@@ -38,3 +38,13 @@ phase2:
   do_sample: false
   generation_batch_size: 1
   judge_model: gpt-4.1-mini-2025-04-14
+
+phase3:
+  penalty: l2
+  regularization_c: 1.0
+  solver: liblinear
+  fit_intercept: true
+  class_weight: null
+  random_state: 42
+  max_iter: 1000
+  tol: 0.0001

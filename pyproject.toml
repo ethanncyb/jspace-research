@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "jspace-research"
 version = "0.1.0"
-description = "Focused J-space prompt-injection layer-selection and disruption research"
+description = "Focused J-space prompt-injection representation research"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -19,6 +19,7 @@ dependencies = [
   "pyyaml",
   "openai>=1.66",
   "rouge-score",
+  "scipy",
   "scikit-learn",
   "torch",
   "tqdm",
@@ -32,6 +33,7 @@ test = ["pytest>=8", "ruff>=0.6"]
 [project.scripts]
 jspace-phase1 = "jspace_research.phase1.cli:main"
 jspace-phase2 = "jspace_research.phase2.cli:main"
+jspace-phase3 = "jspace_research.phase3.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

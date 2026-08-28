@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from jspace_research.phase1.artifacts import load_selected_layer
+from jspace_research.phase1.artifacts import load_phase1_handoff, load_selected_layer
 from jspace_research.phase1.cache import atomic_write_json, open_uint16_memmap, sha256_file
 from jspace_research.phase1.config import (
     DataConfig,
@@ -49,6 +49,32 @@ def make_config(tmp_path: Path) -> Phase1Config:
         dictionary_chunk_size=4096,
         smoke_layer_count=6,
     )
+
+
+def minimal_manifest_rows() -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for split, context, variant in (("train", "ctx-train", 0), ("validation", "ctx-val", 3)):
+        rows.append(
+            {
+                "pair_id": f"email:{split}:00000",
+                "task": "email",
+                "task_display": "EmailQA",
+                "split": split,
+                "context_id": context,
+                "attack_category": "direct",
+                "attack_variant_id": variant,
+                "position": "start",
+                "attack_text": "Ignore the task.",
+                "target": "Answer: expected.",
+                "attack_messages": [{"role": "user", "content": f"attack-{split}"}],
+                "control_messages": [{"role": "user", "content": f"control-{split}"}],
+                "attack_prompt_hash": f"attack-{split}",
+                "control_prompt_hash": f"control-{split}",
+                "attack_prompt_tokens": 10,
+                "control_prompt_tokens": 10,
+            }
+        )
+    return rows
 
 
 def test_provenance_and_selected_layer_are_standalone_and_portable(tmp_path: Path) -> None:
@@ -129,10 +155,14 @@ def test_decomposition_cache_persists_sparse_supports_and_coefficients(tmp_path:
 
 
 def test_selected_layer_loader_verifies_complete_handoff(tmp_path: Path) -> None:
-    config = make_config(tmp_path)
+    config = replace(
+        make_config(tmp_path),
+        train_pairs_per_task=1,
+        validation_pairs_per_task=1,
+    )
     config.output_dir.mkdir(parents=True)
     manifest_path = config.output_dir / "pair_manifest.jsonl"
-    manifest_path.write_text('{"pair_id":"test"}\n')
+    write_jsonl_exclusive(manifest_path, minimal_manifest_rows())
     manifest_digest = sha256_file(manifest_path)
     direction_path = config.output_dir / "selected_layer_direction.pt"
     torch.save(
@@ -168,12 +198,12 @@ def test_selected_layer_loader_verifies_complete_handoff(tmp_path: Path) -> None
         {
             "config_sha256": config.identity_hash(),
             "manifest_sha256": manifest_digest,
-            "number_examples": 1,
+            "number_examples": 4,
         },
     )
     for key in ("residuals", "unembedding"):
         (config.output_dir / activation_artifacts[key]).write_bytes(b"placeholder")
-    np.save(config.output_dir / activation_artifacts["completion"], np.ones(1, dtype=bool))
+    np.save(config.output_dir / activation_artifacts["completion"], np.ones(4, dtype=bool))
 
     decomposition_artifacts = selected["artifacts"]["selected_layer_decomposition"]
     decomposition_metadata_path = config.output_dir / decomposition_artifacts["metadata"]
@@ -184,18 +214,30 @@ def test_selected_layer_loader_verifies_complete_handoff(tmp_path: Path) -> None
             "config_sha256": config.identity_hash(),
             "manifest_sha256": manifest_digest,
             "layer": 5,
-            "reconstruction_shape": [1, 2],
+            "reconstruction_shape": [4, 2],
+            "sparse_shape": [4, 25],
         },
     )
-    for key in ("reconstruction", "support_ids", "coefficients"):
-        (config.output_dir / decomposition_artifacts[key]).write_bytes(b"placeholder")
-    np.save(config.output_dir / decomposition_artifacts["completion"], np.ones(1, dtype=bool))
+    (config.output_dir / decomposition_artifacts["reconstruction"]).write_bytes(
+        np.zeros((4, 2), dtype=np.uint16).tobytes()
+    )
+    (config.output_dir / decomposition_artifacts["support_ids"]).write_bytes(
+        np.full((4, 25), -1, dtype=np.int32).tobytes()
+    )
+    (config.output_dir / decomposition_artifacts["coefficients"]).write_bytes(
+        np.zeros((4, 25), dtype=np.float32).tobytes()
+    )
+    np.save(config.output_dir / decomposition_artifacts["completion"], np.ones(4, dtype=bool))
     selected_path = config.output_dir / "selected_layer.json"
     atomic_write_json(selected_path, selected)
 
     metadata, direction = load_selected_layer(selected_path)
     assert metadata["run_id"] == selected["run_id"]
     assert direction["layer"] == 5
+    handoff = load_phase1_handoff(selected_path, config)
+    assert len(handoff.examples) == 4
+    assert handoff.reconstruction_shape == (4, 2)
+    assert handoff.sparse_shape == (4, 25)
 
 
 def test_frozen_manifest_load_does_not_require_source_dataset_paths(tmp_path: Path) -> None:
@@ -204,28 +246,7 @@ def test_frozen_manifest_load_does_not_require_source_dataset_paths(tmp_path: Pa
         train_pairs_per_task=1,
         validation_pairs_per_task=1,
     )
-    rows = []
-    for split, context, variant in (("train", "ctx-train", 0), ("validation", "ctx-val", 3)):
-        rows.append(
-            {
-                "pair_id": f"email:{split}:00000",
-                "task": "email",
-                "task_display": "EmailQA",
-                "split": split,
-                "context_id": context,
-                "attack_category": "direct",
-                "attack_variant_id": variant,
-                "position": "start",
-                "attack_text": "Ignore the task.",
-                "target": "Answer: expected.",
-                "attack_messages": [{"role": "user", "content": f"attack-{split}"}],
-                "control_messages": [{"role": "user", "content": f"control-{split}"}],
-                "attack_prompt_hash": f"attack-{split}",
-                "control_prompt_hash": f"control-{split}",
-                "attack_prompt_tokens": 10,
-                "control_prompt_tokens": 10,
-            }
-        )
+    rows = minimal_manifest_rows()
     write_jsonl_exclusive(config.output_dir / "pair_manifest.jsonl", rows)
 
     _, loaded_rows, examples, _ = _load_prepared(config)

@@ -1,12 +1,12 @@
 # J-Space Prompt-Injection Research
 
-This repository implements Phases 1 and 2 of the experiment in [`PLAN.md`](PLAN.md): select the fitted J-lens layer whose sparse J-space representation most reproducibly separates matched BIPIA attack/control prompts, then measure behavior while progressively removing the selected layer's reconstructed J-space component.
+This repository implements Phases 1–3 of the experiment in [`PLAN.md`](PLAN.md): select the fitted J-lens layer whose sparse J-space representation most reproducibly separates matched BIPIA attack/control prompts, measure behavior while removing that reconstructed component, then construct and freeze the two planned linear detectors.
 
-The implementation deliberately stops after coarse J-space disruption. It does not train Phase 3 detectors, select thresholds, evaluate BIPIA test data or transfer benchmarks, perform direction-specific interventions, or implement a gate.
+The implementation deliberately stops after freezing the Phase 3 detectors and development thresholds. It does not evaluate BIPIA test data or transfer benchmarks, perform direction-specific interventions, or implement a gate.
 
 ## Where to run it
 
-Model capture, J-space reconstruction, and intervention generation require Python 3.10+, a BF16-capable NVIDIA CUDA GPU, and enough storage for the model and resumable caches. An A100-class GPU is recommended for the primary Gemma 4 12B run. Phase 2 aggregation, ROUGE scoring, API judgments, and plots can run on CPU after generation completes.
+Model capture, J-space reconstruction, and intervention generation require Python 3.10+, a BF16-capable NVIDIA CUDA GPU, and enough storage for the model and resumable caches. An A100-class GPU is recommended for the primary Gemma 4 12B run. Phase 2 aggregation and all of Phase 3 run on CPU from saved artifacts.
 
 There are three supported GPU workflows using the same commands:
 
@@ -16,7 +16,7 @@ There are three supported GPU workflows using the same commands:
 | Cloud GPU over SSH | A CUDA server reached from a local terminal | Use the server's persistent disk, then copy the run directory locally with `rsync` or `scp` |
 | Local CUDA machine | A workstation with a compatible NVIDIA GPU | Write directly under the local repository or another persistent disk |
 
-A typical Mac can run dataset preparation, tests, Phase 2 analysis, and other lightweight CPU work, but it cannot run Phase 1 `capture`/`analyze` or Phase 2 `generate`, which require CUDA. The experiment is file-based, so GPU generation may run in Colab or over SSH and the complete run directory can then be copied elsewhere.
+A typical Mac can run dataset preparation, tests, Phase 2 analysis, and all of Phase 3, but it cannot run Phase 1 `capture`/`analyze` or Phase 2 `generate`, which require CUDA. The experiment is file-based, so GPU work may run in Colab or over SSH and the complete run directory can then be copied elsewhere.
 
 ## Shared requirements
 
@@ -38,7 +38,7 @@ Open the canonical [`notebooks/JSpace_End_to_End_Colab.ipynb`](notebooks/JSpace_
 2. Run the installation cell. It clones the `prompt-injection-experiment` branch, installs the package, checks out pinned BIPIA, and prints the resolved revisions.
 3. Authenticate with Hugging Face and add `OPENAI_API_KEY` to Colab Secrets.
 4. Leave `RUN_MODE = "smoke"` for the first run. Use `RUN_MODE = "full"` only after smoke succeeds and the two external task files are available.
-5. Run the Phase 1 cell, inspect its frozen layer selection, then run the separate Phase 2 generation and analysis cells.
+5. Run and inspect Phase 1, run the separate Phase 2 generation and analysis cells, then run the CPU-only Phase 3 cell.
 
 Confirm the selected runtime before starting the expensive stages:
 
@@ -106,7 +106,7 @@ nvidia-smi
 python -c 'import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))'
 ```
 
-Run the smoke experiment phase by phase. Each command resumes compatible work in the same directory:
+Run the smoke experiment phase by phase. Phase 1 and Phase 2 resume compatible work in the same directory; Phase 3 is a short CPU computation that safely rewrites its final artifacts:
 
 ```bash
 jspace-phase1 \
@@ -126,6 +126,11 @@ jspace-phase2 \
   --phase1 ./artifacts/smoke/phase1/selected_layer.json \
   --output-dir ./artifacts/smoke/phase2 \
   --stage analyze
+
+jspace-phase3 \
+  --config configs/phase1_smoke.yaml \
+  --phase1 ./artifacts/smoke/phase1/selected_layer.json \
+  --output-dir ./artifacts/smoke/phase3
 ```
 
 Then run the full five-task experiment:
@@ -150,6 +155,11 @@ jspace-phase2 \
   --phase1 ./artifacts/full/phase1/selected_layer.json \
   --output-dir ./artifacts/full/phase2 \
   --stage analyze
+
+jspace-phase3 \
+  --config configs/phase1_full.yaml \
+  --phase1 ./artifacts/full/phase1/selected_layer.json \
+  --output-dir ./artifacts/full/phase3
 ```
 
 After a completed stage or run, copy the output to the local repository from a terminal on the laptop:
@@ -197,6 +207,15 @@ jspace-phase2 \
 
 `--stage all` runs both stages. Generation and judgments resume by job ID from `generations.jsonl` and `judgments.jsonl`. A truncated final record from an interrupted append is discarded and recomputed; malformed earlier records or mismatched config, parent handoff, prompt, generation, judge model, or rubric cause a hard failure.
 
+Phase 3 independently reads the frozen Phase 1 handoff. It is one short CPU command with no stage or training cache, and it does not require Gemma, the lens, BIPIA source files, Phase 2, or an API key:
+
+```bash
+jspace-phase3 \
+  --config configs/phase1_full.yaml \
+  --phase1 artifacts/full/phase1/selected_layer.json \
+  --output-dir artifacts/full/phase3
+```
+
 ## Outputs and phase boundaries
 
 At each fitted layer, the pipeline constructs normalized token directions from rows of `W_U @ J_l`. It reconstructs the final-prompt-token residual as a sparse nonnegative combination using a screened greedy approximation: 512 positive candidates, at most 25 selected atoms, and an iterative nonnegative support refit. This is an approximation, not an exact orthogonal projection and not Anthropic's exact gradient-pursuit implementation.
@@ -224,6 +243,8 @@ Phase 2 reads only that frozen handoff. Its directory contains:
 - lightweight `provenance.json` linking the results to the Phase 1 run, judge rubric, model pins, and generation GPU.
 
 Clean utility is ROUGE-based reference overlap against the frozen BIPIA `construct_response` target. It is not described as a BIPIA-native task metric, and incompatible task utilities are never averaged. BIPIA's packaged ASR evaluators do not cover the required training-attack variants, so attack prompts use the fixed, provenance-recorded semantic YES/NO/UNKNOWN judge rubric described above. BIPIA defines no formal valid-output structure for these development tasks, so validity fields are null. A Phase 2 effect establishes functional involvement of the removed J-space component, not injection-specific causality.
+
+Phase 3 writes `mean_detector.pt`, `logistic_detector.pt`, `phase3_validation_scores.parquet`, `phase3_metrics.csv`, `phase3_detector_comparison.png`, and lightweight `provenance.json`. These are development results: the mean detector is reused from Phase 1, the logistic detector is fitted only on Phase 1 training examples, and both thresholds are selected on Phase 1 validation examples. Phase 4 is responsible for unbiased held-out evaluation.
 
 Verify and load a copied handoff with:
 
