@@ -19,6 +19,8 @@ from jspace_research.phase1.config import (
     EXPECTED_JLENS_REVISION,
     load_config,
 )
+from jspace_research.phase2.config import FIXED_ALPHAS
+from jspace_research.phase2.config import load_config as load_phase2_config
 
 
 def write_config(path: Path, output_dir: Path) -> None:
@@ -52,6 +54,12 @@ screen_candidates: 512
 decomposition_batch_size: 8
 dictionary_chunk_size: 4096
 smoke_layer_count: 6
+phase2:
+  alphas: [0.0, 0.25, 0.5, 0.75, 1.0]
+  max_new_tokens: 512
+  do_sample: false
+  generation_batch_size: 1
+  judge_model: gpt-4.1-mini-2025-04-14
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -100,6 +108,28 @@ def test_config_enforces_fixed_scientific_settings(tmp_path: Path) -> None:
         replace(config, model=replace(config.model, quantization="int8")).validate()
     with pytest.raises(ValueError, match="all five tasks"):
         replace(config, smoke_layer_count=None).validate()
+
+
+def test_phase2_config_uses_fixed_sweep_and_shared_phase1_identity(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    write_config(path, tmp_path / "phase1")
+    config = load_phase2_config(
+        path,
+        phase1_selected_path=tmp_path / "phase1" / "selected_layer.json",
+        output_dir=tmp_path / "phase2",
+    )
+    assert config.alphas == FIXED_ALPHAS
+    assert config.max_new_tokens == 512
+    assert config.phase1.identity_hash() == load_config(path).identity_hash()
+
+    text = path.read_text().replace("0.75, 1.0", "0.8, 1.0")
+    path.write_text(text)
+    with pytest.raises(ValueError, match="fixed alphas"):
+        load_phase2_config(
+            path,
+            phase1_selected_path=tmp_path / "phase1" / "selected_layer.json",
+            output_dir=tmp_path / "phase2-other",
+        )
 
 
 def test_cache_metadata_mismatch_fails(tmp_path: Path) -> None:

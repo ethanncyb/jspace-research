@@ -1,21 +1,22 @@
 # J-Space Prompt-Injection Research
 
-This repository implements Phase 1 of the experiment in [`PLAN.md`](PLAN.md): select the fitted J-lens layer whose sparse J-space representation most reproducibly separates matched BIPIA prompt-injection and benign-control prompts.
+This repository implements Phases 1 and 2 of the experiment in [`PLAN.md`](PLAN.md): select the fitted J-lens layer whose sparse J-space representation most reproducibly separates matched BIPIA attack/control prompts, then measure behavior while progressively removing the selected layer's reconstructed J-space component.
 
-The implementation deliberately stops after layer selection. It does not select a detector threshold, evaluate BIPIA test data or transfer benchmarks, generate behavioral responses, intervene on activations, or implement a gate.
+The implementation deliberately stops after coarse J-space disruption. It does not train Phase 3 detectors, select thresholds, evaluate BIPIA test data or transfer benchmarks, perform direction-specific interventions, or implement a gate.
 
 ## Where to run it
 
-Model capture and J-space reconstruction require Python 3.10+, a BF16-capable NVIDIA CUDA GPU, and enough storage for the model and resumable caches. An A100-class GPU is recommended for the primary Gemma 4 12B run.
+Model capture, J-space reconstruction, and intervention generation require Python 3.10+, a BF16-capable NVIDIA CUDA GPU, and enough storage for the model and resumable caches. An A100-class GPU is recommended for the primary Gemma 4 12B run. Phase 2 aggregation, ROUGE scoring, API judgments, and plots can run on CPU after generation completes.
 
-There are two supported GPU workflows:
+There are three supported GPU workflows using the same commands:
 
 | Option | Execution location | Persistent output |
 | --- | --- | --- |
 | Google Colab | A hosted Colab GPU runtime | Mount Google Drive or download the run directory before the runtime ends |
 | Cloud GPU over SSH | A CUDA server reached from a local terminal | Use the server's persistent disk, then copy the run directory locally with `rsync` or `scp` |
+| Local CUDA machine | A workstation with a compatible NVIDIA GPU | Write directly under the local repository or another persistent disk |
 
-A typical Mac can run dataset preparation, tests, metrics, and other lightweight CPU work, but it cannot run the current `capture` or `analyze` stages because those stages require CUDA. The experiment output is file-based, so Phase 1 may run on either GPU option and its completed run directory may then be used on another machine.
+A typical Mac can run dataset preparation, tests, Phase 2 analysis, and other lightweight CPU work, but it cannot run Phase 1 `capture`/`analyze` or Phase 2 `generate`, which require CUDA. The experiment is file-based, so GPU generation may run in Colab or over SSH and the complete run directory can then be copied elsewhere.
 
 ## Shared requirements
 
@@ -25,19 +26,19 @@ The repository pins:
 - BIPIA to `a004b69ec0dd446e0afd461d98cb5e96e120a5d0`;
 - the model and fitted lens to the revisions and hashes in the Phase 1 YAML configurations.
 
-Gemma and the released lens may require accepting their licenses and authenticating with Hugging Face. The smoke run needs only the pinned BIPIA checkout. The full run additionally requires researcher-provided WebQA and Summarization files in BIPIA `train.jsonl` format. In accordance with the experiment plan, the pipeline does not download or reconstruct those licensed source datasets.
+Gemma and the released lens may require accepting their licenses and authenticating with Hugging Face. Phase 2 attack scoring also requires an `OPENAI_API_KEY`; it uses the pinned `gpt-4.1-mini-2025-04-14` judge and stores no credential in artifacts. The smoke run needs only the pinned BIPIA checkout. The full run additionally requires researcher-provided WebQA and Summarization files in BIPIA `train.jsonl` format. In accordance with the experiment plan, the pipeline does not download or reconstruct those licensed source datasets.
 
-Always start with the smoke run. It uses EmailQA, 12 training pairs, 6 validation pairs, and six fitted layers. It verifies the pipeline but is not the final scientific experiment. The full configuration uses all five tasks and all fitted layers.
+Always start with the end-to-end smoke run. It uses EmailQA, 12 training pairs, 6 validation pairs, six fitted layers, and all five Phase 2 intervention strengths. It also requires exact token equality between ordinary no-hook generation and the zero-strength hook. It verifies the pipeline but is not the final scientific experiment. The full configuration uses all five tasks and all fitted layers.
 
 ## Option A: Google Colab
 
-Open [`notebooks/JSpace_Layer_Selection_Colab.ipynb`](notebooks/JSpace_Layer_Selection_Colab.ipynb), or [launch it directly in Colab](https://colab.research.google.com/github/ethanncyb/jspace-research/blob/prompt-injection-experiment/notebooks/JSpace_Layer_Selection_Colab.ipynb).
+Open [`notebooks/JSpace_End_to_End_Colab.ipynb`](notebooks/JSpace_End_to_End_Colab.ipynb), or [launch it directly in Colab](https://colab.research.google.com/github/ethanncyb/jspace-research/blob/prompt-injection-experiment/notebooks/JSpace_End_to_End_Colab.ipynb). The original [`notebooks/JSpace_Layer_Selection_Colab.ipynb`](notebooks/JSpace_Layer_Selection_Colab.ipynb) remains available for Phase 1 alone.
 
 1. In Colab, select **Runtime → Change runtime type → GPU**. An A100-class runtime is recommended.
-2. Run the installation cell. It clones the `prompt-injection-experiment` branch, installs the package, checks out pinned BIPIA, and prints the resolved repository revisions.
-3. Authenticate when `notebook_login()` prompts. Confirm that the Hugging Face account has access to the pinned Gemma model and lens.
+2. Run the installation cell. It clones the `prompt-injection-experiment` branch, installs the package, checks out pinned BIPIA, and prints the resolved revisions.
+3. Authenticate with Hugging Face and add `OPENAI_API_KEY` to Colab Secrets.
 4. Leave `RUN_MODE = "smoke"` for the first run. Use `RUN_MODE = "full"` only after smoke succeeds and the two external task files are available.
-5. Run Phase 1 and inspect the displayed selection result, metrics, and plots.
+5. Run the dispatcher and inspect both the frozen layer selection and Phase 2 results.
 
 Confirm the selected runtime before starting the expensive stages:
 
@@ -48,11 +49,11 @@ print("CUDA available:", torch.cuda.is_available())
 print("GPU:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None")
 ```
 
-The pipeline also refuses to run `capture` or `analyze` without CUDA and records the GPU identity in `provenance.json`.
+The pipeline refuses to run Phase 1 `capture`/`analyze` or Phase 2 `generate` without CUDA and records GPU identity in each phase's `provenance.json`.
 
 ### Persist Colab results
 
-Paths under `/content` belong to the temporary Colab VM. To retain the complete run, mount Google Drive before configuring `OUTPUT_DIR`:
+Paths under `/content` belong to the temporary Colab VM. To retain the complete run, mount Google Drive before configuring `RUN_ROOT`:
 
 ```python
 from google.colab import drive
@@ -61,9 +62,9 @@ from pathlib import Path
 drive.mount("/content/drive")
 
 RUN_MODE = "smoke"  # change to "full" for the scientific run
-RUN_NAME = "phase1-smoke-run-001" if RUN_MODE == "smoke" else "phase1-full-run-001"
-OUTPUT_DIR = Path("/content/drive/MyDrive/jspace-research/runs") / RUN_NAME
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+RUN_NAME = f"jspace-e2e-{RUN_MODE}"
+RUN_ROOT = Path("/content/drive/MyDrive/jspace-research/runs") / RUN_NAME
+RUN_ROOT.mkdir(parents=True, exist_ok=True)
 ```
 
 For a full run, place the external datasets in persistent storage as well and configure their paths:
@@ -75,11 +76,11 @@ SUMMARIZATION_TRAIN_PATH = Path(
 )
 ```
 
-Writing directly to Drive prioritizes persistence over I/O speed. Alternatively, run under `/content` and copy the entire output directory to Drive before the runtime ends. A fresh Colab runtime is recommended after the research branch changes because the installation cell reuses an existing checkout within the same runtime.
+Writing directly to Drive prioritizes persistence over I/O speed. Alternatively, run under `/content` and copy the entire run root to Drive before the runtime ends. Use a new run root after changing frozen scientific inputs; reusing the same root resumes an identical run.
 
-## Option B: Cloud GPU over SSH
+## Option B: Local CUDA or cloud GPU over SSH
 
-SSH provides a terminal on the remote GPU server; it does not automatically share the laptop's filesystem. Use a persistent server volume for the repository, datasets, model cache, and experiment output.
+Run the following commands directly on a local CUDA workstation or in an SSH session on a cloud GPU. SSH does not automatically share the laptop's filesystem, so remote runs should use a persistent server volume for the repository, datasets, model cache, and output.
 
 From the remote shell, clone and install the experiment:
 
@@ -95,6 +96,7 @@ pip install -e '.[test]'
 git clone https://github.com/microsoft/BIPIA.git /path/to/BIPIA
 git -C /path/to/BIPIA checkout a004b69ec0dd446e0afd461d98cb5e96e120a5d0
 hf auth login
+export OPENAI_API_KEY='your-api-key'
 ```
 
 Verify CUDA before running:
@@ -104,39 +106,37 @@ nvidia-smi
 python -c 'import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))'
 ```
 
-Run the smoke configuration first:
+Run both phases with one command:
 
 ```bash
-jspace-phase1 \
+jspace-run \
   --config configs/phase1_smoke.yaml \
   --bipia-root /path/to/BIPIA/benchmark \
-  --output-dir ./artifacts/phase1-smoke-run-001 \
-  --stage all
+  --run-dir ./artifacts/e2e-smoke
 ```
 
 Then run the full five-task experiment:
 
 ```bash
-jspace-phase1 \
+jspace-run \
   --config configs/phase1_full.yaml \
   --bipia-root /path/to/BIPIA/benchmark \
   --webqa-train /path/to/webqa/train.jsonl \
   --summarization-train /path/to/summarization/train.jsonl \
-  --output-dir ./artifacts/phase1-full-run-001 \
-  --stage all
+  --run-dir ./artifacts/e2e-full
 ```
 
 After a completed stage or run, copy the output to the local repository from a terminal on the laptop:
 
 ```bash
 rsync -av --partial \
-  user@gpu-server:/remote/path/jspace-research/artifacts/phase1-full-run-001/ \
-  /local/path/jspace-research/artifacts/phase1-full-run-001/
+  user@gpu-server:/remote/path/jspace-research/artifacts/e2e-full/ \
+  /local/path/jspace-research/artifacts/e2e-full/
 ```
 
 Replace the example user, host, and paths with those supplied by the GPU provider. Do not rely on an instance's temporary boot disk for the only copy of a run.
 
-## Stages and resumption
+## Stages, resumption, and split-machine analysis
 
 `--stage all` runs `prepare`, `capture`, and `analyze` in sequence. They may instead be run separately with the same configuration, inputs, and output directory:
 
@@ -148,7 +148,30 @@ jspace-phase1 --config configs/phase1_smoke.yaml --bipia-root /path/to/BIPIA/ben
 
 The activation and decomposition caches are resumable. Reuse the exact same output directory to resume the same run. Scientific identity excludes machine-local dataset and output paths, so a complete run directory can be moved between machines without changing its identity. The source datasets are required for `prepare`; after the manifest is frozen, `capture` and `analyze` read the manifest and do not require the original source files. If a scientific setting, manifest, model, lens, layer, or cache shape changes, the pipeline stops rather than silently reusing stale data; create a new output directory for a different run.
 
-## Phase 1 output and handoff
+Phase 2 can also be run separately from a frozen Phase 1 handoff:
+
+```bash
+jspace-phase2 \
+  --config configs/phase1_full.yaml \
+  --phase1 artifacts/e2e-full/phase1/selected_layer.json \
+  --output-dir artifacts/e2e-full/phase2 \
+  --stage generate
+```
+
+`generate` requires CUDA and writes one atomic cache item per example/condition/alpha. After copying the complete run root to another machine, run CPU/API scoring without loading Gemma:
+
+```bash
+export OPENAI_API_KEY='your-api-key'
+jspace-phase2 \
+  --config configs/phase1_full.yaml \
+  --phase1 artifacts/e2e-full/phase1/selected_layer.json \
+  --output-dir artifacts/e2e-full/phase2 \
+  --stage analyze
+```
+
+`--stage all` runs both stages. Generation and judgments resume from exact-identity cache entries; mismatched config, parent handoff, prompt, generation, judge model, or rubric causes a hard failure.
+
+## Outputs and handoff
 
 At each fitted layer, the pipeline constructs normalized token directions from rows of `W_U @ J_l`. It reconstructs the final-prompt-token residual as a sparse nonnegative combination using a screened greedy approximation: 512 positive candidates, at most 25 selected atoms, and an iterative nonnegative support refit. This is an approximation, not an exact orthogonal projection and not Anthropic's exact gradient-pursuit implementation.
 
@@ -165,13 +188,24 @@ The output directory contains:
 
 Keep the complete full-run directory for auditability and resumption. The revised Phase 2 performs coarse removal of the selected layer's reconstructed J-space component, so its handoff includes the selected-layer activation and decomposition caches—not only the selected direction. `selected_layer.json` records the frozen run identity, direction hash, selected-layer cache locations, decomposition settings, and relative artifact paths so later phases can load the handoff without notebook state. Phase 3 can reuse the saved sparse support IDs and coefficients without repeating J-space reconstruction.
 
+Phase 2 reads only that frozen handoff. Its directory contains:
+
+- resumable per-example/per-alpha generation and attack-judgment caches;
+- `phase2_results.parquet` with baseline/current generations and per-example outcomes;
+- `phase2_summary.csv` with ASR, delta-ASR, per-task utility, retention, and refusals;
+- `phase2_asr_vs_alpha.png` and `phase2_clean_utility_vs_alpha.png`;
+- `phase2_examples.csv` for deterministic endpoint inspection;
+- lightweight `provenance.json` linking the results to the Phase 1 run, judge rubric, model pins, and generation GPU.
+
+Clean utility is ROUGE-based reference overlap against the frozen BIPIA `construct_response` target. It is not described as a BIPIA-native task metric, and incompatible task utilities are never averaged. BIPIA's packaged ASR evaluators do not cover the required training-attack variants, so attack prompts use the fixed, provenance-recorded semantic YES/NO/UNKNOWN judge rubric described above. BIPIA defines no formal valid-output structure for these development tasks, so validity fields are null. A Phase 2 effect establishes functional involvement of the removed J-space component, not injection-specific causality.
+
 Verify and load a copied handoff with:
 
 ```python
 from jspace_research.phase1 import load_selected_layer
 
 selection, direction = load_selected_layer(
-    "artifacts/phase1-full-run-001/selected_layer.json"
+    "artifacts/e2e-full/phase1/selected_layer.json"
 )
 print(selection["run_id"], selection["selected_layer"])
 ```
@@ -179,7 +213,7 @@ print(selection["run_id"], selection["selected_layer"])
 When moving between Colab, a cloud GPU, and a local machine, preserve the directory structure. A conventional local destination is:
 
 ```text
-jspace-research/artifacts/phase1-full-run-001/
+jspace-research/artifacts/e2e-full/
 ```
 
 The repository ignores `artifacts/`, generated outputs, and caches so experimental data is not accidentally committed.

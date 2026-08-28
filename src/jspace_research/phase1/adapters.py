@@ -6,14 +6,10 @@ from typing import Any
 
 import torch
 
+from ..model import HuggingFaceModelAdapter
+from ..model import load_tokenizer as load_tokenizer
 from .cache import sha256_file
 from .config import Phase1Config
-
-
-def load_tokenizer(config: Phase1Config) -> Any:
-    from transformers import AutoTokenizer
-
-    return AutoTokenizer.from_pretrained(config.model.id, revision=config.model.revision)
 
 
 class JacobianLensAdapter:
@@ -54,87 +50,6 @@ class JacobianLensAdapter:
         if layer not in self.source_layers:
             raise ValueError(f"Layer {layer} is not fitted by the configured J-lens")
         return self._lens.jacobians[layer]
-
-
-class HuggingFaceModelAdapter:
-    """Phase 1 model boundary for Hugging Face models supported by jlens."""
-
-    def __init__(self, hf_model: Any, tokenizer: Any) -> None:
-        import jlens
-
-        if bool(getattr(hf_model, "is_quantized", False)):
-            raise RuntimeError("The primary experiment does not permit model quantization")
-        self._hf_model = hf_model
-        self._model = jlens.from_hf(hf_model, tokenizer, compile=False)
-
-        if len(tokenizer) > self.vocabulary_size:
-            raise RuntimeError(
-                "Tokenizer vocabulary exceeds the model unembedding vocabulary: "
-                f"{len(tokenizer)} > {self.vocabulary_size}"
-            )
-
-    @classmethod
-    def load(cls, config: Phase1Config, tokenizer: Any) -> HuggingFaceModelAdapter:
-        from transformers import AutoModelForCausalLM
-
-        kwargs = {
-            "revision": config.model.revision,
-            "dtype": torch.bfloat16,
-            "device_map": "auto",
-            "low_cpu_mem_usage": True,
-        }
-        try:
-            hf_model = AutoModelForCausalLM.from_pretrained(config.model.id, **kwargs)
-        except Exception as causal_error:
-            try:
-                from transformers import AutoModelForMultimodalLM
-
-                print(
-                    "AutoModelForCausalLM failed; trying AutoModelForMultimodalLM: "
-                    f"{type(causal_error).__name__}"
-                )
-                hf_model = AutoModelForMultimodalLM.from_pretrained(config.model.id, **kwargs)
-            except Exception:
-                raise causal_error from None
-        hf_model.eval()
-        return cls(hf_model, tokenizer)
-
-    @property
-    def hidden_width(self) -> int:
-        return int(self._model.d_model)
-
-    @property
-    def number_layers(self) -> int:
-        return int(self._model.n_layers)
-
-    @property
-    def input_device(self) -> torch.device:
-        return torch.device(self._model.input_device)
-
-    @property
-    def vocabulary_size(self) -> int:
-        return int(self._model._lm_head.weight.shape[0])
-
-    def unembedding(self) -> torch.Tensor:
-        return self._model._lm_head.weight.detach().to("cpu", dtype=torch.bfloat16).contiguous()
-
-    def capture_final_prompt_token(
-        self, input_ids: torch.Tensor, layers: Sequence[int]
-    ) -> torch.Tensor:
-        import jlens
-
-        if input_ids.ndim != 2 or input_ids.shape[0] != 1:
-            raise ValueError("Phase 1 capture expects one unpadded prompt at a time")
-        requested = [int(layer) for layer in layers]
-        input_ids = input_ids.to(self.input_device)
-        with (
-            torch.no_grad(),
-            jlens.ActivationRecorder(self._model.layers, at=requested) as recorder,
-        ):
-            self._model.forward(input_ids)
-        if set(recorder.activations) != set(requested):
-            raise RuntimeError("The model adapter did not capture every requested layer")
-        return torch.stack([recorder.activations[layer][0, -1, :].detach() for layer in requested])
 
 
 def validate_model_lens(

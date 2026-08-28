@@ -159,6 +159,13 @@ def build_messages(
     ]
 
 
+def construct_target(builder: Any, record: dict[str, Any]) -> str:
+    target = builder.construct_response(record)
+    if not isinstance(target, str) or not target.strip():
+        raise ValueError("BIPIA construct_response returned an invalid target")
+    return target
+
+
 def make_benign_match(
     *,
     tokenizer: Any,
@@ -348,6 +355,7 @@ def build_pairs_for_task(
                         "position": position,
                         "attack_text": attack_text,
                         "benign_text": benign_text,
+                        "target": construct_target(builder, context),
                         "attack_messages": attack_messages,
                         "control_messages": control_messages,
                         "attack_prompt_tokens": attack_length,
@@ -402,6 +410,8 @@ def validate_pair_manifest(rows: Sequence[dict[str, Any]], config: Phase1Config)
             raise ValueError(f"Overlength prompt for {row['pair_id']}")
         if row["position"] not in POSITIONS:
             raise ValueError(f"Invalid insertion position for {row['pair_id']}")
+        if not isinstance(row.get("target"), str) or not row["target"].strip():
+            raise ValueError(f"Missing BIPIA construct_response target for {row['pair_id']}")
         contexts.setdefault(key, set()).add(row["context_id"])
         category = row["attack_category"]
         variant_id = int(row["attack_variant_id"])
@@ -463,6 +473,8 @@ def expand_examples(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
             "attack_category": row["attack_category"],
             "attack_variant_id": row["attack_variant_id"],
             "position": row["position"],
+            "attack_text": row["attack_text"],
+            "target": row["target"],
         }
         examples.append(
             {

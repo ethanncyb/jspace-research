@@ -16,6 +16,7 @@ from jspace_research.phase1.config import (
 )
 from jspace_research.phase1.data import (
     balanced_quotas,
+    construct_target,
     partition_attack_variants,
     read_jsonl,
     render_ids,
@@ -33,6 +34,14 @@ class MappingTokenizer:
 def test_render_ids_unwraps_mapping_tokenizer_output() -> None:
     input_ids = render_ids(MappingTokenizer(), [{"role": "user", "content": "test"}])
     assert input_ids.shape == (1, 3)
+
+
+def test_construct_target_uses_bipia_builder_response() -> None:
+    class Builder:
+        def construct_response(self, record: dict) -> str:
+            return f"Answer: {record['ideal']}."
+
+    assert construct_target(Builder(), {"ideal": "expected"}) == "Answer: expected."
 
 
 def make_config(tmp_path: Path) -> Phase1Config:
@@ -67,6 +76,7 @@ def row(split: str, context: str, variant: int, suffix: str) -> dict:
         "attack_category": "direct",
         "attack_variant_id": variant,
         "position": "start",
+        "target": "Answer: expected.",
         "attack_prompt_hash": f"attack-{suffix}",
         "control_prompt_hash": f"control-{suffix}",
         "attack_prompt_tokens": 100,
@@ -122,6 +132,10 @@ def test_manifest_invariants_and_duplicate_rejection(tmp_path: Path) -> None:
     overlength_config = replace(config, max_input_tokens=100)
     with pytest.raises(ValueError, match="Overlength prompt"):
         validate_pair_manifest(rows, overlength_config)
+
+    incomplete = [rows[0], {**rows[1], "target": ""}]
+    with pytest.raises(ValueError, match="construct_response target"):
+        validate_pair_manifest(incomplete, config)
 
 
 def test_manifest_rejects_unbalanced_category_position_cells(tmp_path: Path) -> None:
