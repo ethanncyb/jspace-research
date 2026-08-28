@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections import UserDict
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import torch
 
 from jspace_research.phase1.config import (
     DataConfig,
@@ -16,10 +18,21 @@ from jspace_research.phase1.data import (
     balanced_quotas,
     partition_attack_variants,
     read_jsonl,
+    render_ids,
     split_contexts,
     validate_pair_manifest,
     write_jsonl_exclusive,
 )
+
+
+class MappingTokenizer:
+    def apply_chat_template(self, *args: object, **kwargs: object) -> UserDict:
+        return UserDict({"input_ids": torch.tensor([[1, 2, 3]])})
+
+
+def test_render_ids_unwraps_mapping_tokenizer_output() -> None:
+    input_ids = render_ids(MappingTokenizer(), [{"role": "user", "content": "test"}])
+    assert input_ids.shape == (1, 3)
 
 
 def make_config(tmp_path: Path) -> Phase1Config:

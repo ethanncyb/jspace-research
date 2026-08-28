@@ -8,7 +8,7 @@ import random
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -138,7 +138,7 @@ def render_ids(tokenizer: Any, messages: Sequence[dict[str, str]]) -> Any:
         add_generation_prompt=True,
         return_tensors="pt",
     )
-    return encoded["input_ids"] if isinstance(encoded, dict) else encoded
+    return encoded["input_ids"] if isinstance(encoded, Mapping) else encoded
 
 
 def prompt_length(tokenizer: Any, messages: Sequence[dict[str, str]]) -> int:
