@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import gc
 import hashlib
-import importlib.metadata
-import os
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -14,8 +11,19 @@ import torch
 from tqdm.auto import tqdm
 
 from ..model import HuggingFaceModelAdapter, load_tokenizer
-from ..phase1.cache import atomic_write_json, ensure_cache_metadata, read_json, sha256_file
 from ..phase1.data import render_ids
+from ..runtime import (
+    atomic_write_csv,
+    atomic_write_json,
+    atomic_write_parquet,
+    cuda_metadata,
+    ensure_cache_metadata,
+    package_versions,
+    read_json,
+    sha256_file,
+    update_provenance,
+    validate_identity_fields,
+)
 from .artifacts import Phase1Handoff, load_phase1_handoff
 from .config import Phase2Config
 from .scoring import (
@@ -30,44 +38,19 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 
-def _package_version(name: str) -> str | None:
-    try:
-        return importlib.metadata.version(name)
-    except importlib.metadata.PackageNotFoundError:
-        return None
-
-
 def _text_sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _package_versions() -> dict[str, str | None]:
-    return {
-        name: _package_version(name)
-        for name in (
-            "jspace-research",
-            "jlens",
-            "openai",
-            "pandas",
-            "rouge-score",
-            "torch",
-            "transformers",
-        )
-    }
-
-
-def _gpu_devices() -> list[dict[str, Any]]:
-    devices = []
-    for index in range(torch.cuda.device_count()):
-        properties = torch.cuda.get_device_properties(index)
-        devices.append(
-            {
-                "index": index,
-                "name": torch.cuda.get_device_name(index),
-                "total_memory_bytes": int(properties.total_memory),
-            }
-        )
-    return devices
+PACKAGE_NAMES = (
+    "jspace-research",
+    "jlens",
+    "openai",
+    "pandas",
+    "rouge-score",
+    "torch",
+    "transformers",
+)
 
 
 def _run_id(config: Phase2Config, handoff: Phase1Handoff) -> str:
@@ -107,24 +90,16 @@ def _write_or_validate_provenance(
     *,
     updates: dict[str, Any] | None = None,
 ) -> None:
-    path = config.output_dir / "provenance.json"
-    base = _base_provenance(config, handoff)
-    if path.exists():
-        current = read_json(path)
-        for key, expected in base.items():
-            if current.get(key) != expected:
-                raise RuntimeError(f"Provenance mismatch at {path}; use a new output directory")
-        value = current
-    else:
-        value = {
-            **base,
+    update_provenance(
+        config.output_dir / "provenance.json",
+        _base_provenance(config, handoff),
+        defaults={
             "generation_gpu": None,
             "generation_packages": None,
             "analysis_packages": None,
-        }
-    if updates:
-        value.update(updates)
-    atomic_write_json(path, value)
+        },
+        updates=updates,
+    )
 
 
 def _generation_dir(config: Phase2Config) -> Path:
@@ -179,12 +154,7 @@ def _expected_generation_fields(
     }
 
 
-def _validate_cached_fields(path: Path, value: dict[str, Any], expected: dict[str, Any]) -> None:
-    for key, expected_value in expected.items():
-        if value.get(key) != expected_value:
-            raise RuntimeError(f"Cached result identity mismatch at {path}; use a new output directory")
-
-
+# GPU stage: model loading, hooked generation, and resumable generation caches.
 def generate(config: Phase2Config) -> Path:
     if not torch.cuda.is_available():
         raise RuntimeError("The Phase 2 generate stage requires a CUDA GPU")
@@ -205,14 +175,9 @@ def generate(config: Phase2Config) -> Path:
         provenance = read_json(config.output_dir / "provenance.json")
         updates: dict[str, Any] = {}
         if provenance.get("generation_gpu") is None:
-            devices = _gpu_devices()
-            updates["generation_gpu"] = {
-                "device_count": len(devices),
-                "devices": devices,
-                "model_input_device": None,
-            }
+            updates["generation_gpu"] = cuda_metadata(model_input_device=None)
         if provenance.get("generation_packages") is None:
-            updates["generation_packages"] = _package_versions()
+            updates["generation_packages"] = package_versions(PACKAGE_NAMES)
         if updates:
             _write_or_validate_provenance(config, handoff, updates=updates)
         print(f"Phase 2 generation cache already complete: {generation_dir}")
@@ -237,7 +202,7 @@ def generate(config: Phase2Config) -> Path:
             path = generation_dir / f"{expected['job_id']}.json"
             if path.exists():
                 cached = read_json(path)
-                _validate_cached_fields(path, cached, expected)
+                validate_identity_fields(path, cached, expected)
                 if config.smoke and alpha == 0.0 and cached.get("zero_hook_equivalent") is not True:
                     raise RuntimeError(f"Smoke zero-hook equivalence is missing at {path}")
                 continue
@@ -273,17 +238,14 @@ def generate(config: Phase2Config) -> Path:
                 },
             )
 
-    gpu_devices = _gpu_devices()
     _write_or_validate_provenance(
         config,
         handoff,
         updates={
-            "generation_gpu": {
-                "device_count": len(gpu_devices),
-                "devices": gpu_devices,
-                "model_input_device": str(model.input_device),
-            },
-            "generation_packages": _package_versions(),
+            "generation_gpu": cuda_metadata(
+                model_input_device=str(model.input_device)
+            ),
+            "generation_packages": package_versions(PACKAGE_NAMES),
         },
     )
     del model, tokenizer, handoff
@@ -306,7 +268,7 @@ def _load_generation_records(
             if not path.exists():
                 raise RuntimeError(f"Phase 2 generation is incomplete; missing {path}")
             value = read_json(path)
-            _validate_cached_fields(path, value, expected)
+            validate_identity_fields(path, value, expected)
             if not isinstance(value.get("generated_token_ids"), list) or not isinstance(
                 value.get("generation"), str
             ):
@@ -352,7 +314,7 @@ def _load_or_create_judgment(
     }
     if path.exists():
         value = read_json(path)
-        _validate_cached_fields(path, value, expected)
+        validate_identity_fields(path, value, expected)
         if value.get("judge_label") not in {"YES", "NO", "UNKNOWN"}:
             raise RuntimeError(f"Judgment cache is incomplete at {path}")
         return value
@@ -366,28 +328,6 @@ def _load_or_create_judgment(
     }
     atomic_write_json(path, value)
     return value
-
-
-def _atomic_write_parquet(path: Path, frame: pd.DataFrame) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(suffix=".parquet", dir=path.parent, delete=False) as handle:
-        temporary = Path(handle.name)
-    try:
-        frame.to_parquet(temporary, index=False)
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-def _atomic_write_csv(path: Path, frame: pd.DataFrame) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", suffix=".csv", dir=path.parent, delete=False) as handle:
-        temporary = Path(handle.name)
-    try:
-        frame.to_csv(temporary, index=False)
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
 
 
 def _save_plots(config: Phase2Config, summary: pd.DataFrame) -> None:
@@ -425,6 +365,7 @@ def _save_plots(config: Phase2Config, summary: pd.DataFrame) -> None:
     plt.close(figure)
 
 
+# CPU/API stage: cached-generation scoring, judge calls, summaries, and plots.
 def analyze(config: Phase2Config, *, judge: Any | None = None) -> Path:
     config.output_dir.mkdir(parents=True, exist_ok=True)
     handoff = load_phase1_handoff(config)
@@ -503,13 +444,13 @@ def analyze(config: Phase2Config, *, judge: Any | None = None) -> Path:
     ]
     results = results[result_columns].sort_values(["example_index", "alpha"])
     results_path = config.output_dir / "phase2_results.parquet"
-    _atomic_write_parquet(results_path, results)
+    atomic_write_parquet(results_path, results)
 
     summary = summarize_results(results)
     summary_path = config.output_dir / "phase2_summary.csv"
-    _atomic_write_csv(summary_path, summary)
+    atomic_write_csv(summary_path, summary)
     examples_path = config.output_dir / "phase2_examples.csv"
-    _atomic_write_csv(examples_path, qualitative_examples(results))
+    atomic_write_csv(examples_path, qualitative_examples(results))
     _save_plots(config, summary)
     existing_analysis_packages = read_json(config.output_dir / "provenance.json").get(
         "analysis_packages"
@@ -534,7 +475,8 @@ def analyze(config: Phase2Config, *, judge: Any | None = None) -> Path:
                 "asr_plot": "phase2_asr_vs_alpha.png",
                 "utility_plot": "phase2_clean_utility_vs_alpha.png",
             },
-            "analysis_packages": existing_analysis_packages or _package_versions(),
+            "analysis_packages": existing_analysis_packages
+            or package_versions(PACKAGE_NAMES),
         },
     )
     print(f"Phase 2 results: {results_path}")

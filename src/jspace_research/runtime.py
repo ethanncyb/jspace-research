@@ -1,0 +1,143 @@
+from __future__ import annotations
+
+import hashlib
+import importlib.metadata
+import json
+import os
+import tempfile
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
+
+
+def sha256_file(path: str | Path, chunk_size: int = 1024 * 1024) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        while chunk := handle.read(chunk_size):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def atomic_write_json(path: str | Path, value: dict[str, Any]) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=target.parent, delete=False
+        ) as handle:
+            json.dump(value, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            temporary = Path(handle.name)
+        os.replace(temporary, target)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def atomic_write_parquet(path: str | Path, frame: Any) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        suffix=".parquet", dir=target.parent, delete=False
+    ) as handle:
+        temporary = Path(handle.name)
+    try:
+        frame.to_parquet(temporary, index=False)
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def atomic_write_csv(path: str | Path, frame: Any) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".csv", dir=target.parent, delete=False
+    ) as handle:
+        temporary = Path(handle.name)
+    try:
+        frame.to_csv(temporary, index=False)
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def read_json(path: str | Path) -> dict[str, Any]:
+    with Path(path).open("r", encoding="utf-8") as handle:
+        value = json.load(handle)
+    if not isinstance(value, dict):
+        raise ValueError(f"Expected a JSON object: {path}")
+    return value
+
+
+def ensure_cache_metadata(path: str | Path, expected: dict[str, Any]) -> None:
+    target = Path(path)
+    if target.exists():
+        actual = read_json(target)
+        if actual != expected:
+            raise RuntimeError(f"Cache metadata mismatch at {target}. Use a new output directory.")
+    else:
+        atomic_write_json(target, expected)
+
+
+def validate_identity_fields(
+    path: str | Path, value: dict[str, Any], expected: dict[str, Any]
+) -> None:
+    for key, expected_value in expected.items():
+        if value.get(key) != expected_value:
+            raise RuntimeError(
+                f"Cached result identity mismatch at {path}; use a new output directory"
+            )
+
+
+def update_provenance(
+    path: str | Path,
+    base: dict[str, Any],
+    *,
+    defaults: dict[str, Any] | None = None,
+    updates: dict[str, Any] | None = None,
+) -> None:
+    target = Path(path)
+    if target.exists():
+        value = read_json(target)
+        for key, expected in base.items():
+            if value.get(key) != expected:
+                raise RuntimeError(
+                    f"Provenance mismatch at {target}; use a new output directory"
+                )
+    else:
+        value = {**base, **(defaults or {})}
+    if updates:
+        value.update(updates)
+    atomic_write_json(target, value)
+
+
+def package_versions(names: Iterable[str]) -> dict[str, str | None]:
+    versions: dict[str, str | None] = {}
+    for name in names:
+        try:
+            versions[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            versions[name] = None
+    return versions
+
+
+def cuda_metadata(*, model_input_device: str | None) -> dict[str, Any]:
+    import torch
+
+    devices = []
+    for index in range(torch.cuda.device_count()):
+        properties = torch.cuda.get_device_properties(index)
+        devices.append(
+            {
+                "index": index,
+                "name": torch.cuda.get_device_name(index),
+                "total_memory_bytes": int(properties.total_memory),
+            }
+        )
+    return {
+        "device_count": len(devices),
+        "devices": devices,
+        "model_input_device": model_input_device,
+    }

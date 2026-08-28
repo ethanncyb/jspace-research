@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 import tempfile
 from pathlib import Path
@@ -9,43 +7,23 @@ from typing import Any
 
 import numpy as np
 
+from ..runtime import (
+    atomic_write_json,
+    ensure_cache_metadata,
+    read_json,
+    sha256_file,
+)
 
-def sha256_file(path: str | Path, chunk_size: int = 1024 * 1024) -> str:
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as handle:
-        while chunk := handle.read(chunk_size):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def atomic_write_json(path: str | Path, value: dict[str, Any]) -> None:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", dir=target.parent, delete=False
-    ) as handle:
-        json.dump(value, handle, indent=2, sort_keys=True)
-        handle.write("\n")
-        temporary = Path(handle.name)
-    os.replace(temporary, target)
-
-
-def read_json(path: str | Path) -> dict[str, Any]:
-    with Path(path).open("r", encoding="utf-8") as handle:
-        value = json.load(handle)
-    if not isinstance(value, dict):
-        raise ValueError(f"Expected a JSON object: {path}")
-    return value
-
-
-def ensure_cache_metadata(path: str | Path, expected: dict[str, Any]) -> None:
-    target = Path(path)
-    if target.exists():
-        actual = read_json(target)
-        if actual != expected:
-            raise RuntimeError(f"Cache metadata mismatch at {target}. Use a new output directory.")
-    else:
-        atomic_write_json(target, expected)
+__all__ = [
+    "atomic_write_json",
+    "ensure_cache_metadata",
+    "read_json",
+    "sha256_file",
+    "load_done",
+    "save_done",
+    "open_memmap",
+    "open_uint16_memmap",
+]
 
 
 def load_done(path: str | Path, size: int) -> np.ndarray:

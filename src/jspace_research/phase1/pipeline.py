@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import gc
-import importlib.metadata
 import json
 from pathlib import Path
 from typing import Any
@@ -12,6 +11,17 @@ import pandas as pd
 import torch
 from tqdm.auto import tqdm
 
+from ..runtime import (
+    atomic_write_csv,
+    atomic_write_json,
+    atomic_write_parquet,
+    cuda_metadata,
+    ensure_cache_metadata,
+    package_versions,
+    read_json,
+    sha256_file,
+    update_provenance,
+)
 from .adapters import (
     HuggingFaceModelAdapter,
     JacobianLensAdapter,
@@ -20,14 +30,10 @@ from .adapters import (
     validate_model_lens,
 )
 from .cache import (
-    atomic_write_json,
-    ensure_cache_metadata,
     load_done,
     open_memmap,
     open_uint16_memmap,
-    read_json,
     save_done,
-    sha256_file,
 )
 from .config import Phase1Config
 from .data import (
@@ -55,13 +61,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 
-def _package_version(name: str) -> str | None:
-    try:
-        return importlib.metadata.version(name)
-    except importlib.metadata.PackageNotFoundError:
-        return None
-
-
 def _base_provenance(config: Phase1Config, manifest_digest: str) -> dict[str, Any]:
     return {
         "schema_version": 1,
@@ -83,10 +82,9 @@ def _base_provenance(config: Phase1Config, manifest_digest: str) -> dict[str, An
         },
         "config_sha256": config.identity_hash(),
         "manifest_sha256": manifest_digest,
-        "packages": {
-            name: _package_version(name)
-            for name in ("jspace-research", "jlens", "torch", "transformers")
-        },
+        "packages": package_versions(
+            ("jspace-research", "jlens", "torch", "transformers")
+        ),
     }
 
 
@@ -100,24 +98,16 @@ def _write_or_validate_provenance(
     *,
     updates: dict[str, Any] | None = None,
 ) -> None:
-    path = config.output_dir / "provenance.json"
-    base = _base_provenance(config, manifest_digest)
-    if path.exists():
-        current = read_json(path)
-        for key, expected in base.items():
-            if current.get(key) != expected:
-                raise RuntimeError(f"Provenance mismatch at {path}; use a new output directory")
-        value = current
-    else:
-        value = {
-            **base,
+    update_provenance(
+        config.output_dir / "provenance.json",
+        _base_provenance(config, manifest_digest),
+        defaults={
             "selected_layer": None,
             "run_layers": None,
             "gpu": None,
-        }
-    if updates:
-        value.update(updates)
-    atomic_write_json(path, value)
+        },
+        updates=updates,
+    )
 
 
 def _select_run_layers(source_layers: list[int], count: int | None) -> list[int]:
@@ -205,26 +195,13 @@ def capture(config: Phase1Config) -> Path:
     else:
         torch.save(unembedding, unembedding_path)
 
-    gpu_devices = []
-    for index in range(torch.cuda.device_count()):
-        properties = torch.cuda.get_device_properties(index)
-        gpu_devices.append(
-            {
-                "index": index,
-                "name": torch.cuda.get_device_name(index),
-                "total_memory_bytes": int(properties.total_memory),
-            }
-        )
+    gpu = cuda_metadata(model_input_device=str(model.input_device))
+    gpu["analysis_device"] = "cuda:0"
     _write_or_validate_provenance(
         config,
         manifest_digest,
         updates={
-            "gpu": {
-                "device_count": len(gpu_devices),
-                "devices": gpu_devices,
-                "model_input_device": str(model.input_device),
-                "analysis_device": "cuda:0",
-            },
+            "gpu": gpu,
             "run_layers": run_layers,
         },
     )
@@ -550,9 +527,11 @@ def analyze(config: Phase1Config) -> Path:
         del decompositions
 
     validation_scores = pd.concat(score_frames, ignore_index=True)
-    validation_scores.to_parquet(config.output_dir / "validation_scores.parquet", index=False)
+    atomic_write_parquet(
+        config.output_dir / "validation_scores.parquet", validation_scores
+    )
     metrics = compute_layer_metrics(validation_scores, run_layers, config.tasks, TASK_DISPLAY)
-    metrics.to_csv(config.output_dir / "layer_metrics.csv", index=False)
+    atomic_write_csv(config.output_dir / "layer_metrics.csv", metrics)
     best = select_layer(metrics)
     selected_layer = int(best.layer)
     selected_artifact = artifacts[selected_layer]
