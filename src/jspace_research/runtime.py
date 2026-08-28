@@ -71,6 +71,53 @@ def read_json(path: str | Path) -> dict[str, Any]:
     return value
 
 
+def append_jsonl(path: str | Path, value: dict[str, Any]) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n"
+    with target.open("a", encoding="utf-8") as handle:
+        handle.write(line)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def read_resumable_jsonl(path: str | Path) -> list[dict[str, Any]]:
+    """Read an append-only JSONL cache, dropping only an incomplete final write."""
+
+    target = Path(path)
+    if not target.exists():
+        return []
+
+    rows: list[dict[str, Any]] = []
+    with target.open("r+b") as handle:
+        while True:
+            line_start = handle.tell()
+            raw_line = handle.readline()
+            if not raw_line:
+                break
+            at_end = handle.tell() == os.fstat(handle.fileno()).st_size
+            try:
+                value = json.loads(raw_line.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                if at_end and not raw_line.endswith(b"\n"):
+                    handle.seek(line_start)
+                    handle.truncate()
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                    break
+                raise ValueError(f"Malformed JSONL cache record at {target}") from exc
+            if not isinstance(value, dict):
+                raise ValueError(f"Expected JSON objects in cache: {target}")
+            rows.append(value)
+            if at_end and not raw_line.endswith(b"\n"):
+                handle.seek(0, os.SEEK_END)
+                handle.write(b"\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+                break
+    return rows
+
+
 def ensure_cache_metadata(path: str | Path, expected: dict[str, Any]) -> None:
     target = Path(path)
     if target.exists():

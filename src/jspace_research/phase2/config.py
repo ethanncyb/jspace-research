@@ -11,7 +11,7 @@ import yaml
 from ..phase1.config import Phase1Config
 from ..phase1.config import load_config as load_phase1_config
 
-FIXED_ALPHAS = (0.0, 0.25, 0.5, 0.75, 1.0)
+FIXED_ALPHAS = (0.0, 0.5, 1.0)
 FIXED_JUDGE_MODEL = "gpt-4.1-mini-2025-04-14"
 
 

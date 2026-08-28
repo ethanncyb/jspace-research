@@ -28,7 +28,7 @@ The repository pins:
 
 Gemma and the released lens may require accepting their licenses and authenticating with Hugging Face. Phase 2 attack scoring also requires an `OPENAI_API_KEY`; it uses the pinned `gpt-4.1-mini-2025-04-14` judge and stores no credential in artifacts. The smoke run needs only the pinned BIPIA checkout. The full run additionally requires researcher-provided WebQA and Summarization files in BIPIA `train.jsonl` format. In accordance with the experiment plan, the pipeline does not download or reconstruct those licensed source datasets.
 
-Always start with the end-to-end smoke run. It uses EmailQA, 12 training pairs, 6 validation pairs, six fitted layers, and all five Phase 2 intervention strengths. It also requires exact token equality between ordinary no-hook generation and the zero-strength hook. It verifies the pipeline but is not the final scientific experiment. The full configuration uses all five tasks and all fitted layers.
+Always start with the end-to-end smoke run. It uses EmailQA, 12 training pairs, 6 validation pairs, six fitted layers, and the three Phase 2 conditions: intact (`0.0`), partial removal (`0.5`), and full removal (`1.0`). It also requires exact token equality between ordinary no-hook generation and the zero-strength hook. It verifies the pipeline but is not the final scientific experiment. The full configuration uses all five tasks and all fitted layers.
 
 ## Option A: Google Colab
 
@@ -184,7 +184,7 @@ jspace-phase2 \
   --stage generate
 ```
 
-`generate` requires CUDA and writes one atomic cache item per example/condition/alpha. After copying the complete run root to another machine, run CPU/API scoring without loading Gemma:
+`generate` requires Gemma to fit on one CUDA GPU. It appends and flushes each completed example/condition/alpha result to `generations.jsonl`; it never silently offloads model layers to CPU or disk. After copying the complete run root to another machine, run CPU/API scoring without loading Gemma:
 
 ```bash
 export OPENAI_API_KEY='your-api-key'
@@ -195,7 +195,7 @@ jspace-phase2 \
   --stage analyze
 ```
 
-`--stage all` runs both stages. Generation and judgments resume from exact-identity cache entries; mismatched config, parent handoff, prompt, generation, judge model, or rubric causes a hard failure.
+`--stage all` runs both stages. Generation and judgments resume by job ID from `generations.jsonl` and `judgments.jsonl`. A truncated final record from an interrupted append is discarded and recomputed; malformed earlier records or mismatched config, parent handoff, prompt, generation, judge model, or rubric cause a hard failure.
 
 ## Outputs and phase boundaries
 
@@ -216,7 +216,7 @@ Keep the complete full-run directory for auditability and resumption. Phase 2 re
 
 Phase 2 reads only that frozen handoff. Its directory contains:
 
-- resumable per-example/per-alpha generation and attack-judgment caches;
+- resumable append-only `generations.jsonl` and `judgments.jsonl` caches;
 - `phase2_results.parquet` with baseline/current generations and per-example outcomes;
 - `phase2_summary.csv` with ASR, delta-ASR, per-task utility, retention, and refusals;
 - `phase2_asr_vs_alpha.png` and `phase2_clean_utility_vs_alpha.png`;

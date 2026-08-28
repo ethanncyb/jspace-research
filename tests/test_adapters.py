@@ -4,7 +4,7 @@ import pytest
 import torch
 from torch import nn
 
-from jspace_research.model import HuggingFaceModelAdapter
+from jspace_research.model import HuggingFaceModelAdapter, _validate_primary_gpu_placement
 from jspace_research.phase1.adapters import validate_lens_for_layers, validate_model_lens
 
 
@@ -34,6 +34,24 @@ def test_model_lens_compatibility_is_explicitly_validated() -> None:
 def test_cached_layers_must_be_fitted_by_lens() -> None:
     with pytest.raises(RuntimeError, match="not fitted"):
         validate_lens_for_layers(FakeLens(), 3, [0])  # type: ignore[arg-type]
+
+
+def test_model_placement_rejects_cpu_disk_and_multiple_gpus() -> None:
+    class PlacedModel:
+        hf_device_map = {"": 0}
+
+    _validate_primary_gpu_placement(PlacedModel())
+
+    for device_map in ({"": "cpu"}, {"layer": "disk"}, {"a": 0, "b": 1}):
+        model = PlacedModel()
+        model.hf_device_map = device_map
+        with pytest.raises(RuntimeError, match="fit entirely on CUDA GPU 0"):
+            _validate_primary_gpu_placement(model)
+
+
+def test_model_placement_must_be_verifiable() -> None:
+    with pytest.raises(RuntimeError, match="Could not verify"):
+        _validate_primary_gpu_placement(object())
 
 
 class RecordingBlock(nn.Module):

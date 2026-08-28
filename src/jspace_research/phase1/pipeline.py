@@ -60,6 +60,8 @@ from .jspace import (
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
+ACTIVATION_CHECKPOINT_SIZE = 25
+
 
 def _base_provenance(config: Phase1Config, manifest_digest: str) -> dict[str, Any]:
     return {
@@ -174,17 +176,22 @@ def capture(config: Phase1Config) -> Path:
     activations = open_uint16_memmap(activation_path, (number_examples, len(run_layers), width))
     done = load_done(done_path, number_examples)
 
-    for example_index in tqdm(range(number_examples), desc="Capture activations"):
-        if done[example_index]:
-            continue
-        input_ids = render_ids(tokenizer, examples[example_index]["messages"])
-        if input_ids.shape[-1] > config.max_input_tokens:
-            raise RuntimeError(f"Frozen example {example_index} exceeds max_input_tokens")
-        stack = model.capture_final_prompt_token(input_ids, run_layers)
-        activations[example_index] = tensor_to_bfloat16_bits(stack)
-        activations.flush()
-        done[example_index] = True
-        save_done(done_path, done)
+    pending = np.flatnonzero(~done)
+    with tqdm(total=len(pending), desc="Capture activations") as progress:
+        for batch in batched(pending, ACTIVATION_CHECKPOINT_SIZE):
+            for raw_index in batch:
+                example_index = int(raw_index)
+                input_ids = render_ids(tokenizer, examples[example_index]["messages"])
+                if input_ids.shape[-1] > config.max_input_tokens:
+                    raise RuntimeError(
+                        f"Frozen example {example_index} exceeds max_input_tokens"
+                    )
+                stack = model.capture_final_prompt_token(input_ids, run_layers)
+                activations[example_index] = tensor_to_bfloat16_bits(stack)
+                progress.update(1)
+            activations.flush()
+            done[batch] = True
+            save_done(done_path, done)
 
     unembedding_path = cache_dir / "unembedding_weight_bf16.pt"
     unembedding = model.unembedding()

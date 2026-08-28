@@ -55,7 +55,7 @@ decomposition_batch_size: 8
 dictionary_chunk_size: 4096
 smoke_layer_count: 6
 phase2:
-  alphas: [0.0, 0.25, 0.5, 0.75, 1.0]
+  alphas: [0.0, 0.5, 1.0]
   max_new_tokens: 512
   do_sample: false
   generation_batch_size: 1
@@ -122,7 +122,7 @@ def test_phase2_config_uses_fixed_sweep_and_shared_phase1_identity(tmp_path: Pat
     assert config.max_new_tokens == 512
     assert config.phase1.identity_hash() == load_config(path).identity_hash()
 
-    text = path.read_text().replace("0.75, 1.0", "0.8, 1.0")
+    text = path.read_text().replace("0.5, 1.0", "0.6, 1.0")
     path.write_text(text)
     with pytest.raises(ValueError, match="fixed alphas"):
         load_phase2_config(

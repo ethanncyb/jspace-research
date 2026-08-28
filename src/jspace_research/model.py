@@ -6,6 +6,18 @@ from typing import Any
 import torch
 
 
+def _validate_primary_gpu_placement(hf_model: Any) -> None:
+    device_map = getattr(hf_model, "hf_device_map", None)
+    if not isinstance(device_map, dict) or not device_map:
+        raise RuntimeError("Could not verify model placement on the primary CUDA GPU")
+    placements = {str(device).lower() for device in device_map.values()}
+    if not placements.issubset({"0", "cuda", "cuda:0"}):
+        raise RuntimeError(
+            "The model must fit entirely on CUDA GPU 0; CPU, disk, and multi-GPU "
+            f"offload are not permitted (placements: {sorted(placements)})"
+        )
+
+
 def load_tokenizer(config: Any) -> Any:
     from transformers import AutoTokenizer
 
@@ -34,10 +46,12 @@ class HuggingFaceModelAdapter:
     def load(cls, config: Any, tokenizer: Any) -> HuggingFaceModelAdapter:
         from transformers import AutoModelForCausalLM
 
+        if not torch.cuda.is_available():
+            raise RuntimeError("Model loading requires a CUDA GPU")
         kwargs = {
             "revision": config.model.revision,
             "dtype": torch.bfloat16,
-            "device_map": "auto",
+            "device_map": {"": 0},
             "low_cpu_mem_usage": True,
         }
         try:
@@ -53,6 +67,7 @@ class HuggingFaceModelAdapter:
                 hf_model = AutoModelForMultimodalLM.from_pretrained(config.model.id, **kwargs)
             except Exception:
                 raise causal_error from None
+        _validate_primary_gpu_placement(hf_model)
         hf_model.eval()
         return cls(hf_model, tokenizer)
 

@@ -33,7 +33,7 @@ dictionary_chunk_size: 4096
 smoke_layer_count: 6
 
 phase2:
-  alphas: [0.0, 0.25, 0.5, 0.75, 1.0]
+  alphas: [0.0, 0.5, 1.0]
   max_new_tokens: 512
   do_sample: false
   generation_batch_size: 1

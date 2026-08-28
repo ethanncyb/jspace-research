@@ -13,13 +13,13 @@ from tqdm.auto import tqdm
 from ..model import HuggingFaceModelAdapter, load_tokenizer
 from ..phase1.data import render_ids
 from ..runtime import (
+    append_jsonl,
     atomic_write_csv,
-    atomic_write_json,
     atomic_write_parquet,
     cuda_metadata,
-    ensure_cache_metadata,
     package_versions,
     read_json,
+    read_resumable_jsonl,
     sha256_file,
     update_provenance,
     validate_identity_fields,
@@ -51,6 +51,7 @@ PACKAGE_NAMES = (
     "torch",
     "transformers",
 )
+ALPHA_TICK_LABELS = ("0\nintact", "0.5\npartial", "1.0\nfull removal")
 
 
 def _run_id(config: Phase2Config, handoff: Phase1Handoff) -> str:
@@ -102,33 +103,16 @@ def _write_or_validate_provenance(
     )
 
 
-def _generation_dir(config: Phase2Config) -> Path:
-    return config.output_dir / "cache" / "generations"
+def _generation_path(config: Phase2Config) -> Path:
+    return config.output_dir / "generations.jsonl"
 
 
-def _judgment_dir(config: Phase2Config) -> Path:
-    return config.output_dir / "cache" / "judgments"
+def _judgment_path(config: Phase2Config) -> Path:
+    return config.output_dir / "judgments.jsonl"
 
 
 def _job_id(example_index: int, alpha_index: int) -> str:
     return f"example_{example_index:06d}_alpha_{alpha_index}"
-
-
-def _generation_identity(config: Phase2Config, handoff: Phase1Handoff) -> dict[str, Any]:
-    return {
-        "cache_schema_version": 1,
-        "phase2_config_sha256": config.identity_hash(),
-        "phase1_run_id": handoff.metadata["run_id"],
-        "manifest_sha256": handoff.metadata["manifest_sha256"],
-        "model_id": config.phase1.model.id,
-        "model_revision": config.phase1.model.revision,
-        "selected_layer": handoff.selected_layer,
-        "alphas": list(config.alphas),
-        "max_new_tokens": config.max_new_tokens,
-        "number_validation_examples": len(handoff.validation_examples),
-        "number_jobs": len(handoff.validation_examples) * len(config.alphas),
-        "decision_point": "final_non_padding_prompt_token_before_generation",
-    }
 
 
 def _expected_generation_fields(
@@ -143,6 +127,8 @@ def _expected_generation_fields(
         "job_id": _job_id(int(example["example_index"]), alpha_index),
         "phase2_config_sha256": config.identity_hash(),
         "phase1_run_id": handoff.metadata["run_id"],
+        "manifest_sha256": handoff.metadata["manifest_sha256"],
+        "selected_layer": handoff.selected_layer,
         "example_id": f"{example['pair_id']}:{example['condition']}",
         "example_index": int(example["example_index"]),
         "pair_id": example["pair_id"],
@@ -161,17 +147,11 @@ def generate(config: Phase2Config) -> Path:
     config.output_dir.mkdir(parents=True, exist_ok=True)
     handoff = load_phase1_handoff(config)
     _write_or_validate_provenance(config, handoff)
-    generation_dir = _generation_dir(config)
-    ensure_cache_metadata(generation_dir / "metadata.json", _generation_identity(config, handoff))
-
-    expected_paths = [
-        generation_dir
-        / f"{_job_id(int(example['example_index']), alpha_index)}.json"
-        for example in handoff.validation_examples
-        for alpha_index in range(len(config.alphas))
-    ]
-    if all(path.exists() for path in expected_paths):
-        _load_generation_records(config, handoff)
+    generation_path = _generation_path(config)
+    cached_records = _load_generation_records(config, handoff, require_complete=False)
+    completed = {record["job_id"] for record in cached_records}
+    expected_count = len(handoff.validation_examples) * len(config.alphas)
+    if len(completed) == expected_count:
         provenance = read_json(config.output_dir / "provenance.json")
         updates: dict[str, Any] = {}
         if provenance.get("generation_gpu") is None:
@@ -180,8 +160,8 @@ def generate(config: Phase2Config) -> Path:
             updates["generation_packages"] = package_versions(PACKAGE_NAMES)
         if updates:
             _write_or_validate_provenance(config, handoff, updates=updates)
-        print(f"Phase 2 generation cache already complete: {generation_dir}")
-        return generation_dir
+        print(f"Phase 2 generation cache already complete: {generation_path}")
+        return generation_path
 
     tokenizer = load_tokenizer(config.phase1)
     model = HuggingFaceModelAdapter.load(config.phase1, tokenizer)
@@ -199,12 +179,7 @@ def generate(config: Phase2Config) -> Path:
             expected = _expected_generation_fields(
                 config, handoff, example, alpha_index
             )
-            path = generation_dir / f"{expected['job_id']}.json"
-            if path.exists():
-                cached = read_json(path)
-                validate_identity_fields(path, cached, expected)
-                if config.smoke and alpha == 0.0 and cached.get("zero_hook_equivalent") is not True:
-                    raise RuntimeError(f"Smoke zero-hook equivalence is missing at {path}")
+            if expected["job_id"] in completed:
                 continue
 
             generated_ids = model.generate_from_prompt(
@@ -227,8 +202,8 @@ def generate(config: Phase2Config) -> Path:
                     )
             token_ids = [int(value) for value in generated_ids.tolist()]
             generation = tokenizer.decode(token_ids, skip_special_tokens=True).strip()
-            atomic_write_json(
-                path,
+            append_jsonl(
+                generation_path,
                 {
                     **expected,
                     "generated_token_ids": token_ids,
@@ -237,6 +212,9 @@ def generate(config: Phase2Config) -> Path:
                     "zero_hook_equivalent": zero_hook_equivalent,
                 },
             )
+            completed.add(expected["job_id"])
+
+    _load_generation_records(config, handoff)
 
     _write_or_validate_provenance(
         config,
@@ -251,48 +229,97 @@ def generate(config: Phase2Config) -> Path:
     del model, tokenizer, handoff
     gc.collect()
     torch.cuda.empty_cache()
-    print(f"Phase 2 generation cache complete: {generation_dir}")
-    return generation_dir
+    print(f"Phase 2 generation cache complete: {generation_path}")
+    return generation_path
 
 
 def _load_generation_records(
-    config: Phase2Config, handoff: Phase1Handoff
+    config: Phase2Config,
+    handoff: Phase1Handoff,
+    *,
+    require_complete: bool = True,
 ) -> list[dict[str, Any]]:
-    generation_dir = _generation_dir(config)
-    ensure_cache_metadata(generation_dir / "metadata.json", _generation_identity(config, handoff))
-    records: list[dict[str, Any]] = []
+    path = _generation_path(config)
+    jobs: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for example in handoff.validation_examples:
         for alpha_index in range(len(config.alphas)):
             expected = _expected_generation_fields(config, handoff, example, alpha_index)
-            path = generation_dir / f"{expected['job_id']}.json"
-            if not path.exists():
-                raise RuntimeError(f"Phase 2 generation is incomplete; missing {path}")
-            value = read_json(path)
-            validate_identity_fields(path, value, expected)
-            if not isinstance(value.get("generated_token_ids"), list) or not isinstance(
-                value.get("generation"), str
-            ):
-                raise RuntimeError(f"Generation cache is incomplete at {path}")
-            if value.get("generation_sha256") != _text_sha256(value["generation"]):
-                raise RuntimeError(f"Generation hash mismatch at {path}")
-            if config.smoke and value["alpha"] == 0.0 and value.get(
-                "zero_hook_equivalent"
-            ) is not True:
-                raise RuntimeError(f"Smoke zero-hook equivalence is missing at {path}")
-            records.append({**example, **value})
-    return records
+            jobs.append((example, expected))
+
+    expected_by_id = {expected["job_id"]: expected for _, expected in jobs}
+    cached_by_id: dict[str, dict[str, Any]] = {}
+    for value in read_resumable_jsonl(path):
+        job_id = value.get("job_id")
+        if not isinstance(job_id, str) or job_id not in expected_by_id:
+            raise RuntimeError(f"Unexpected generation cache job at {path}")
+        if job_id in cached_by_id:
+            raise RuntimeError(f"Duplicate generation cache job {job_id} at {path}")
+        validate_identity_fields(path, value, expected_by_id[job_id])
+        if not isinstance(value.get("generated_token_ids"), list) or not isinstance(
+            value.get("generation"), str
+        ):
+            raise RuntimeError(f"Generation cache is incomplete at {path}")
+        if value.get("generation_sha256") != _text_sha256(value["generation"]):
+            raise RuntimeError(f"Generation hash mismatch at {path}")
+        if config.smoke and value["alpha"] == 0.0 and value.get(
+            "zero_hook_equivalent"
+        ) is not True:
+            raise RuntimeError(f"Smoke zero-hook equivalence is missing at {path}")
+        cached_by_id[job_id] = value
+
+    if require_complete:
+        missing = [job_id for job_id in expected_by_id if job_id not in cached_by_id]
+        if missing:
+            raise RuntimeError(
+                f"Phase 2 generation is incomplete; {len(missing)} jobs are missing from {path}"
+            )
+    return [
+        {**example, **cached_by_id[expected["job_id"]]}
+        for example, expected in jobs
+        if expected["job_id"] in cached_by_id
+    ]
 
 
-def _judgment_identity(config: Phase2Config, handoff: Phase1Handoff) -> dict[str, Any]:
+def _expected_judgment_fields(
+    config: Phase2Config, record: dict[str, Any]
+) -> dict[str, Any]:
     return {
-        "cache_schema_version": 1,
+        "schema_version": 1,
+        "job_id": record["job_id"],
         "phase2_config_sha256": config.identity_hash(),
-        "phase1_run_id": handoff.metadata["run_id"],
-        "manifest_sha256": handoff.metadata["manifest_sha256"],
+        "phase1_run_id": record["phase1_run_id"],
+        "manifest_sha256": record["manifest_sha256"],
+        "selected_layer": record["selected_layer"],
         "judge_model": config.judge_model,
         "judge_rubric_sha256": JUDGE_RUBRIC_SHA256,
-        "labels": ["YES", "NO", "UNKNOWN"],
+        "generation_sha256": record["generation_sha256"],
+        "attack_text_sha256": _text_sha256(record["attack_text"]),
     }
+
+
+def _load_judgment_records(
+    config: Phase2Config, generation_records: list[dict[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    path = _judgment_path(config)
+    expected_by_id = {
+        record["job_id"]: _expected_judgment_fields(config, record)
+        for record in generation_records
+        if record["condition"] == "attack"
+    }
+    cached_by_id: dict[str, dict[str, Any]] = {}
+    for value in read_resumable_jsonl(path):
+        job_id = value.get("job_id")
+        if not isinstance(job_id, str) or job_id not in expected_by_id:
+            raise RuntimeError(f"Unexpected judgment cache job at {path}")
+        if job_id in cached_by_id:
+            raise RuntimeError(f"Duplicate judgment cache job {job_id} at {path}")
+        validate_identity_fields(path, value, expected_by_id[job_id])
+        if value.get("judge_label") not in {"YES", "NO", "UNKNOWN"}:
+            raise RuntimeError(f"Judgment cache is incomplete at {path}")
+        if value.get("attack_success") != (value["judge_label"] == "YES"):
+            raise RuntimeError(f"Judgment cache outcome is inconsistent at {path}")
+        cached_by_id[job_id] = value
+    return cached_by_id
 
 
 def _load_or_create_judgment(
@@ -300,24 +327,12 @@ def _load_or_create_judgment(
     config: Phase2Config,
     record: dict[str, Any],
     judge: Any,
+    cached_by_id: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    judgment_dir = _judgment_dir(config)
-    path = judgment_dir / f"{record['job_id']}.json"
-    expected = {
-        "schema_version": 1,
-        "job_id": record["job_id"],
-        "phase2_config_sha256": config.identity_hash(),
-        "judge_model": config.judge_model,
-        "judge_rubric_sha256": JUDGE_RUBRIC_SHA256,
-        "generation_sha256": record["generation_sha256"],
-        "attack_text_sha256": _text_sha256(record["attack_text"]),
-    }
-    if path.exists():
-        value = read_json(path)
-        validate_identity_fields(path, value, expected)
-        if value.get("judge_label") not in {"YES", "NO", "UNKNOWN"}:
-            raise RuntimeError(f"Judgment cache is incomplete at {path}")
-        return value
+    job_id = record["job_id"]
+    if job_id in cached_by_id:
+        return cached_by_id[job_id]
+    expected = _expected_judgment_fields(config, record)
     label = judge.judge(record["attack_text"], record["generation"])
     if label not in {"YES", "NO", "UNKNOWN"}:
         raise RuntimeError(f"Judge returned an invalid label: {label!r}")
@@ -326,7 +341,8 @@ def _load_or_create_judgment(
         "judge_label": label,
         "attack_success": label == "YES",
     }
-    atomic_write_json(path, value)
+    append_jsonl(_judgment_path(config), value)
+    cached_by_id[job_id] = value
     return value
 
 
@@ -342,6 +358,7 @@ def _save_plots(config: Phase2Config, summary: pd.DataFrame) -> None:
     axis.set_ylabel("Attack Success Rate")
     axis.set_title("Phase 2 Attack Success vs J-Space Removal")
     axis.set_xticks(list(config.alphas))
+    axis.set_xticklabels(ALPHA_TICK_LABELS)
     figure.tight_layout()
     figure.savefig(config.output_dir / "phase2_asr_vs_alpha.png", dpi=180)
     plt.close(figure)
@@ -359,6 +376,7 @@ def _save_plots(config: Phase2Config, summary: pd.DataFrame) -> None:
     axis.set_ylabel("ROUGE-L recall")
     axis.set_title("Clean Reference-Overlap Utility vs J-Space Removal")
     axis.set_xticks(list(config.alphas))
+    axis.set_xticklabels(ALPHA_TICK_LABELS)
     axis.legend()
     figure.tight_layout()
     figure.savefig(config.output_dir / "phase2_clean_utility_vs_alpha.png", dpi=180)
@@ -371,8 +389,7 @@ def analyze(config: Phase2Config, *, judge: Any | None = None) -> Path:
     handoff = load_phase1_handoff(config)
     _write_or_validate_provenance(config, handoff)
     records = _load_generation_records(config, handoff)
-    judgment_dir = _judgment_dir(config)
-    ensure_cache_metadata(judgment_dir / "metadata.json", _judgment_identity(config, handoff))
+    judgments = _load_judgment_records(config, records)
 
     result_rows: list[dict[str, Any]] = []
     active_judge = judge
@@ -380,13 +397,13 @@ def analyze(config: Phase2Config, *, judge: Any | None = None) -> Path:
         attack_success: bool | None = None
         judge_label: str | None = None
         if record["condition"] == "attack":
-            judgment_path = judgment_dir / f"{record['job_id']}.json"
-            if active_judge is None and not judgment_path.exists():
+            if active_judge is None and record["job_id"] not in judgments:
                 active_judge = OpenAIAttackJudge(config.judge_model)
             judgment = _load_or_create_judgment(
                 config=config,
                 record=record,
                 judge=active_judge,
+                cached_by_id=judgments,
             )
             attack_success = bool(judgment["attack_success"])
             judge_label = str(judgment["judge_label"])

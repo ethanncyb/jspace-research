@@ -145,13 +145,19 @@ def test_generation_is_resumable_and_smoke_checks_zero_hook(
     generate(config)
     assert model.calls.count(None) == 2
     assert model.calls.count(0.0) == 2
-    assert len(model.calls) == 12
+    assert len(model.calls) == 8
 
     model.calls.clear()
     generate(config)
     assert model.calls == []
 
-    cached = config.output_dir / "cache" / "generations" / "example_000000_alpha_0.json"
+    cached = config.output_dir / "generations.jsonl"
+    with cached.open("a", encoding="utf-8") as handle:
+        handle.write('{"incomplete":')
+    generate(config)
+    assert model.calls == []
+    assert '{"incomplete":' not in cached.read_text()
+
     text = cached.read_text().replace('"prompt_hash": "prompt-attack"', '"prompt_hash": "bad"')
     cached.write_text(text)
     with pytest.raises(RuntimeError, match="identity mismatch"):
@@ -168,9 +174,11 @@ def test_synthetic_cpu_analysis_writes_required_outputs(
 
     judge = FakeJudge()
     results_path = analyze(config, judge=judge)
-    assert judge.calls == 5
+    assert judge.calls == 3
     assert results_path.is_file()
     for name in (
+        "generations.jsonl",
+        "judgments.jsonl",
         "phase2_summary.csv",
         "phase2_asr_vs_alpha.png",
         "phase2_clean_utility_vs_alpha.png",
@@ -180,11 +188,11 @@ def test_synthetic_cpu_analysis_writes_required_outputs(
         assert (config.output_dir / name).is_file()
 
     results = pd.read_parquet(results_path)
-    assert len(results) == 10
+    assert len(results) == 6
     assert bool(results[results.condition == "attack"].attack_success.all())
     assert bool(results[results.condition == "control"].attack_success.isna().all())
     assert bool((results.task_score == 1.0).all())
     assert bool(results.is_valid.isna().all())
 
     analyze(config, judge=judge)
-    assert judge.calls == 5
+    assert judge.calls == 3
