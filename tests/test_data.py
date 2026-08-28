@@ -144,6 +144,34 @@ def test_manifest_rejects_unbalanced_category_position_cells(tmp_path: Path) -> 
         validate_pair_manifest(rows, config)
 
 
+def test_manifest_allows_zero_quota_categories_in_smoke_validation(tmp_path: Path) -> None:
+    config = replace(
+        make_config(tmp_path),
+        train_pairs_per_task=12,
+        validation_pairs_per_task=6,
+    )
+    rows = []
+    split_specs = (
+        ("train", "ctx-train", 0, ("a", "b", "c", "d")),
+        ("validation", "ctx-val", 3, ("a", "b")),
+    )
+    for split, context, variant, categories in split_specs:
+        index = 0
+        for category in categories:
+            for position in ("start", "middle", "end"):
+                rows.append(
+                    {
+                        **row(split, context, variant, f"{split}-{index}"),
+                        "pair_id": f"email:{split}:{index:05d}",
+                        "attack_category": category,
+                        "position": position,
+                    }
+                )
+                index += 1
+
+    validate_pair_manifest(rows, config)
+
+
 def test_manifest_is_written_exclusively(tmp_path: Path) -> None:
     path = tmp_path / "pair_manifest.jsonl"
     rows = [{"pair_id": "one"}]

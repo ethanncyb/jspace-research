@@ -425,14 +425,9 @@ def validate_pair_manifest(rows: Sequence[dict[str, Any]], config: Phase1Config)
             raise ValueError(f"Source-context leakage for task {task}")
         if not variants[(task, "train")].isdisjoint(variants[(task, "validation")]):
             raise ValueError(f"Attack-variant leakage for task {task}")
-        if categories[(task, "train")] != categories[(task, "validation")]:
-            raise ValueError(f"Attack-category mismatch across splits for task {task}")
+        task_categories = sorted(categories[(task, "train")] | categories[(task, "validation")])
         for split in ("train", "validation"):
-            cells = [
-                (category, position)
-                for category in sorted(categories[(task, split)])
-                for position in POSITIONS
-            ]
+            cells = [(category, position) for category in task_categories for position in POSITIONS]
             quotas = balanced_quotas(cells, expected[(task, split)])
             actual = {cell: cell_counts.get((task, split, cell[0], cell[1]), 0) for cell in cells}
             if actual != quotas:
