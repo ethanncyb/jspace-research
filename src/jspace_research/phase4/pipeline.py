@@ -68,9 +68,7 @@ def _identity(config: Phase4Config, handoff: Any, detectors: FrozenDetectors) ->
         "phase1_run_id": handoff.metadata["run_id"],
         "phase3_config_sha256": detectors.mean["phase3_config_sha256"],
         "mean_detector_sha256": sha256_file(config.phase3_dir / "mean_detector.pt"),
-        "logistic_detector_sha256": sha256_file(
-            config.phase3_dir / "logistic_detector.pt"
-        ),
+        "logistic_detector_sha256": sha256_file(config.phase3_dir / "logistic_detector.pt"),
     }
 
 
@@ -138,6 +136,10 @@ def generate(config: Phase4Config) -> Path:
     lens = JacobianLensAdapter.load(config.phase1)
     layer = handoff.selected_layer
     validate_lens_for_layers(lens, model.hidden_width, [layer])
+    if int(detectors.mean["mu_clean"].numel()) != model.hidden_width:
+        raise RuntimeError("Frozen mean detector width does not match the model")
+    if int(detectors.logistic["feature_token_ids"].max()) >= model.vocabulary_size:
+        raise RuntimeError("Frozen logistic feature vocabulary exceeds the model vocabulary")
     dictionary = build_normalized_dictionary(
         jacobian=lens.jacobian(layer),
         unembedding=model.unembedding(),
@@ -198,6 +200,11 @@ def _judge_bipia(
         validate_identity_fields(path, value, expected[case_id])
         if value.get("judge_label") not in {"YES", "NO", "UNKNOWN"}:
             raise RuntimeError(f"Incomplete BIPIA judgment at {path}")
+        if value.get("attack_success") != (value["judge_label"] == "YES"):
+            raise RuntimeError(f"Inconsistent BIPIA judgment outcome at {path}")
+        for field in ("returned_model", "provider", "provider_model"):
+            if value.get(field) is not None and not isinstance(value[field], str):
+                raise RuntimeError(f"Invalid BIPIA judgment metadata at {path}")
         cached[case_id] = value
 
     active = judge
@@ -275,7 +282,26 @@ def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFr
             "balanced_accuracy": (tpr + 1 - fpr) / 2,
         }
         for metric, value in values.items():
-            rows.append(_detector_rows(bipia_rows, benchmark="bipia", scope="overall", subgroup=None, metric=metric, detector=detector, value=float(value), n=len(bipia_rows), threshold=thresholds[detector]))
+            count = (
+                int((labels == 1).sum())
+                if metric == "tpr"
+                else int((labels == 0).sum())
+                if metric == "fpr"
+                else len(bipia_rows)
+            )
+            rows.append(
+                _detector_rows(
+                    bipia_rows,
+                    benchmark="bipia",
+                    scope="overall",
+                    subgroup=None,
+                    metric=metric,
+                    detector=detector,
+                    value=float(value),
+                    n=count,
+                    threshold=thresholds[detector],
+                )
+            )
 
     dojo = predictions[predictions.benchmark == "agentdojo"]
     for subgroup in [None, *sorted(dojo.subgroup.dropna().unique())]:
@@ -283,15 +309,46 @@ def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFr
         scope = "overall" if subgroup is None else "suite"
         for detector in ("mean", "logistic"):
             clean = subset[(subset.condition == "control") & subset[f"{detector}_score"].notna()]
-            attacked = subset[(subset.condition == "attack") & (subset.injection_exposed == True) & subset[f"{detector}_score"].notna()]  # noqa: E712
-            for metric, values in (("fpr", clean[f"{detector}_prediction"]), ("tpr", attacked[f"{detector}_prediction"])):
-                rows.append(_detector_rows(subset, benchmark="agentdojo", scope=scope, subgroup=subgroup, metric=metric, detector=detector, value=float(values.mean()), n=len(values), threshold=thresholds[detector]))
+            attacked = subset[
+                (subset.condition == "attack")
+                & subset.injection_exposed.fillna(False)
+                & subset[f"{detector}_score"].notna()
+            ]
+            for metric, values in (
+                ("fpr", clean[f"{detector}_prediction"]),
+                ("tpr", attacked[f"{detector}_prediction"]),
+            ):
+                rows.append(
+                    _detector_rows(
+                        subset,
+                        benchmark="agentdojo",
+                        scope=scope,
+                        subgroup=subgroup,
+                        metric=metric,
+                        detector=detector,
+                        value=float(values.mean()),
+                        n=len(values),
+                        threshold=thresholds[detector],
+                    )
+                )
         for metric, values in (
             ("clean_utility", subset[subset.condition == "control"].native_utility),
             ("utility_under_attack", subset[subset.condition == "attack"].native_utility),
             ("targeted_asr", subset[subset.condition == "attack"].native_attack_success),
         ):
-            rows.append(_detector_rows(subset, benchmark="agentdojo", scope=scope, subgroup=subgroup, metric=metric, detector="native", value=float(values.mean()), n=len(values), threshold=None))
+            rows.append(
+                _detector_rows(
+                    subset,
+                    benchmark="agentdojo",
+                    scope=scope,
+                    subgroup=subgroup,
+                    metric=metric,
+                    detector="native",
+                    value=float(values.mean()),
+                    n=len(values),
+                    threshold=None,
+                )
+            )
 
     injec = predictions[predictions.benchmark == "injecagent"]
     for subgroup in [None, *sorted(injec.subgroup.dropna().unique())]:
@@ -307,25 +364,58 @@ def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFr
                 "score_q75": float(scores.quantile(0.75)),
             }
             for metric, value in values.items():
-                rows.append(_detector_rows(subset, benchmark="injecagent", scope=scope, subgroup=subgroup, metric=metric, detector=detector, value=value, n=len(subset), threshold=thresholds[detector]))
+                rows.append(
+                    _detector_rows(
+                        subset,
+                        benchmark="injecagent",
+                        scope=scope,
+                        subgroup=subgroup,
+                        metric=metric,
+                        detector=detector,
+                        value=value,
+                        n=len(subset),
+                        threshold=thresholds[detector],
+                    )
+                )
         valid = subset.native_valid.astype(bool)
         success = subset.native_attack_success.astype(bool)
         for metric, value, n in (
             ("valid_rate", float(valid.mean()), len(valid)),
-            ("asr_valid", float(success[valid].mean()) if bool(valid.any()) else float("nan"), int(valid.sum())),
+            (
+                "asr_valid",
+                float(success[valid].mean()) if bool(valid.any()) else float("nan"),
+                int(valid.sum()),
+            ),
             ("asr_all", float(success.mean()), len(success)),
         ):
-            rows.append(_detector_rows(subset, benchmark="injecagent", scope=scope, subgroup=subgroup, metric=metric, detector="native", value=value, n=n, threshold=None))
+            rows.append(
+                _detector_rows(
+                    subset,
+                    benchmark="injecagent",
+                    scope=scope,
+                    subgroup=subgroup,
+                    metric=metric,
+                    detector="native",
+                    value=value,
+                    n=n,
+                    threshold=None,
+                )
+            )
     return pd.DataFrame(rows)
 
 
 def _plot(config: Phase4Config, metrics: pd.DataFrame) -> Path:
     tpr = metrics[(metrics.metric == "tpr") & (metrics.scope == "overall")]
-    benchmarks = [name for name in ("bipia", "agentdojo", "injecagent") if name in set(tpr.benchmark)]
+    benchmarks = [
+        name for name in ("bipia", "agentdojo", "injecagent") if name in set(tpr.benchmark)
+    ]
     x = np.arange(len(benchmarks))
     figure, axis = plt.subplots(figsize=(8, 5))
     for offset, detector in ((-0.18, "mean"), (0.18, "logistic")):
-        values = [float(tpr[(tpr.benchmark == name) & (tpr.detector == detector)].value.iloc[0]) for name in benchmarks]
+        values = [
+            float(tpr[(tpr.benchmark == name) & (tpr.detector == detector)].value.iloc[0])
+            for name in benchmarks
+        ]
         axis.bar(x + offset, values, 0.36, label=detector.capitalize())
     axis.set_xticks(x)
     axis.set_xticklabels([name.upper() if name == "bipia" else name for name in benchmarks])
@@ -344,11 +434,14 @@ def analyze(config: Phase4Config, *, judge: Any | None = None) -> Path:
     config.output_dir.mkdir(parents=True, exist_ok=True)
     handoff, detectors = _handoff(config)
     identity = _identity(config, handoff, detectors)
+    _provenance(config, handoff, detectors)
     provenance = read_json(config.output_dir / "provenance.json")
     if provenance.get("generation_complete") is not True:
         raise RuntimeError("Phase 4 generation is incomplete; run --stage generate first")
     records = {
-        name: list(completed_records(config.output_dir / f"{name}_records.jsonl", identity).values())
+        name: list(
+            completed_records(config.output_dir / f"{name}_records.jsonl", identity).values()
+        )
         for name in ("bipia", "agentdojo", "injecagent")
     }
     if any(not values for values in records.values()):
@@ -383,7 +476,15 @@ def analyze(config: Phase4Config, *, judge: Any | None = None) -> Path:
                 }
             )
     predictions = pd.DataFrame(rows).sort_values(["benchmark", "case_id"])
-    for column in ("injection_exposed", "mean_prediction", "logistic_prediction", "native_valid", "native_utility", "native_attack_success", "attack_success"):
+    for column in (
+        "injection_exposed",
+        "mean_prediction",
+        "logistic_prediction",
+        "native_valid",
+        "native_utility",
+        "native_attack_success",
+        "attack_success",
+    ):
         predictions[column] = pd.array(predictions[column], dtype="boolean")
     predictions_path = config.output_dir / "phase4_predictions.parquet"
     atomic_write_parquet(predictions_path, predictions)
@@ -399,7 +500,10 @@ def analyze(config: Phase4Config, *, judge: Any | None = None) -> Path:
             "analysis_packages": package_versions(PACKAGES),
             "judge_routing": routing,
             "artifacts": {
-                "predictions": {"path": predictions_path.name, "sha256": sha256_file(predictions_path)},
+                "predictions": {
+                    "path": predictions_path.name,
+                    "sha256": sha256_file(predictions_path),
+                },
                 "metrics": {"path": metrics_path.name, "sha256": sha256_file(metrics_path)},
                 "plot": {"path": plot_path.name, "sha256": sha256_file(plot_path)},
             },

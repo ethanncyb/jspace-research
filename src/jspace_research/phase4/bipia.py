@@ -122,7 +122,7 @@ def generate(
             layer=scorer.mean["selected_layer"],
         )
         result = scorer.score(residual, scorer.dictionary)
-        generation = model.tokenizer.decode(tokens, skip_special_tokens=True)
+        generation = model.tokenizer.decode(tokens, skip_special_tokens=True).strip()
         save_record(
             output_path,
             {

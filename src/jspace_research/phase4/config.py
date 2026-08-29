@@ -78,6 +78,7 @@ class Phase4Config:
                 "agentdojo_suites": list(self.agentdojo_suites),
                 "agentdojo_attack": self.agentdojo_attack,
                 "agentdojo_defense": self.agentdojo_defense,
+                "agentdojo_tool_output_format": "native_default_yaml",
                 "injecagent_revision": self.injecagent_revision,
                 "injecagent_setting": self.injecagent_setting,
                 "injecagent_prompt_type": self.injecagent_prompt_type,

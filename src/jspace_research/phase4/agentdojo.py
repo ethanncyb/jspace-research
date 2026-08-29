@@ -121,13 +121,9 @@ def _make_llm(
 def _native_cases(suite: Any, smoke: bool) -> list[tuple[str, Any, Any | None]]:
     users = sorted(suite.user_tasks.items(), key=lambda item: str(item[0]))
     injections = sorted(suite.injection_tasks.items(), key=lambda item: str(item[0]))
+    attacked = [("attack", user, injection) for user in users for injection in injections]
     if smoke:
-        users = users[:2]
-        attacked = [("attack", users[index % len(users)], injections[index]) for index in range(2)]
-    else:
-        attacked = [
-            ("attack", user, injection) for user in users for injection in injections
-        ]
+        return [("control", user, None) for user in users[:2]] + attacked[:2]
     return [("control", user, None) for user in users] + attacked
 
 
@@ -144,6 +140,7 @@ def generate(
     from agentdojo.task_suite.load_suites import get_suite
 
     output_path = config.output_dir / "agentdojo_records.jsonl"
+    suite_cases = []
     expected_ids: set[str] = set()
     for suite_name in config.agentdojo_suites:
         suite = get_suite(config.agentdojo_version, suite_name)
@@ -160,16 +157,43 @@ def generate(
                 "user_task_id": str(user_id),
                 "injection_task_id": None if injection_id is None else str(injection_id),
             }
-            if case_id in completed:
-                if completed[case_id].get("case_hash") != content_hash(case_basis):
-                    raise RuntimeError("Cached AgentDojo case identity changed")
-                continue
+            suite_cases.append(
+                (suite_name, suite, condition, user_task, injection_task, case_basis)
+            )
+    unexpected = sorted(set(completed) - expected_ids)
+    if unexpected:
+        raise RuntimeError(f"Unexpected cached AgentDojo case ID: {unexpected[0]}")
 
+    for suite_name, suite, condition, user_task, injection_task, case_basis in suite_cases:
+        case_id = case_basis["case_id"]
+        tracker = _make_llm(
+            model,
+            scorer,
+            condition,
+            [],
+            max_input_tokens=config.phase1.max_input_tokens,
+            max_new_tokens=config.max_new_tokens,
+        )
+        pipeline = AgentPipeline.from_config(
+            PipelineConfig(
+                llm=tracker,
+                model_id=None,
+                defense=None,
+                tool_delimiter="tool",
+                system_message_name=None,
+                system_message=None,
+                tool_output_format=None,
+            )
+        )
+        injections: dict[str, str] = {}
+        if injection_task is not None:
+            attack = load_attack(config.agentdojo_attack, suite, pipeline)
+            injections = attack.attack(user_task, injection_task)
             tracker = _make_llm(
                 model,
                 scorer,
                 condition,
-                [],
+                list(injections.values()),
                 max_input_tokens=config.phase1.max_input_tokens,
                 max_new_tokens=config.max_new_tokens,
             )
@@ -181,61 +205,46 @@ def generate(
                     tool_delimiter="tool",
                     system_message_name=None,
                     system_message=None,
-                    tool_output_format="json",
+                    tool_output_format=None,
                 )
             )
-            injections: dict[str, str] = {}
-            if injection_task is not None:
-                attack = load_attack(config.agentdojo_attack, suite, pipeline)
-                injections = attack.attack(user_task, injection_task)
-                tracker = _make_llm(
-                    model,
-                    scorer,
-                    condition,
-                    list(injections.values()),
-                    max_input_tokens=config.phase1.max_input_tokens,
-                    max_new_tokens=config.max_new_tokens,
-                )
-                pipeline = AgentPipeline.from_config(
-                    PipelineConfig(
-                        llm=tracker,
-                        model_id=None,
-                        defense=None,
-                        tool_delimiter="tool",
-                        system_message_name=None,
-                        system_message=None,
-                        tool_output_format="json",
-                    )
-                )
-            utility, attack_success = suite.run_task_with_pipeline(
-                pipeline, user_task, injection_task, injections
-            )
-            detector = tracker.capture or {
-                "mean_score": None,
-                "mean_prediction": None,
-                "logistic_score": None,
-                "logistic_prediction": None,
-                "prompt_hash": None,
-            }
-            save_record(
-                output_path,
-                {
-                    **identity,
-                    **case_basis,
-                    "case_hash": content_hash(case_basis),
-                    "benchmark": "agentdojo",
-                    "task": None,
-                    "subgroup": suite_name,
-                    **detector,
-                    "injection_exposed": tracker.injection_exposed,
-                    "generated_response": tracker.captured_completion or tracker.last_completion,
-                    "native_valid": None,
-                    "native_utility": bool(utility),
-                    "native_attack_success": (
-                        bool(attack_success) if injection_task is not None else None
-                    ),
-                },
-            )
-    unexpected = sorted(set(completed) - expected_ids)
-    if unexpected:
-        raise RuntimeError(f"Unexpected cached AgentDojo case ID: {unexpected[0]}")
+        case_identity = {
+            **case_basis,
+            "user_prompt": str(user_task.PROMPT),
+            "injection_goal": (None if injection_task is None else str(injection_task.GOAL)),
+            "injections": injections,
+        }
+        case_hash = content_hash(case_identity)
+        if case_id in completed:
+            if completed[case_id].get("case_hash") != case_hash:
+                raise RuntimeError("Cached AgentDojo case identity changed")
+            continue
+        utility, attack_success = suite.run_task_with_pipeline(
+            pipeline, user_task, injection_task, injections
+        )
+        detector = tracker.capture or {
+            "mean_score": None,
+            "mean_prediction": None,
+            "logistic_score": None,
+            "logistic_prediction": None,
+            "prompt_hash": None,
+        }
+        save_record(
+            output_path,
+            {
+                **identity,
+                **case_basis,
+                "case_hash": case_hash,
+                "benchmark": "agentdojo",
+                "task": None,
+                "subgroup": suite_name,
+                **detector,
+                "injection_exposed": tracker.injection_exposed,
+                "generated_response": tracker.captured_completion or tracker.last_completion,
+                "native_valid": None,
+                "native_utility": bool(utility),
+                "native_attack_success": (
+                    bool(attack_success) if injection_task is not None else None
+                ),
+            },
+        )

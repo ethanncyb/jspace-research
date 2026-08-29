@@ -21,7 +21,9 @@ def verify_checkout(root: Path, expected_revision: str, name: str) -> None:
     except (OSError, subprocess.CalledProcessError) as exc:
         raise RuntimeError(f"Cannot verify the {name} checkout at {root}") from exc
     if actual != expected_revision:
-        raise RuntimeError(f"{name} revision mismatch: expected {expected_revision}, found {actual}")
+        raise RuntimeError(
+            f"{name} revision mismatch: expected {expected_revision}, found {actual}"
+        )
 
 
 def content_hash(value: Any) -> str:
@@ -47,14 +49,28 @@ def completed_records(path: Path, identity: dict[str, Any]) -> dict[str, dict[st
             row.get("logistic_score"),
             row.get("logistic_prediction"),
         ]
+        missing_detector = all(value is None for value in detector_values)
         if any(value is None for value in detector_values):
-            if not all(value is None for value in detector_values):
+            if not missing_detector:
                 raise RuntimeError(f"Partially missing detector output in {path}")
         elif not (
             all(math.isfinite(float(value)) for value in detector_values[::2])
             and all(isinstance(value, bool) for value in detector_values[1::2])
         ):
             raise RuntimeError(f"Invalid detector output in {path}")
+        benchmark = row.get("benchmark")
+        condition = row.get("condition")
+        if benchmark not in {"bipia", "agentdojo", "injecagent"} or condition not in {
+            "attack",
+            "control",
+        }:
+            raise RuntimeError(f"Invalid benchmark condition in {path}")
+        if benchmark != "agentdojo" and missing_detector:
+            raise RuntimeError(f"Missing detector output in {path}")
+        if benchmark == "agentdojo" and condition == "attack":
+            exposed = row.get("injection_exposed")
+            if not isinstance(exposed, bool) or exposed == missing_detector:
+                raise RuntimeError(f"Inconsistent AgentDojo exposure state in {path}")
         completed[case_id] = row
     return completed
 

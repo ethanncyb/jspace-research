@@ -12,7 +12,6 @@ dependencies = [
   "accelerate",
   "huggingface-hub",
   "matplotlib",
-  "nltk",
   "numpy",
   "pandas",
   "pyarrow",
@@ -31,6 +30,7 @@ dependencies = [
 test = ["pytest>=8", "ruff>=0.6"]
 phase4 = [
   "agentdojo @ git+https://github.com/ethz-spylab/agentdojo.git@089ed468cf3ed0322acc66b0211f26d9d90dbf60",
+  "nltk",
 ]
 
 [project.scripts]

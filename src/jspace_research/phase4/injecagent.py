@@ -67,6 +67,11 @@ def build_cases(config: Any) -> list[dict[str, Any]]:
     ):
         with (config.injecagent_root / "data" / filename).open("r", encoding="utf-8") as handle:
             values = json.load(handle)
+        expected_count = 510 if subgroup == "direct_harm" else 544
+        if len(values) != expected_count:
+            raise RuntimeError(
+                f"Pinned InjecAgent {subgroup} data must contain {expected_count} cases"
+            )
         for index, item in enumerate(values):
             cases.append(
                 {

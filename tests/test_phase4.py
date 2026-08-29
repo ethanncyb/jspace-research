@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
 import pandas as pd
 import pytest
 import torch
 
-from jspace_research.phase4.common import completed_records, save_record
+from jspace_research.phase2.scoring import JUDGE_RUBRIC_SHA256
+from jspace_research.phase4.agentdojo import _native_cases
+from jspace_research.phase4.common import completed_records, content_hash, save_record
 from jspace_research.phase4.detectors import FrozenDetectors
-from jspace_research.phase4.pipeline import _metrics
+from jspace_research.phase4.injecagent import build_cases as build_injecagent_cases
+from jspace_research.phase4.pipeline import _judge_bipia, _metrics
 
 
 def detectors() -> FrozenDetectors:
@@ -42,16 +49,92 @@ def test_frozen_scoring_does_not_expand_logistic_vocabulary() -> None:
 
 def test_phase4_uses_benchmark_specific_metrics() -> None:
     rows = [
-        {"benchmark": "bipia", "condition": "control", "subgroup": "EmailQA", "injection_exposed": False, "mean_score": -1.0, "mean_prediction": False, "logistic_score": -1.0, "logistic_prediction": False, "native_utility": None, "native_attack_success": None, "native_valid": None},
-        {"benchmark": "bipia", "condition": "attack", "subgroup": "EmailQA", "injection_exposed": True, "mean_score": 1.0, "mean_prediction": True, "logistic_score": 1.0, "logistic_prediction": True, "native_utility": None, "native_attack_success": None, "native_valid": None},
-        {"benchmark": "agentdojo", "condition": "control", "subgroup": "banking", "injection_exposed": False, "mean_score": -1.0, "mean_prediction": False, "logistic_score": -1.0, "logistic_prediction": False, "native_utility": True, "native_attack_success": None, "native_valid": None},
-        {"benchmark": "agentdojo", "condition": "attack", "subgroup": "banking", "injection_exposed": True, "mean_score": 1.0, "mean_prediction": True, "logistic_score": 1.0, "logistic_prediction": True, "native_utility": False, "native_attack_success": True, "native_valid": None},
-        {"benchmark": "injecagent", "condition": "attack", "subgroup": "direct_harm", "injection_exposed": True, "mean_score": 1.0, "mean_prediction": True, "logistic_score": 1.0, "logistic_prediction": True, "native_utility": None, "native_attack_success": True, "native_valid": True},
-        {"benchmark": "injecagent", "condition": "attack", "subgroup": "data_stealing", "injection_exposed": True, "mean_score": -1.0, "mean_prediction": False, "logistic_score": -1.0, "logistic_prediction": False, "native_utility": None, "native_attack_success": False, "native_valid": False},
+        {
+            "benchmark": "bipia",
+            "condition": "control",
+            "subgroup": "EmailQA",
+            "injection_exposed": False,
+            "mean_score": -1.0,
+            "mean_prediction": False,
+            "logistic_score": -1.0,
+            "logistic_prediction": False,
+            "native_utility": None,
+            "native_attack_success": None,
+            "native_valid": None,
+        },
+        {
+            "benchmark": "bipia",
+            "condition": "attack",
+            "subgroup": "EmailQA",
+            "injection_exposed": True,
+            "mean_score": 1.0,
+            "mean_prediction": True,
+            "logistic_score": 1.0,
+            "logistic_prediction": True,
+            "native_utility": None,
+            "native_attack_success": None,
+            "native_valid": None,
+        },
+        {
+            "benchmark": "agentdojo",
+            "condition": "control",
+            "subgroup": "banking",
+            "injection_exposed": False,
+            "mean_score": -1.0,
+            "mean_prediction": False,
+            "logistic_score": -1.0,
+            "logistic_prediction": False,
+            "native_utility": True,
+            "native_attack_success": None,
+            "native_valid": None,
+        },
+        {
+            "benchmark": "agentdojo",
+            "condition": "attack",
+            "subgroup": "banking",
+            "injection_exposed": True,
+            "mean_score": 1.0,
+            "mean_prediction": True,
+            "logistic_score": 1.0,
+            "logistic_prediction": True,
+            "native_utility": False,
+            "native_attack_success": True,
+            "native_valid": None,
+        },
+        {
+            "benchmark": "injecagent",
+            "condition": "attack",
+            "subgroup": "direct_harm",
+            "injection_exposed": True,
+            "mean_score": 1.0,
+            "mean_prediction": True,
+            "logistic_score": 1.0,
+            "logistic_prediction": True,
+            "native_utility": None,
+            "native_attack_success": True,
+            "native_valid": True,
+        },
+        {
+            "benchmark": "injecagent",
+            "condition": "attack",
+            "subgroup": "data_stealing",
+            "injection_exposed": True,
+            "mean_score": -1.0,
+            "mean_prediction": False,
+            "logistic_score": -1.0,
+            "logistic_prediction": False,
+            "native_utility": None,
+            "native_attack_success": False,
+            "native_valid": False,
+        },
     ]
     metrics = _metrics(pd.DataFrame(rows), detectors())
     assert set(metrics[metrics.benchmark == "bipia"].metric) == {
-        "auprc", "auroc", "tpr", "fpr", "balanced_accuracy"
+        "auprc",
+        "auroc",
+        "tpr",
+        "fpr",
+        "balanced_accuracy",
     }
     assert "auprc" not in set(metrics[metrics.benchmark == "injecagent"].metric)
     assert {"valid_rate", "asr_valid", "asr_all"}.issubset(
@@ -68,6 +151,8 @@ def test_phase4_record_resumption_rejects_stale_identity(tmp_path) -> None:
             **identity,
             "case_id": "case-1",
             "case_hash": "b" * 64,
+            "benchmark": "bipia",
+            "condition": "attack",
             "generated_response": "response",
             "mean_score": 1.0,
             "mean_prediction": True,
@@ -78,3 +163,83 @@ def test_phase4_record_resumption_rejects_stale_identity(tmp_path) -> None:
     assert set(completed_records(path, identity)) == {"case-1"}
     with pytest.raises(RuntimeError, match="identity mismatch"):
         completed_records(path, {"phase4_config_sha256": "c" * 64})
+
+
+def test_agentdojo_smoke_uses_first_sorted_native_cases() -> None:
+    suite = SimpleNamespace(
+        user_tasks={"user-2": object(), "user-1": object()},
+        injection_tasks={"injection-2": object(), "injection-1": object()},
+    )
+    cases = _native_cases(suite, smoke=True)
+    identities = [
+        (
+            condition,
+            user[0],
+            None if injection is None else injection[0],
+        )
+        for condition, user, injection in cases
+    ]
+    assert identities == [
+        ("control", "user-1", None),
+        ("control", "user-2", None),
+        ("attack", "user-1", "injection-1"),
+        ("attack", "user-1", "injection-2"),
+    ]
+
+
+def test_injecagent_requires_the_frozen_1054_base_cases(tmp_path) -> None:
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "test_cases_dh_base.json").write_text(json.dumps([{}] * 510), encoding="utf-8")
+    (data / "test_cases_ds_base.json").write_text(json.dumps([{}] * 544), encoding="utf-8")
+    config = SimpleNamespace(injecagent_root=tmp_path, smoke=False)
+    assert len(build_injecagent_cases(config)) == 1054
+
+    (data / "test_cases_dh_base.json").write_text(json.dumps([{}] * 509), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="must contain 510"):
+        build_injecagent_cases(config)
+
+
+def test_bipia_judgment_cache_rejects_inconsistent_outcome(tmp_path) -> None:
+    config = SimpleNamespace(
+        output_dir=tmp_path,
+        judge_model="openai/gpt-4.1-mini",
+        identity_hash=lambda: "a" * 64,
+    )
+    record = {
+        "case_id": "bipia:case-1",
+        "case_hash": "b" * 64,
+        "condition": "attack",
+        "generated_response": "response",
+        "attack_text": "injection",
+    }
+    expected = {
+        "schema_version": 1,
+        "case_id": record["case_id"],
+        "phase4_config_sha256": config.identity_hash(),
+        "case_hash": record["case_hash"],
+        "judge_gateway": "openrouter",
+        "judge_model": config.judge_model,
+        "judge_rubric_sha256": JUDGE_RUBRIC_SHA256,
+        "generation_hash": content_hash(record["generated_response"]),
+        "judge_label": "YES",
+        "attack_success": False,
+        "returned_model": None,
+        "provider": None,
+        "provider_model": None,
+    }
+    save_record(tmp_path / "bipia_judgments.jsonl", expected)
+    with pytest.raises(RuntimeError, match="Inconsistent"):
+        _judge_bipia(config, [record], judge=None)
+
+
+def test_end_to_end_notebook_runs_phase4_after_phase3() -> None:
+    notebook_path = Path(__file__).parents[1] / "notebooks/JSpace_End_to_End_Colab.ipynb"
+    notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+    cells = ["".join(cell.get("source", [])) for cell in notebook["cells"]]
+    phase3_index = next(index for index, text in enumerate(cells) if "phase3_command" in text)
+    phase4_index = next(index for index, text in enumerate(cells) if "phase4_base" in text)
+    persistence_index = next(
+        index for index, text in enumerate(cells) if "Confirm persistence" in text
+    )
+    assert phase3_index < phase4_index < persistence_index

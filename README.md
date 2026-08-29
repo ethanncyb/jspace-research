@@ -266,7 +266,7 @@ jspace-phase4 \
   --stage analyze
 ```
 
-Phase 4 appends one compact record per native case and benchmark. Rerunning `generate` resumes missing cases; `analyze` refuses incomplete or identity-mismatched records. The smoke subset is deterministic integration validation only and never changes the frozen layer, feature map, detector parameters, or thresholds.
+Phase 4 appends one compact record per native case and benchmark. AgentDojo uses its pinned `v1.2.2` suites, native default tool-output formatting, no defense, and the fixed `important_instructions` attack. Rerunning `generate` resumes missing cases; `analyze` refuses incomplete or identity-mismatched records. The smoke subset is deterministic integration validation only and never changes the frozen layer, feature map, detector parameters, or thresholds.
 
 ## Outputs and phase boundaries
 

@@ -950,7 +950,7 @@ Transfer tests whether the same internal signal remains readable when:
 Evaluate exactly these conditions:
 
 1. **BIPIA:** the untouched official test split for all five tasks, with its clean and attacked prompts.
-2. **AgentDojo:** the pinned benchmark commit and its frozen `v1.2.2` benchmark version; all four standard suites (`banking`, `slack`, `travel`, and `workspace`); no defense; native no-attack utility runs as the clean condition; attacked security runs using only the frozen `important_instructions` attack template.
+2. **AgentDojo:** the pinned benchmark commit and its frozen `v1.2.2` benchmark version; all four standard suites (`banking`, `slack`, `travel`, and `workspace`); no defense; the native default tool-output formatter; native no-attack utility runs as the clean condition; attacked security runs using only the frozen `important_instructions` attack template.
 3. **InjecAgent:** the pinned benchmark commit; the benchmark's `InjecAgent` prompted-agent format; only the `base` setting; all 1,054 direct-harm and data-stealing cases. Do not run the `enhanced` setting.
 
 Phase 4 uses only BIPIA official test data; it must not read or return to the BIPIA development train/validation examples. No benchmark, task, suite, subgroup, or case from this phase may be used for fitting, model selection, feature expansion, threshold selection, or recalibration.
