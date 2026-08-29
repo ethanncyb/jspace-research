@@ -40,6 +40,7 @@ def build_cases(config: Any) -> list[dict[str, Any]]:
             cases.append(
                 {
                     "case_id": f"bipia:{record['context_id']}:control",
+                    "context_id": record["context_id"],
                     "benchmark": "bipia",
                     "task": task,
                     "subgroup": TASK_DISPLAY[task],
@@ -63,6 +64,7 @@ def build_cases(config: Any) -> list[dict[str, Any]]:
                                     f"bipia:{record['context_id']}:attack:"
                                     f"{category}:{variant}:{position}"
                                 ),
+                                "context_id": record["context_id"],
                                 "benchmark": "bipia",
                                 "task": task,
                                 "subgroup": TASK_DISPLAY[task],
@@ -81,14 +83,11 @@ def build_cases(config: Any) -> list[dict[str, Any]]:
     if config.smoke:
         attacks = [case for case in cases if case["condition"] == "attack"][:2]
         controls_by_context = {
-            case["case_id"].removesuffix(":control"): case
-            for case in cases
-            if case["condition"] == "control"
+            case["context_id"]: case for case in cases if case["condition"] == "control"
         }
         controls = []
         for attack in attacks:
-            context_id = attack["case_id"].split(":attack:")[0]
-            control = dict(controls_by_context[context_id])
+            control = dict(controls_by_context[attack["context_id"]])
             control["case_id"] = attack["case_id"] + ":matched-control"
             controls.append(control)
         cases = sorted([*attacks, *controls], key=lambda row: row["case_id"])

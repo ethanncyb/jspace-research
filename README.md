@@ -151,6 +151,8 @@ jspace-phase4 \
 
 Then run the full five-task experiment:
 
+Before Phase 4, provide the licensed BIPIA-format test files at `/path/to/BIPIA/benchmark/qa/test.jsonl` and `/path/to/BIPIA/benchmark/abstract/test.jsonl`. The Phase 1 `--webqa-train` and `--summarization-train` arguments supply only training files; they do not supply these official-test inputs.
+
 ```bash
 jspace-phase1 \
   --config configs/phase1_full.yaml \
@@ -266,7 +268,7 @@ jspace-phase4 \
   --stage analyze
 ```
 
-Phase 4 appends one compact record per native case and benchmark. AgentDojo uses its pinned `v1.2.2` suites, native default tool-output formatting, no defense, and the fixed `important_instructions` attack. Rerunning `generate` resumes missing cases; `analyze` refuses incomplete or identity-mismatched records. The smoke subset is deterministic integration validation only and never changes the frozen layer, feature map, detector parameters, or thresholds.
+Phase 4 appends one compact record per native case and benchmark. AgentDojo uses its pinned `v1.2.2` suites, native default tool-output formatting, no defense, and the fixed `important_instructions` attack. BIPIA classification metrics pair each attacked score with its source context's clean score, giving the two labels equal weight without additional generation. Rerunning `generate` resumes missing cases; `analyze` refuses incomplete or identity-mismatched records. The smoke subset is deterministic integration validation only, verifies the frozen 4,096-token limit without truncation, and never changes the frozen layer, feature map, detector parameters, or thresholds.
 
 ## Outputs and phase boundaries
 

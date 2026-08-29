@@ -7,13 +7,14 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 import torch
+from sklearn.metrics import average_precision_score
 
 from jspace_research.phase2.scoring import JUDGE_RUBRIC_SHA256
 from jspace_research.phase4.agentdojo import _native_cases
 from jspace_research.phase4.common import completed_records, content_hash, save_record
 from jspace_research.phase4.detectors import FrozenDetectors
 from jspace_research.phase4.injecagent import build_cases as build_injecagent_cases
-from jspace_research.phase4.pipeline import _judge_bipia, _metrics
+from jspace_research.phase4.pipeline import _balanced_bipia_rows, _judge_bipia, _metrics
 
 
 def detectors() -> FrozenDetectors:
@@ -50,7 +51,9 @@ def test_frozen_scoring_does_not_expand_logistic_vocabulary() -> None:
 def test_phase4_uses_benchmark_specific_metrics() -> None:
     rows = [
         {
+            "case_id": "bipia:email:test:00000:control",
             "benchmark": "bipia",
+            "context_id": "email:test:00000",
             "condition": "control",
             "subgroup": "EmailQA",
             "injection_exposed": False,
@@ -63,7 +66,9 @@ def test_phase4_uses_benchmark_specific_metrics() -> None:
             "native_valid": None,
         },
         {
+            "case_id": "bipia:email:test:00000:attack:category:0:start",
             "benchmark": "bipia",
+            "context_id": "email:test:00000",
             "condition": "attack",
             "subgroup": "EmailQA",
             "injection_exposed": True,
@@ -152,6 +157,7 @@ def test_phase4_record_resumption_rejects_stale_identity(tmp_path) -> None:
             "case_id": "case-1",
             "case_hash": "b" * 64,
             "benchmark": "bipia",
+            "context_id": "email:test:00000",
             "condition": "attack",
             "generated_response": "response",
             "mean_score": 1.0,
@@ -185,6 +191,34 @@ def test_agentdojo_smoke_uses_first_sorted_native_cases() -> None:
         ("attack", "user-1", "injection-1"),
         ("attack", "user-1", "injection-2"),
     ]
+
+
+def test_bipia_metrics_balance_clean_scores_by_source_context() -> None:
+    rows = [
+        {
+            "case_id": "bipia:email:test:00000:control",
+            "context_id": "email:test:00000",
+            "benchmark": "bipia",
+            "condition": "control",
+            "mean_score": 0.0,
+        },
+        *[
+            {
+                "case_id": f"bipia:email:test:00000:attack:{index}",
+                "context_id": "email:test:00000",
+                "benchmark": "bipia",
+                "condition": "attack",
+                "mean_score": 0.0,
+            }
+            for index in range(3)
+        ],
+    ]
+    balanced = _balanced_bipia_rows(pd.DataFrame(rows))
+    assert len(balanced[balanced.condition == "attack"]) == 3
+    assert len(balanced[balanced.condition == "control"]) == 3
+    assert float((balanced.condition == "attack").mean()) == pytest.approx(0.5)
+    labels = (balanced.condition == "attack").to_numpy(dtype=int)
+    assert average_precision_score(labels, balanced.mean_score) == pytest.approx(0.5)
 
 
 def test_injecagent_requires_the_frozen_1054_base_cases(tmp_path) -> None:

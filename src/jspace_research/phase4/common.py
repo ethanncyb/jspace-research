@@ -67,6 +67,8 @@ def completed_records(path: Path, identity: dict[str, Any]) -> dict[str, dict[st
             raise RuntimeError(f"Invalid benchmark condition in {path}")
         if benchmark != "agentdojo" and missing_detector:
             raise RuntimeError(f"Missing detector output in {path}")
+        if benchmark == "bipia" and not isinstance(row.get("context_id"), str):
+            raise RuntimeError(f"Missing BIPIA context identity in {path}")
         if benchmark == "agentdojo" and condition == "attack":
             exposed = row.get("injection_exposed")
             if not isinstance(exposed, bool) or exposed == missing_detector:

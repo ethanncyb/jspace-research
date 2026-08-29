@@ -238,7 +238,6 @@ def _judge_bipia(
 
 
 def _detector_rows(
-    frame: pd.DataFrame,
     *,
     benchmark: str,
     scope: str,
@@ -261,13 +260,34 @@ def _detector_rows(
     }
 
 
+def _balanced_bipia_rows(predictions: pd.DataFrame) -> pd.DataFrame:
+    """Match one clean score to every attacked score from the same source context."""
+
+    bipia = predictions[predictions.benchmark == "bipia"]
+    attacks = bipia[bipia.condition == "attack"].copy()
+    controls = bipia[bipia.condition == "control"].copy()
+    if attacks.empty or controls.empty or "context_id" not in bipia:
+        raise RuntimeError("BIPIA metrics require attacked and clean rows with context identity")
+    if attacks.context_id.isna().any() or controls.context_id.isna().any():
+        raise RuntimeError("BIPIA metrics require context identity for every row")
+
+    control_templates = (
+        controls.sort_values("case_id").drop_duplicates("context_id").set_index("context_id")
+    )
+    missing = sorted(set(attacks.context_id) - set(control_templates.index))
+    if missing:
+        raise RuntimeError(f"BIPIA attack lacks a matched clean context: {missing[0]}")
+    matched_controls = control_templates.loc[attacks.context_id.tolist()].reset_index()
+    return pd.concat([attacks, matched_controls], ignore_index=True)
+
+
 def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     thresholds = {
         "mean": float(detectors.mean["threshold"]),
         "logistic": float(detectors.logistic["threshold"]),
     }
-    bipia_rows = predictions[predictions.benchmark == "bipia"]
+    bipia_rows = _balanced_bipia_rows(predictions)
     labels = (bipia_rows.condition == "attack").to_numpy(dtype=np.int64)
     for detector in ("mean", "logistic"):
         scores = bipia_rows[f"{detector}_score"].to_numpy(dtype=float)
@@ -291,7 +311,6 @@ def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFr
             )
             rows.append(
                 _detector_rows(
-                    bipia_rows,
                     benchmark="bipia",
                     scope="overall",
                     subgroup=None,
@@ -320,7 +339,6 @@ def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFr
             ):
                 rows.append(
                     _detector_rows(
-                        subset,
                         benchmark="agentdojo",
                         scope=scope,
                         subgroup=subgroup,
@@ -338,7 +356,6 @@ def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFr
         ):
             rows.append(
                 _detector_rows(
-                    subset,
                     benchmark="agentdojo",
                     scope=scope,
                     subgroup=subgroup,
@@ -366,7 +383,6 @@ def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFr
             for metric, value in values.items():
                 rows.append(
                     _detector_rows(
-                        subset,
                         benchmark="injecagent",
                         scope=scope,
                         subgroup=subgroup,
@@ -390,7 +406,6 @@ def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFr
         ):
             rows.append(
                 _detector_rows(
-                    subset,
                     benchmark="injecagent",
                     scope=scope,
                     subgroup=subgroup,
@@ -458,6 +473,7 @@ def analyze(config: Phase4Config, *, judge: Any | None = None) -> Path:
             rows.append(
                 {
                     "case_id": value["case_id"],
+                    "context_id": value.get("context_id"),
                     "benchmark": benchmark,
                     "task": value.get("task"),
                     "subgroup": value.get("subgroup"),

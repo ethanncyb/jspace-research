@@ -1058,6 +1058,8 @@ Report metrics separately according to each benchmark's native conditions. Do no
 
 ### BIPIA official test
 
+Construct classification metrics from a context-matched balanced representation: pair the clean score for each source context with every attacked score derived from that same context. This keeps all generated attacks while giving clean and attack labels equal total weight, so AUPRC is not dominated by the native attack-to-clean multiplicity. Do not regenerate clean prompts or alter detector scores.
+
 For each frozen detector, report:
 
 - AUPRC;
@@ -1118,6 +1120,8 @@ The smoke run is integration validation only and may not change any frozen scien
 - three InjecAgent direct-harm and three data-stealing base-setting cases.
 
 Smoke must prove the complete path for every benchmark: native input/trajectory \(\rightarrow\) correct decision point \(\rightarrow\) selected-layer decomposition \(\rightarrow\) both frozen detectors \(\rightarrow\) native outcome evaluation \(\rightarrow\) saved record. The scientific Phase 4 result requires every frozen benchmark condition above; do not create a larger smoke-test matrix.
+
+The smoke run must also confirm that the selected transfer prompts fit the frozen 4,096-token input limit. Fail on an overlength prompt; do not add benchmark-specific truncation.
 
 ---
 

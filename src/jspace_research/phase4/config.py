@@ -73,6 +73,7 @@ class Phase4Config:
             "benchmarks": {
                 "bipia_revision": self.phase1.dependencies.bipia_revision,
                 "bipia_split": "official_test",
+                "bipia_metric_weighting": "context_matched_class_balance",
                 "agentdojo_revision": self.agentdojo_revision,
                 "agentdojo_version": self.agentdojo_version,
                 "agentdojo_suites": list(self.agentdojo_suites),
