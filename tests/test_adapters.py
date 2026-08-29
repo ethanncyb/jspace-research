@@ -125,6 +125,17 @@ def test_zero_strength_hook_matches_no_hook_generation_exactly() -> None:
     assert torch.equal(hooked, plain)
 
 
+def test_generation_capture_records_only_the_prefill_final_token() -> None:
+    adapter, hf_model = make_generation_adapter()
+    generated, captured = adapter.generate_with_capture(
+        torch.tensor([[1, 2, 3]]), max_new_tokens=1, layer=0
+    )
+    assert generated.tolist() == [9]
+    torch.testing.assert_close(captured, torch.ones(3))
+    assert hf_model.decode is not None
+    torch.testing.assert_close(hf_model.decode[0, 0], torch.ones(3))
+
+
 def test_intervention_rejects_wrong_reconstruction_shape() -> None:
     adapter, _ = make_generation_adapter()
     with pytest.raises(ValueError, match="shape does not match"):

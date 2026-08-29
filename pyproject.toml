@@ -29,11 +29,15 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8", "ruff>=0.6"]
+phase4 = [
+  "agentdojo @ git+https://github.com/ethz-spylab/agentdojo.git@089ed468cf3ed0322acc66b0211f26d9d90dbf60",
+]
 
 [project.scripts]
 jspace-phase1 = "jspace_research.phase1.cli:main"
 jspace-phase2 = "jspace_research.phase2.cli:main"
 jspace-phase3 = "jspace_research.phase3.cli:main"
+jspace-phase4 = "jspace_research.phase4.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -188,3 +188,59 @@ class HuggingFaceModelAdapter:
         if generated.ndim != 2 or generated.shape[0] != 1:
             raise RuntimeError("Model generation returned an unexpected token shape")
         return generated[0, prompt_length:].detach().to("cpu")
+
+    def generate_with_capture(
+        self,
+        input_ids: torch.Tensor,
+        *,
+        max_new_tokens: int,
+        layer: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Greedily generate while capturing one selected-layer prefill state."""
+
+        if input_ids.ndim != 2 or input_ids.shape[0] != 1:
+            raise ValueError("Generation capture expects one unpadded prompt at a time")
+        if max_new_tokens <= 0:
+            raise ValueError("max_new_tokens must be positive")
+        if not 0 <= layer < self.number_layers:
+            raise ValueError(f"Capture layer is out of range: {layer}")
+
+        prompt_length = int(input_ids.shape[-1])
+        input_ids = input_ids.to(self.input_device)
+        captured: torch.Tensor | None = None
+
+        def capture_prefill(module: Any, inputs: Any, output: Any) -> Any:
+            nonlocal captured
+            if captured is not None:
+                return output
+            tensor = output if torch.is_tensor(output) else output[0]
+            if tensor.ndim != 3 or tensor.shape[0] != 1:
+                raise RuntimeError(
+                    "Selected residual block did not return a [1, sequence, hidden] tensor"
+                )
+            if tensor.shape[-1] != self.hidden_width:
+                raise RuntimeError("Selected residual block output width is incompatible")
+            captured = tensor[0, -1, :].detach().to("cpu", dtype=torch.float32)
+            return output
+
+        hook_handle = self._model.layers[layer].register_forward_hook(capture_prefill)
+        try:
+            pad_token_id = getattr(self.tokenizer, "pad_token_id", None)
+            if pad_token_id is None:
+                pad_token_id = getattr(self.tokenizer, "eos_token_id", None)
+            with torch.inference_mode():
+                generated = self._hf_model.generate(
+                    input_ids=input_ids,
+                    do_sample=False,
+                    max_new_tokens=max_new_tokens,
+                    use_cache=True,
+                    pad_token_id=pad_token_id,
+                )
+        finally:
+            hook_handle.remove()
+
+        if captured is None:
+            raise RuntimeError("The selected residual capture hook was never applied")
+        if generated.ndim != 2 or generated.shape[0] != 1:
+            raise RuntimeError("Model generation returned an unexpected token shape")
+        return generated[0, prompt_length:].detach().to("cpu"), captured

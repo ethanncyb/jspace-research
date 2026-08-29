@@ -1,6 +1,7 @@
 from jspace_research.phase1.cli import build_parser
 from jspace_research.phase2.cli import build_parser as build_phase2_parser
 from jspace_research.phase3.cli import build_parser as build_phase3_parser
+from jspace_research.phase4.cli import build_parser as build_phase4_parser
 
 
 def test_cli_exposes_only_phase1_stages_and_path_overrides() -> None:
@@ -53,3 +54,20 @@ def test_phase3_cli_is_one_cpu_command_without_stages() -> None:
     assert args.phase1.endswith("selected_layer.json")
     assert args.output_dir == "/run/phase3"
     assert not hasattr(args, "stage")
+
+
+def test_phase4_cli_keeps_generation_and_analysis_separate() -> None:
+    args = build_phase4_parser().parse_args(
+        [
+            "--config", "config.yaml",
+            "--phase1", "/run/phase1/selected_layer.json",
+            "--phase3", "/run/phase3",
+            "--bipia-root", "/benchmarks/BIPIA/benchmark",
+            "--agentdojo-root", "/benchmarks/agentdojo",
+            "--injecagent-root", "/benchmarks/InjecAgent",
+            "--output-dir", "/run/phase4",
+            "--stage", "analyze",
+        ]
+    )
+    assert args.stage == "analyze"
+    assert args.phase3 == "/run/phase3"

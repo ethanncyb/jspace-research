@@ -114,6 +114,8 @@ The fitted lens is a fixed measurement instrument. Do not fit a new J-lens as pa
 
 - BIPIA commit: `a004b69ec0dd446e0afd461d98cb5e96e120a5d0`
 - Anthropic Jacobian-lens commit: `581d398613e5602a5af361e1c34d3a92ea82ba8e`
+- AgentDojo commit: `089ed468cf3ed0322acc66b0211f26d9d90dbf60`
+- InjecAgent commit: `f19c9f2c79a41046eb13c03c51a24c567a8ffa07`
 
 Save these pins in the resolved run configuration and provenance artifact.
 
@@ -275,8 +277,8 @@ For WebQA and Summarization, require researcher-provided BIPIA-format files. Do 
 
 Use:
 
-- AgentDojo
-- InjecAgent
+- AgentDojo at the pinned commit, using all four standard suites: `banking`, `slack`, `travel`, and `workspace`;
+- InjecAgent at the pinned commit, using all 1,054 base-setting direct-harm and data-stealing cases with the benchmark's `InjecAgent` prompted-agent format.
 
 These are evaluation benchmarks only.
 
@@ -292,9 +294,15 @@ The internal state must be read after all untrusted content has been processed a
 
 Capture the residual-stream activation at the final non-padding prompt token immediately before generation.
 
-## AgentDojo / InjecAgent
+## AgentDojo
 
-Capture the residual-stream activation immediately after the untrusted tool result or observation and before the next model action.
+An attacked episode contributes at most one detector example: the first model decision immediately after an observation containing the injection is actually delivered to Gemma. Record `injection_exposed=false` when the episode never delivers the injected content. Such an episode retains its native behavioral outcome but is not a detector false negative because the detector never observed an injection.
+
+A native no-attack episode contributes at most one clean detector example at its first eligible post-observation decision point. If no tool observation is delivered, retain the native utility outcome but do not create a detector example.
+
+## InjecAgent
+
+Capture exactly once, immediately after the injected tool response has been included in the prompted-agent input and before Gemma produces its next action.
 
 The same decision-point convention must be used for detection and intervention.
 
@@ -350,7 +358,7 @@ The experiment must not assume notebook state.
 | 1 | Yes | model forward, activation capture, J-space reconstruction | metrics, plots | activation checkpoints every 25 prompts and per-layer decomposition completion caches |
 | 2 | Yes for generation | intervention generation across \(\alpha\) | API judging, ROUGE aggregation, plots | append-only generation and judgment JSONL logs |
 | 3 | No if Phase 1 caches exist | none normally | mean detector, sparse logistic regression, thresholds | detector artifacts |
-| 4 | Yes | capture J-space on held-out/transfer examples; generate behavior once for reuse in Phase 5 | detector metrics | benchmark-level shards |
+| 4 | Yes for generation | selected-layer capture and native benchmark behavior once for reuse in Phase 5 | BIPIA API judging, detector/native metrics, plots | one append-only GPU record stream per benchmark plus BIPIA judgment log |
 | 5 | No if Phase 4 outputs exist | none | quadrant/conditional analysis | analysis artifacts |
 | 6 | Yes | directional interventions and generation | aggregation, plots | per-example/per-\(\alpha\)/direction results |
 | 7 | Yes | normal generation for unblocked examples | gating metrics, utility | per-example gate results |
@@ -937,83 +945,179 @@ Transfer tests whether the same internal signal remains readable when:
 - attack wording changes;
 - interaction structure changes.
 
-## Methodology
+## Frozen benchmark conditions
 
-Run both frozen detectors on:
+Evaluate exactly these conditions:
 
-1. BIPIA official test split;
-2. AgentDojo;
-3. InjecAgent.
+1. **BIPIA:** the untouched official test split for all five tasks, with its clean and attacked prompts.
+2. **AgentDojo:** the pinned benchmark commit and its frozen `v1.2.2` benchmark version; all four standard suites (`banking`, `slack`, `travel`, and `workspace`); no defense; native no-attack utility runs as the clean condition; attacked security runs using only the frozen `important_instructions` attack template.
+3. **InjecAgent:** the pinned benchmark commit; the benchmark's `InjecAgent` prompted-agent format; only the `base` setting; all 1,054 direct-harm and data-stealing cases. Do not run the `enhanced` setting.
 
-For every example:
+Phase 4 uses only BIPIA official test data; it must not read or return to the BIPIA development train/validation examples. No benchmark, task, suite, subgroup, or case from this phase may be used for fitting, model selection, feature expansion, threshold selection, or recalibration.
+
+## One detector example per benchmark case
+
+Apply the decision-point rules in Section 7 and produce no more than one detector example per native case or episode:
+
+- **BIPIA:** capture at the final non-padding prompt token immediately before generation, as in Phases 1–2.
+- **AgentDojo attacked:** capture the first decision immediately after the injected observation is actually delivered to Gemma. If no injected content is delivered, record `injection_exposed=false`, preserve the native episode outcome, and exclude the episode from positive-detector counts.
+- **AgentDojo clean:** capture at most the first eligible model decision after a tool observation in the native no-attack episode. If no observation is delivered, preserve native utility but create no detector example.
+- **InjecAgent:** capture immediately after the injected tool response is included in the agent prompt and before Gemma's next action.
+
+Do not turn later steps in one AgentDojo trajectory into additional correlated detector examples.
+
+## Frozen feature extraction and scoring
+
+The GPU stage loads only:
+
+- the pinned Gemma model and fitted lens;
+- Phase 1's frozen selected layer \(\ell^*\) and decomposition identity;
+- Phase 3's frozen mean and logistic detector artifacts.
+
+The selected layer \(\ell^*\) and \(k\) frozen from Phase 1, together with the decomposition procedure, normalized dictionary construction, logistic feature vocabulary, mean-detector parameters, logistic \(w,b\), and both thresholds frozen through Phase 3, are immutable throughout Phase 4.
+
+Capture only the final non-padding token at \(\ell^*\); never capture every layer again. Reconstruct the selected-layer J-space component using the exact frozen Phase 1 procedure: \(k=25\), top-512 positive screening candidates, and the same nonnegative greedy pursuit and normalized dictionary.
+
+For each scored decision point, compute:
 
 \[
 h_{\ell^*}
 \rightarrow
-h_{\ell^*}^J
+h_{\ell^*}^{J},\ c(x)
 \rightarrow
 \begin{cases}
-s_{\text{mean}}(x)\\
+s_{\text{mean}}(x)
+=
+\hat d_{\text{mean}}^\top
+\left(h_{\ell^*}^{J}-\mu_{\text{clean}}^{J}\right)\\
 s_{\text{logistic}}(x)
+=
+w^\top c(x)+b
 \end{cases}
+\rightarrow
+\text{frozen decisions}.
 \]
 
-Use the exact frozen thresholds from Phase 3.
+Map sparse support IDs into the frozen Phase 3 logistic feature map. Token IDs absent from that map contribute zero. Do not expand or refit the feature map from AgentDojo or InjecAgent.
 
-Do not:
+Use the exact frozen Phase 3 thresholds. Do not:
 
-- retrain;
-- recalibrate;
-- alter feature mappings;
-- change \(\ell^*\);
-- change \(k\);
-- change the decomposition;
-- choose benchmark-specific thresholds.
+- retrain or recalibrate either detector;
+- alter the feature mapping;
+- change \(\ell^*\), \(k\), screening count, dictionary normalization, or decomposition;
+- choose benchmark-specific thresholds;
+- add probes, detector baselines, or new representations.
 
-### Efficiency rule
+The reconstructed vectors and coefficients are transient in Phase 4. Do not save full \(h^J\) arrays or large decomposition caches because later phases require detector scores and outcomes, not those internal tensors.
 
-When a transfer benchmark also provides behavioral attack outcomes needed for Phase 5, run the model once:
+## Behavioral outcomes saved for Phase 5
 
-- capture the decision-point activation;
-- compute both detector scores;
-- generate the benchmark behavior;
-- save all fields.
+Run each benchmark case once, using the same Gemma trajectory for detector capture and behavioral evaluation. Independently record what Gemma actually did:
 
-Phase 4 analyzes detector generalization. Phase 5 reuses the saved behavior.
+- **BIPIA:** judge attacked generations with the same frozen OpenRouter model, structured rubric, cache identity, and `YES`/`NO`/`UNKNOWN` ASR definition used in Phase 2. Keep control attack-success fields null.
+- **AgentDojo:** use native targeted attack success, clean utility, and utility-under-attack. Do not add an LLM judge. Preserve native outcomes even when `injection_exposed=false`.
+- **InjecAgent:** preserve native validity and native attack-success outcomes so both ASR-valid and ASR-all can be reproduced, including direct-harm and data-stealing labels. Do not add an LLM judge.
+
+Phase 4 asks whether the frozen internal signal transfers. Phase 5 later relates the saved signal to these behavioral outcomes.
+
+## Execution and resumption
+
+Add one Phase 4 CLI with the same incremental convention as earlier phases:
+
+```bash
+jspace-phase4 \
+  --config configs/phase1_full.yaml \
+  --phase1 artifacts/full/phase1/selected_layer.json \
+  --phase3 artifacts/full/phase3 \
+  --bipia-root /path/to/BIPIA/benchmark \
+  --agentdojo-root /path/to/agentdojo \
+  --injecagent-root /path/to/InjecAgent \
+  --output-dir artifacts/full/phase4 \
+  --stage generate|analyze|all
+```
+
+- `generate` is the GPU stage. It runs or resumes native benchmark cases, captures only \(\ell^*\), computes both frozen detector outputs, continues the same trajectory to its native behavioral outcome, and releases Gemma and the lens when complete.
+- `analyze` is CPU/API-only. It loads the saved records, completes resumable BIPIA OpenRouter judgments, computes the fixed metrics, and writes plots and tables without loading Gemma or the lens. API calls are limited to BIPIA semantic behavior scoring; AgentDojo and InjecAgent analysis uses only their native CPU evaluation.
+- `all` runs those two stages in order.
+
+Use one append-only, resumable GPU record stream per benchmark, keyed by its native case or episode ID and direct run identity. Use the existing Phase 2 judgment-cache convention only for BIPIA semantic judgments. Reject duplicate IDs, stale benchmark commits, incompatible Phase 1/3 identities, incomplete detector artifacts, or changed prompt/case identities. Do not add a database, cache manager, workflow engine, base benchmark class, adapter registry, or generalized benchmark framework.
+
+Keep the implementation benchmark-specific and direct:
+
+- `phase4/bipia.py`;
+- `phase4/agentdojo.py`;
+- `phase4/injecagent.py`;
+- a small `phase4/pipeline.py` and CLI;
+- one new canonical Phase 4 cell in the existing end-to-end notebook.
+
+Reuse only the existing shared model boundary, atomic/runtime helpers, Phase 1 decomposition code, Phase 2 OpenRouter judge, and Phase 3 detector loaders.
 
 ## Metrics
 
-Where both clean and attacked examples exist:
+Report metrics separately according to each benchmark's native conditions. Do not force every benchmark into one metric shape and do not tune from any Phase 4 result.
 
-For each detector and benchmark:
+### BIPIA official test
+
+For each frozen detector, report:
 
 - AUPRC;
 - AUROC;
-- TPR at frozen threshold;
-- FPR at frozen threshold;
-- balanced accuracy at frozen threshold.
-
-Where an appropriate clean condition is not available:
-
-- attack score distribution;
 - TPR at the frozen threshold;
-- subgroup breakdown only where the benchmark already defines meaningful subgroups.
+- FPR at the frozen threshold;
+- balanced accuracy at the frozen threshold.
 
-Do not tune from these results.
+### AgentDojo
+
+For each frozen detector, report:
+
+- FPR on native no-attack clean detector examples;
+- TPR on attacked security cases with `injection_exposed=true`;
+- overall results and the same metrics by the four native suites.
+
+Separately report native clean utility, utility-under-attack, and targeted ASR over the benchmark's native episode set. Episodes with `injection_exposed=false` remain in native behavioral reporting but not in positive detector TPR.
+
+### InjecAgent
+
+For each frozen detector, report:
+
+- TPR at the frozen threshold;
+- attack-score distributions;
+- the same results for the native direct-harm and data-stealing subgroups.
+
+Do not invent a clean InjecAgent condition or report AUROC/AUPRC against a synthetic negative set. Separately report native validity, ASR-valid, and ASR-all overall and for the benchmark's native attack categories.
 
 ## Outputs
 
 Required:
 
-- `phase4_predictions.parquet`
-  - benchmark
-  - example ID
-  - attack/clean label where available
-  - both detector scores
-  - both detector decisions
-  - generated behavior/outcome when available
-- `phase4_metrics.csv`
-- detector-by-benchmark comparison plot
+- `bipia_records.jsonl`, `agentdojo_records.jsonl`, and `injecagent_records.jsonl` as the compact resumable GPU outputs;
+- `bipia_judgments.jsonl` as the resumable OpenRouter judgment cache;
+- `phase4_predictions.parquet`, with one row per native case/condition and nullable detector fields when no eligible decision point exists;
+- `phase4_metrics.csv`;
+- `phase4_detector_transfer.png`;
+- one lightweight `provenance.json` containing the fixed model/lens, Phase 1/3 identities, benchmark commits and conditions, OpenRouter judge identity, relevant package versions, and GPU identity.
+
+Each prediction row contains only what downstream analysis needs:
+
+- benchmark and native case/episode identity;
+- native suite/task/attack subgroup where defined;
+- clean/attack condition and `injection_exposed` where applicable;
+- both continuous detector scores and both frozen binary decisions;
+- generated response or next action needed to interpret behavior;
+- native validity, utility, and behavioral attack outcome where defined;
+- BIPIA semantic judge label and attack-success result where applicable.
+
+Do not save credentials, complete hidden-state trajectories, all-layer activations, or full selected-layer reconstructions.
+
+## Smoke validation
+
+The smoke run is integration validation only and may not change any frozen scientific choice, parameter, mapping, threshold, or benchmark condition. Select cases deterministically by sorted native ID and run:
+
+- two matched BIPIA official-test attack/control pairs;
+- two no-attack episodes and two attacked security cases from each AgentDojo suite;
+- three InjecAgent direct-harm and three data-stealing base-setting cases.
+
+Smoke must prove the complete path for every benchmark: native input/trajectory \(\rightarrow\) correct decision point \(\rightarrow\) selected-layer decomposition \(\rightarrow\) both frozen detectors \(\rightarrow\) native outcome evaluation \(\rightarrow\) saved record. The scientific Phase 4 result requires every frozen benchmark condition above; do not create a larger smoke-test matrix.
 
 ---
 
@@ -1361,7 +1465,7 @@ selected_layer.json
          +---------------------------------+
 ```
 
-Phase 2 and Phase 3 are independent consumers of the frozen Phase 1 output. Phase 2 is intentionally diagnostic and does not alter the Phase 3 detector construction or thresholds. Phase 7 consumes the frozen Phase 3 detectors together with the Phase 4 evaluation sets.
+Phase 2 and Phase 3 are independent consumers of the frozen Phase 1 output. Phase 2 is intentionally diagnostic and does not alter the Phase 3 detector construction or thresholds. Phase 4 consumes the frozen Phase 1 selected-layer identity and Phase 3 detectors; it does not consume Phase 2. Phase 7 consumes the frozen Phase 3 detectors together with the Phase 4 evaluation sets.
 
 ---
 
@@ -1372,7 +1476,7 @@ Every phase output must record:
 - experiment/run ID;
 - model ID and revision;
 - lens repo/revision/hash;
-- BIPIA/Jacobian-lens source commits where relevant;
+- BIPIA, Jacobian-lens, AgentDojo, and InjecAgent source commits where relevant;
 - config hash;
 - relevant manifest hash;
 - selected layer;
@@ -1417,7 +1521,7 @@ run phase2 --config <same_config> --phase1 <phase1_output>
 run phase3 --config <same_config> --phase1 <phase1_output>
 
 # Phase 4
-run phase4 --config <same_config> --detectors <phase3_output>
+run phase4 --config <same_config> --phase1 <phase1_output> --phase3 <phase3_output>
 
 # Phase 5
 run phase5 --phase4 <phase4_output>
@@ -1470,8 +1574,13 @@ Maintain one canonical end-to-end notebook. It should expose separate resumable 
 
 ## Phase 4 is complete when
 
-- both frozen detectors have predictions on BIPIA test, AgentDojo, and InjecAgent;
-- no evaluation benchmark has changed detector parameters.
+- the deterministic smoke path completes through native outcome evaluation for all three benchmarks;
+- both frozen detectors have complete predictions for BIPIA official test, all four AgentDojo suites, and all 1,054 base-setting InjecAgent cases;
+- only `injection_exposed=true` AgentDojo security states are counted as positive detector examples, while every native episode outcome remains saved;
+- BIPIA OpenRouter outcomes, AgentDojo native targeted-ASR/utility outcomes, and InjecAgent native validity/ASR outcomes are complete and reusable by Phase 5;
+- the frozen Phase 3 feature mapping and both frozen thresholds remain unchanged, with unseen transfer token IDs mapped to zero rather than added as features;
+- benchmark-specific metrics and the detector-transfer comparison plot are saved;
+- no Phase 4 benchmark, subgroup, or case has been used for tuning, retraining, recalibration, layer selection, feature expansion, or decomposition changes.
 
 ## Phase 5 is complete when
 

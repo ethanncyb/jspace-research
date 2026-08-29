@@ -1,12 +1,12 @@
 # J-Space Prompt-Injection Research
 
-This repository implements Phases 1–3 of the experiment in [`PLAN.md`](PLAN.md): select the fitted J-lens layer whose sparse J-space representation most reproducibly separates matched BIPIA attack/control prompts, measure behavior while removing that reconstructed component, then construct and freeze the two planned linear detectors.
+This repository implements Phases 1–4 of the experiment in [`PLAN.md`](PLAN.md): select a J-lens layer, measure behavior under coarse J-space removal, freeze two detectors, then evaluate those unchanged detectors on BIPIA official test, AgentDojo, and InjecAgent.
 
-The implementation deliberately stops after freezing the Phase 3 detectors and development thresholds. It does not evaluate BIPIA test data or transfer benchmarks, perform direction-specific interventions, or implement a gate.
+The implementation deliberately stops after held-out and cross-benchmark transfer. It does not add direction-specific interventions, recognition/compliance analysis, detector gating, or later-phase functionality.
 
 ## Where to run it
 
-Model capture, J-space reconstruction, and intervention generation require Python 3.10+, a BF16-capable NVIDIA CUDA GPU, and enough storage for the model and resumable caches. An A100-class GPU is recommended for the primary Gemma 4 12B run. Phase 2 aggregation and all of Phase 3 run on CPU from saved artifacts.
+Model capture, J-space reconstruction, intervention generation, and Phase 4 benchmark trajectories require Python 3.10+, a BF16-capable NVIDIA CUDA GPU, and enough storage for the model and resumable records. An A100-class GPU is recommended for the primary Gemma 4 12B run. Phase 2/4 analysis and all of Phase 3 run on CPU, except that BIPIA semantic outcome scoring calls OpenRouter.
 
 There are three supported GPU workflows using the same commands:
 
@@ -16,7 +16,7 @@ There are three supported GPU workflows using the same commands:
 | Cloud GPU over SSH | A CUDA server reached from a local terminal | Use the server's persistent disk, then copy the run directory locally with `rsync` or `scp` |
 | Local CUDA machine | A workstation with a compatible NVIDIA GPU | Write directly under the local repository or another persistent disk |
 
-A typical Mac can run dataset preparation, tests, Phase 2 analysis, and all of Phase 3, but it cannot run Phase 1 `capture`/`analyze` or Phase 2 `generate`, which require CUDA. The experiment is file-based, so GPU work may run in Colab or over SSH and the complete run directory can then be copied elsewhere.
+A typical Mac can run dataset preparation, tests, Phase 2/4 analysis, and all of Phase 3, but it cannot run Phase 1 `capture`/`analyze`, Phase 2 `generate`, or Phase 4 `generate`, which require CUDA. The experiment is file-based, so GPU work may run in Colab or over SSH and the complete run directory can then be copied elsewhere.
 
 ## Shared requirements
 
@@ -24,9 +24,11 @@ The repository pins:
 
 - Jacobian-lens to `581d398613e5602a5af361e1c34d3a92ea82ba8e`;
 - BIPIA to `a004b69ec0dd446e0afd461d98cb5e96e120a5d0`;
+- AgentDojo to `089ed468cf3ed0322acc66b0211f26d9d90dbf60` with benchmark version `v1.2.2`;
+- InjecAgent to `f19c9f2c79a41046eb13c03c51a24c567a8ffa07`;
 - the model and fitted lens to the revisions and hashes in the Phase 1 YAML configurations.
 
-Gemma and the released lens may require accepting their licenses and authenticating with Hugging Face. Phase 2 attack scoring also requires an `OPENROUTER_API_KEY`; it uses `openai/gpt-4.1-mini` through OpenRouter and stores no credential in artifacts. The smoke run needs only the pinned BIPIA checkout. The full run additionally requires researcher-provided WebQA and Summarization files in BIPIA `train.jsonl` format. In accordance with the experiment plan, the pipeline does not download or reconstruct those licensed source datasets.
+Gemma and the released lens may require accepting their licenses and authenticating with Hugging Face. BIPIA semantic attack scoring requires an `OPENROUTER_API_KEY`; it uses `openai/gpt-4.1-mini` through OpenRouter and stores no credential in artifacts. The smoke run uses the EmailQA files already in BIPIA. The full run additionally requires researcher-provided WebQA and Summarization `train.jsonl` files for Phase 1 and `test.jsonl` files under the corresponding BIPIA benchmark directories for Phase 4. In accordance with the experiment plan, the pipeline does not download or reconstruct those licensed source datasets.
 
 Always start with the end-to-end smoke run. It uses EmailQA, 12 training pairs, 6 validation pairs, six fitted layers, and the three Phase 2 conditions: intact (`0.0`), partial removal (`0.5`), and full removal (`1.0`). It also requires exact token equality between ordinary no-hook generation and the zero-strength hook. It verifies the pipeline but is not the final scientific experiment. The full configuration uses all five tasks and all fitted layers.
 
@@ -35,10 +37,10 @@ Always start with the end-to-end smoke run. It uses EmailQA, 12 training pairs, 
 Open the canonical [`notebooks/JSpace_End_to_End_Colab.ipynb`](notebooks/JSpace_End_to_End_Colab.ipynb), or [launch it directly in Colab](https://colab.research.google.com/github/ethanncyb/jspace-research/blob/prompt-injection-experiment/notebooks/JSpace_End_to_End_Colab.ipynb).
 
 1. In Colab, select **Runtime → Change runtime type → GPU**. An A100-class runtime is recommended.
-2. Run the installation cell. It clones the `prompt-injection-experiment` branch, installs the package, checks out pinned BIPIA, and prints the resolved revisions.
+2. Run the installation cell. It clones the experiment and the three pinned benchmark checkouts, installs the Phase 4 extra, and prints every resolved revision.
 3. Authenticate with Hugging Face and add `OPENROUTER_API_KEY` to Colab Secrets.
 4. Leave `RUN_MODE = "smoke"` for the first run. Use `RUN_MODE = "full"` only after smoke succeeds and the two external task files are available.
-5. Run and inspect Phase 1, run the separate Phase 2 generation and analysis cells, then run the CPU-only Phase 3 cell.
+5. Run and inspect Phases 1–3 incrementally, then use the single Phase 4 cell for GPU generation followed by CPU/API analysis.
 
 Confirm the selected runtime before starting the expensive stages:
 
@@ -91,10 +93,14 @@ cd jspace-research
 
 python -m venv .venv
 source .venv/bin/activate
-pip install -e '.[test]'
+pip install -e '.[test,phase4]'
 
 git clone https://github.com/microsoft/BIPIA.git /path/to/BIPIA
 git -C /path/to/BIPIA checkout a004b69ec0dd446e0afd461d98cb5e96e120a5d0
+git clone https://github.com/ethz-spylab/agentdojo.git /path/to/agentdojo
+git -C /path/to/agentdojo checkout 089ed468cf3ed0322acc66b0211f26d9d90dbf60
+git clone https://github.com/uiuc-kang-lab/InjecAgent.git /path/to/InjecAgent
+git -C /path/to/InjecAgent checkout f19c9f2c79a41046eb13c03c51a24c567a8ffa07
 hf auth login
 export OPENROUTER_API_KEY='your-openrouter-api-key'
 ```
@@ -131,6 +137,16 @@ jspace-phase3 \
   --config configs/phase1_smoke.yaml \
   --phase1 ./artifacts/smoke/phase1/selected_layer.json \
   --output-dir ./artifacts/smoke/phase3
+
+jspace-phase4 \
+  --config configs/phase1_smoke.yaml \
+  --phase1 ./artifacts/smoke/phase1/selected_layer.json \
+  --phase3 ./artifacts/smoke/phase3 \
+  --bipia-root /path/to/BIPIA/benchmark \
+  --agentdojo-root /path/to/agentdojo \
+  --injecagent-root /path/to/InjecAgent \
+  --output-dir ./artifacts/smoke/phase4 \
+  --stage all
 ```
 
 Then run the full five-task experiment:
@@ -160,6 +176,16 @@ jspace-phase3 \
   --config configs/phase1_full.yaml \
   --phase1 ./artifacts/full/phase1/selected_layer.json \
   --output-dir ./artifacts/full/phase3
+
+jspace-phase4 \
+  --config configs/phase1_full.yaml \
+  --phase1 ./artifacts/full/phase1/selected_layer.json \
+  --phase3 ./artifacts/full/phase3 \
+  --bipia-root /path/to/BIPIA/benchmark \
+  --agentdojo-root /path/to/agentdojo \
+  --injecagent-root /path/to/InjecAgent \
+  --output-dir ./artifacts/full/phase4 \
+  --stage all
 ```
 
 After a completed stage or run, copy the output to the local repository from a terminal on the laptop:
@@ -216,6 +242,32 @@ jspace-phase3 \
   --output-dir artifacts/full/phase3
 ```
 
+Phase 4 branches from the frozen Phase 1 and Phase 3 artifacts; it does not consume Phase 2. Run `generate` on CUDA, then move the complete run root if desired and run `analyze` on CPU. Only BIPIA analysis needs `OPENROUTER_API_KEY`; AgentDojo and InjecAgent retain their native outcomes without an LLM judge.
+
+```bash
+jspace-phase4 \
+  --config configs/phase1_full.yaml \
+  --phase1 artifacts/full/phase1/selected_layer.json \
+  --phase3 artifacts/full/phase3 \
+  --bipia-root /path/to/BIPIA/benchmark \
+  --agentdojo-root /path/to/agentdojo \
+  --injecagent-root /path/to/InjecAgent \
+  --output-dir artifacts/full/phase4 \
+  --stage generate
+
+jspace-phase4 \
+  --config configs/phase1_full.yaml \
+  --phase1 artifacts/full/phase1/selected_layer.json \
+  --phase3 artifacts/full/phase3 \
+  --bipia-root /path/to/BIPIA/benchmark \
+  --agentdojo-root /path/to/agentdojo \
+  --injecagent-root /path/to/InjecAgent \
+  --output-dir artifacts/full/phase4 \
+  --stage analyze
+```
+
+Phase 4 appends one compact record per native case and benchmark. Rerunning `generate` resumes missing cases; `analyze` refuses incomplete or identity-mismatched records. The smoke subset is deterministic integration validation only and never changes the frozen layer, feature map, detector parameters, or thresholds.
+
 ## Outputs and phase boundaries
 
 At each fitted layer, the pipeline constructs normalized token directions from rows of `W_U @ J_l`. It reconstructs the final-prompt-token residual as a sparse nonnegative combination using a screened greedy approximation: 512 positive candidates, at most 25 selected atoms, and an iterative nonnegative support refit. This is an approximation, not an exact orthogonal projection and not Anthropic's exact gradient-pursuit implementation.
@@ -245,6 +297,8 @@ Phase 2 reads only that frozen handoff. Its directory contains:
 Clean utility is ROUGE-based reference overlap against the frozen BIPIA `construct_response` target. It is not described as a BIPIA-native task metric, and incompatible task utilities are never averaged. BIPIA's packaged ASR evaluators do not cover the required training-attack variants, so attack prompts use the fixed, provenance-recorded semantic YES/NO/UNKNOWN judge rubric described above. BIPIA defines no formal valid-output structure for these development tasks, so validity fields are null. A Phase 2 effect establishes functional involvement of the removed J-space component, not injection-specific causality.
 
 Phase 3 writes `mean_detector.pt`, `logistic_detector.pt`, `phase3_validation_scores.parquet`, `phase3_metrics.csv`, `phase3_detector_comparison.png`, and lightweight `provenance.json`. These are development results: the mean detector is reused from Phase 1, the logistic detector is fitted only on Phase 1 training examples, and both thresholds are selected on Phase 1 validation examples. Phase 4 is responsible for unbiased held-out evaluation.
+
+Phase 4 writes compact resumable `bipia_records.jsonl`, `agentdojo_records.jsonl`, and `injecagent_records.jsonl`, plus `bipia_judgments.jsonl`, `phase4_predictions.parquet`, `phase4_metrics.csv`, `phase4_detector_transfer.png`, and lightweight `provenance.json`. It captures only the frozen selected layer and does not retain hidden-state or reconstruction arrays. BIPIA receives classification metrics, AgentDojo receives frozen-threshold detector rates plus native utility/security outcomes, and InjecAgent receives frozen-threshold score distributions plus native validity and ASR. No Phase 4 example is used for tuning.
 
 Verify and load a copied handoff with:
 
