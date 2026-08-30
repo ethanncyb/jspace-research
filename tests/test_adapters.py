@@ -54,6 +54,28 @@ def test_model_placement_must_be_verifiable() -> None:
         _validate_primary_gpu_placement(object())
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+def test_model_placement_falls_back_to_parameter_devices() -> None:
+    class ParamsOnlyModel:
+        hf_device_map = {}
+
+        def parameters(self):
+            yield nn.Parameter(torch.zeros(1, device="cuda:0"))
+
+        def buffers(self):
+            return []
+
+    _validate_primary_gpu_placement(ParamsOnlyModel())
+
+    class SplitModel(ParamsOnlyModel):
+        def parameters(self):
+            yield nn.Parameter(torch.zeros(1, device="cuda:0"))
+            yield nn.Parameter(torch.zeros(1, device="cpu"))
+
+    with pytest.raises(RuntimeError, match="fit entirely on CUDA GPU 0"):
+        _validate_primary_gpu_placement(SplitModel())
+
+
 class RecordingBlock(nn.Module):
     def forward(self, hidden: torch.Tensor) -> tuple[torch.Tensor, str]:
         return hidden + 1, "cache"

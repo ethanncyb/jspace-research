@@ -6,15 +6,34 @@ from typing import Any
 import torch
 
 
+def _iter_model_devices(hf_model: Any) -> set[torch.device]:
+    devices: set[torch.device] = set()
+    for tensor in (*hf_model.parameters(), *hf_model.buffers()):
+        devices.add(tensor.device)
+    return devices
+
+
 def _validate_primary_gpu_placement(hf_model: Any) -> None:
     device_map = getattr(hf_model, "hf_device_map", None)
-    if not isinstance(device_map, dict) or not device_map:
+    if isinstance(device_map, dict) and device_map:
+        placements = {str(device).lower() for device in device_map.values()}
+        if not placements.issubset({"0", "cuda", "cuda:0"}):
+            raise RuntimeError(
+                "The model must fit entirely on CUDA GPU 0; CPU, disk, and multi-GPU "
+                f"offload are not permitted (placements: {sorted(placements)})"
+            )
+        return
+
+    devices = _iter_model_devices(hf_model)
+    if not devices:
         raise RuntimeError("Could not verify model placement on the primary CUDA GPU")
-    placements = {str(device).lower() for device in device_map.values()}
-    if not placements.issubset({"0", "cuda", "cuda:0"}):
+
+    non_cuda = {device for device in devices if device.type != "cuda"}
+    cuda_devices = {device for device in devices if device.type == "cuda"}
+    if non_cuda or cuda_devices != {torch.device("cuda", 0)}:
         raise RuntimeError(
             "The model must fit entirely on CUDA GPU 0; CPU, disk, and multi-GPU "
-            f"offload are not permitted (placements: {sorted(placements)})"
+            f"offload are not permitted (devices: {sorted(str(device) for device in devices)})"
         )
 
 
