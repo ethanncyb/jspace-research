@@ -11,3 +11,6 @@ outputs/
 artifacts/
 *.dat
 *.npy
+scripts/config/run.yaml
+scripts/config/env.yaml
+scripts/config/*.local.yaml

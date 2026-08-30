@@ -1,0 +1,21 @@
+# Copy to scripts/config/run.yaml and edit for your machine.
+# Selects the scientific phase YAML and run layout.
+
+experiment:
+  # Path to the phase config (relative to repo root or absolute).
+  config: configs/phase1_qwen35_9b_smoke.yaml
+
+  # Used only when config is omitted.
+  model_key: qwen35_9b
+  run_mode: smoke
+
+  physical_gpu_index: 0
+
+  # Leave null to auto-derive artifacts/jspace-{model_key}-{run_mode}-gpu{N}/
+  run_root: null
+  run_name: null
+
+pipeline:
+  skip_setup: false
+  skip_gpu_check: false
+  stage: all
