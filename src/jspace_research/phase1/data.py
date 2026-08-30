@@ -43,6 +43,8 @@ def read_jsonl(path: str | Path) -> list[dict[str, Any]]:
 def write_jsonl_exclusive(path: str | Path, rows: Sequence[dict[str, Any]]) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        raise RuntimeError(f"Frozen manifest already exists: {target}")
     temporary: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -53,9 +55,9 @@ def write_jsonl_exclusive(path: str | Path, rows: Sequence[dict[str, Any]]) -> N
             handle.flush()
             os.fsync(handle.fileno())
             temporary = Path(handle.name)
-        os.link(temporary, target)
-    except FileExistsError as exc:
-        raise RuntimeError(f"Frozen manifest already exists: {target}") from exc
+        if target.exists():
+            raise RuntimeError(f"Frozen manifest already exists: {target}")
+        os.replace(temporary, target)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)

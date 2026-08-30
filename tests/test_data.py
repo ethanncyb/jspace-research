@@ -193,3 +193,15 @@ def test_manifest_is_written_exclusively(tmp_path: Path) -> None:
     assert read_jsonl(path) == rows
     with pytest.raises(RuntimeError, match="already exists"):
         write_jsonl_exclusive(path, rows)
+
+
+def test_manifest_write_does_not_require_hard_links(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def reject_hard_link(*_args: object) -> None:
+        raise PermissionError("hard links are unsupported")
+
+    monkeypatch.setattr("os.link", reject_hard_link)
+    path = tmp_path / "pair_manifest.jsonl"
+    write_jsonl_exclusive(path, [{"pair_id": "drive-compatible"}])
+    assert read_jsonl(path) == [{"pair_id": "drive-compatible"}]
