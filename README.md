@@ -91,9 +91,7 @@ git clone --branch prompt-injection-experiment \
   https://github.com/ethanncyb/jspace-research.git
 cd jspace-research
 
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[test,phase4]'
+uv sync --extra test --extra phase4
 
 git clone https://github.com/microsoft/BIPIA.git /path/to/BIPIA
 git -C /path/to/BIPIA checkout a004b69ec0dd446e0afd461d98cb5e96e120a5d0
@@ -326,6 +324,6 @@ The repository ignores `artifacts/`, generated outputs, and caches so experiment
 The automated tests do not require the 12B model or a GPU:
 
 ```bash
-pip install -e '.[test]'
+uv sync --extra test
 pytest
 ```

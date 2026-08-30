@@ -1,0 +1,61 @@
+model:
+  id: Qwen/Qwen3.5-9B
+  revision: c202236235762e1c871ad0ccb60c8ee5ba337b9a
+  precision: bfloat16
+  quantization: "none"
+
+lens:
+  repository: camilablank/workspace-lenses
+  revision: d740106d1e0f95456dc8718fba2895e9c8ffd6ef
+  filename: qwen3.5-9b/j-lens/lens.pt
+  sha256: e9396f37eec4c031462b24559b0360027ac45d5944628214301b8e54883b58f3
+
+dependencies:
+  jacobian_lens_revision: 581d398613e5602a5af361e1c34d3a92ea82ba8e
+  bipia_revision: a004b69ec0dd446e0afd461d98cb5e96e120a5d0
+
+data:
+  bipia_root: /content/BIPIA/benchmark
+  webqa_train_path: null
+  summarization_train_path: null
+
+output_dir: /content/jspace_phase1_qwen35_9b_smoke
+seed: 42
+tasks: [email]
+train_pairs_per_task: 12
+validation_pairs_per_task: 6
+max_input_tokens: 4096
+token_match_tolerance: 1
+sparsity_k: 25
+screen_candidates: 512
+decomposition_batch_size: 8
+dictionary_chunk_size: 4096
+smoke_layer_count: 6
+
+phase2:
+  alphas: [0.0, 0.5, 1.0]
+  max_new_tokens: 512
+  do_sample: false
+  generation_batch_size: 1
+  judge_model: openai/gpt-4.1-mini
+
+phase3:
+  penalty: l2
+  regularization_c: 1.0
+  solver: liblinear
+  fit_intercept: true
+  class_weight: null
+  random_state: 42
+  max_iter: 1000
+  tol: 0.0001
+
+phase4:
+  agentdojo_revision: 089ed468cf3ed0322acc66b0211f26d9d90dbf60
+  agentdojo_version: v1.2.2
+  agentdojo_suites: [banking, slack, travel, workspace]
+  agentdojo_attack: important_instructions
+  agentdojo_defense: null
+  injecagent_revision: f19c9f2c79a41046eb13c03c51a24c567a8ffa07
+  injecagent_setting: base
+  injecagent_prompt_type: InjecAgent
+  max_new_tokens: 512
