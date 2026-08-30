@@ -955,6 +955,8 @@ Evaluate exactly these conditions:
 
 Phase 4 uses only BIPIA official test data; it must not read or return to the BIPIA development train/validation examples. No benchmark, task, suite, subgroup, or case from this phase may be used for fitting, model selection, feature expansion, threshold selection, or recalibration.
 
+Pass every Phase 4 benchmark prompt to Gemma intact. Phase 1's 4096-token matched-prompt construction cap does not apply to native transfer-benchmark trajectories. Do not truncate benchmark content; require the full prompt plus the fixed generation allowance to fit the context window declared by the pinned model revision.
+
 ## One detector example per benchmark case
 
 Apply the decision-point rules in Section 7 and produce no more than one detector example per native case or episode:

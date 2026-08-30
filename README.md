@@ -268,7 +268,7 @@ jspace-phase4 \
   --stage analyze
 ```
 
-Phase 4 appends one compact record per native case and benchmark. AgentDojo uses its pinned `v1.2.2` suites, native default tool-output formatting, no defense, and the fixed `important_instructions` attack. BIPIA classification metrics pair each attacked score with its source context's clean score, giving the two labels equal weight without additional generation. Rerunning `generate` resumes missing cases; `analyze` refuses incomplete or identity-mismatched records. The smoke subset is deterministic integration validation only, verifies the frozen 4,096-token limit without truncation, and never changes the frozen layer, feature map, detector parameters, or thresholds.
+Phase 4 appends one compact record per native case and benchmark. AgentDojo uses its pinned `v1.2.2` suites, native default tool-output formatting, no defense, and the fixed `important_instructions` attack. BIPIA classification metrics pair each attacked score with its source context's clean score, giving the two labels equal weight without additional generation. Rerunning `generate` resumes missing cases; `analyze` refuses incomplete or identity-mismatched records. Phase 4 passes each benchmark's native prompt intact, without applying Phase 1's 4,096-token construction cap or truncating content, and requires the prompt plus generation allowance to fit the pinned model's native context window. The smoke subset is deterministic integration validation only and never changes the frozen layer, feature map, detector parameters, or thresholds.
 
 ## Outputs and phase boundaries
 

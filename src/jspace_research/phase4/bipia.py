@@ -13,7 +13,7 @@ from ..phase1.data import (
     read_jsonl,
     render_ids,
 )
-from .common import content_hash, save_record
+from .common import content_hash, require_generation_context, save_record
 
 
 def build_cases(config: Any) -> list[dict[str, Any]]:
@@ -113,8 +113,9 @@ def generate(
                 raise RuntimeError("Cached BIPIA prompt identity changed")
             continue
         input_ids = render_ids(model.tokenizer, case["messages"])
-        if input_ids.shape[-1] > config.phase1.max_input_tokens:
-            raise RuntimeError(f"BIPIA prompt exceeds the frozen token limit: {case['case_id']}")
+        require_generation_context(
+            int(input_ids.shape[-1]), model.context_length, config.max_new_tokens, "BIPIA"
+        )
         tokens, residual = model.generate_with_capture(
             input_ids,
             max_new_tokens=config.max_new_tokens,

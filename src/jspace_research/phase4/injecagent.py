@@ -8,7 +8,7 @@ from types import ModuleType
 from typing import Any
 
 from ..phase1.data import hash_messages, render_ids
-from .common import content_hash, save_record
+from .common import content_hash, require_generation_context, save_record
 
 
 def _load_parser(root: Path) -> ModuleType:
@@ -137,8 +137,9 @@ def generate(
         item = case["item"]
         messages = _prompt(item, tools, system_prompt, user_prompt)
         input_ids = render_ids(model.tokenizer, messages)
-        if input_ids.shape[-1] > config.phase1.max_input_tokens:
-            raise RuntimeError(f"InjecAgent prompt exceeds token limit: {case['case_id']}")
+        require_generation_context(
+            int(input_ids.shape[-1]), model.context_length, config.max_new_tokens, "InjecAgent"
+        )
         tokens, residual = model.generate_with_capture(
             input_ids,
             max_new_tokens=config.max_new_tokens,
@@ -162,10 +163,12 @@ def generate(
                 item, tools, system_prompt, user_prompt, second=second
             )
             second_ids = render_ids(model.tokenizer, second_messages)
-            if second_ids.shape[-1] > config.phase1.max_input_tokens:
-                raise RuntimeError(
-                    f"InjecAgent second prompt exceeds token limit: {case['case_id']}"
-                )
+            require_generation_context(
+                int(second_ids.shape[-1]),
+                model.context_length,
+                config.max_new_tokens,
+                "InjecAgent second step",
+            )
             second_tokens = model.generate_from_prompt(
                 second_ids, max_new_tokens=config.max_new_tokens
             )

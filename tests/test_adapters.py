@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 import torch
 from torch import nn
@@ -69,6 +71,17 @@ def test_model_placement_falls_back_to_parameter_devices() -> None:
     _validate_primary_gpu_placement(Model(("cuda:0", "cuda:0")))
     with pytest.raises(RuntimeError, match="fit entirely on CUDA GPU 0"):
         _validate_primary_gpu_placement(Model(("cuda:0", "cpu")))
+
+
+def test_model_context_length_comes_from_the_pinned_text_config() -> None:
+    adapter = HuggingFaceModelAdapter.__new__(HuggingFaceModelAdapter)
+    adapter._hf_model = SimpleNamespace(
+        config=SimpleNamespace(
+            max_position_embeddings=1024,
+            text_config=SimpleNamespace(max_position_embeddings=262144),
+        )
+    )
+    assert adapter.context_length == 262144
 
 
 class RecordingBlock(nn.Module):

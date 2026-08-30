@@ -11,7 +11,12 @@ from sklearn.metrics import average_precision_score
 
 from jspace_research.phase2.scoring import JUDGE_RUBRIC_SHA256
 from jspace_research.phase4.agentdojo import _native_cases
-from jspace_research.phase4.common import completed_records, content_hash, save_record
+from jspace_research.phase4.common import (
+    completed_records,
+    content_hash,
+    require_generation_context,
+    save_record,
+)
 from jspace_research.phase4.detectors import FrozenDetectors
 from jspace_research.phase4.injecagent import build_cases as build_injecagent_cases
 from jspace_research.phase4.pipeline import _balanced_bipia_rows, _judge_bipia, _metrics
@@ -46,6 +51,12 @@ def test_frozen_scoring_does_not_expand_logistic_vocabulary() -> None:
     assert result["mean_prediction"] is True
     assert result["logistic_score"] == pytest.approx(-0.25)
     assert result["logistic_prediction"] is False
+
+
+def test_phase4_uses_native_model_context_without_truncation() -> None:
+    require_generation_context(5000, 262144, 512, "AgentDojo")
+    with pytest.raises(RuntimeError, match="pinned model context window"):
+        require_generation_context(262000, 262144, 512, "AgentDojo")
 
 
 def test_phase4_uses_benchmark_specific_metrics() -> None:

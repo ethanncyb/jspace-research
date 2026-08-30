@@ -31,6 +31,16 @@ def content_hash(value: Any) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+def require_generation_context(
+    prompt_tokens: int, context_length: int, max_new_tokens: int, benchmark: str
+) -> None:
+    if prompt_tokens + max_new_tokens > context_length:
+        raise RuntimeError(
+            f"{benchmark} prompt and generation exceed the pinned model context window: "
+            f"{prompt_tokens} + {max_new_tokens} > {context_length} tokens"
+        )
+
+
 def completed_records(path: Path, identity: dict[str, Any]) -> dict[str, dict[str, Any]]:
     rows = read_resumable_jsonl(path)
     completed: dict[str, dict[str, Any]] = {}

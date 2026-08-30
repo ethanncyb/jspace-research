@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ..phase1.data import hash_messages, render_ids
-from .common import content_hash, save_record
+from .common import content_hash, require_generation_context, save_record
 
 
 def _install_checkout(root: Path) -> None:
@@ -53,7 +53,7 @@ def _make_llm(
     condition: str,
     injected_texts: list[str],
     *,
-    max_input_tokens: int,
+    context_length: int,
     max_new_tokens: int,
 ) -> Any:
     from agentdojo.agent_pipeline.base_pipeline_element import BasePipelineElement
@@ -93,8 +93,9 @@ def _make_llm(
             )
             chat = _chat_messages(messages, runtime)
             input_ids = render_ids(model.tokenizer, chat)
-            if input_ids.shape[-1] > max_input_tokens:
-                raise RuntimeError("AgentDojo decision prompt exceeds the frozen token limit")
+            require_generation_context(
+                int(input_ids.shape[-1]), context_length, max_new_tokens, "AgentDojo"
+            )
             if eligible:
                 tokens, residual = model.generate_with_capture(
                     input_ids,
@@ -171,7 +172,7 @@ def generate(
             scorer,
             condition,
             [],
-            max_input_tokens=config.phase1.max_input_tokens,
+            context_length=model.context_length,
             max_new_tokens=config.max_new_tokens,
         )
         pipeline = AgentPipeline.from_config(
@@ -194,7 +195,7 @@ def generate(
                 scorer,
                 condition,
                 list(injections.values()),
-                max_input_tokens=config.phase1.max_input_tokens,
+                context_length=model.context_length,
                 max_new_tokens=config.max_new_tokens,
             )
             pipeline = AgentPipeline.from_config(

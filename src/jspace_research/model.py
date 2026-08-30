@@ -95,6 +95,15 @@ class HuggingFaceModelAdapter:
     def vocabulary_size(self) -> int:
         return int(self._model._lm_head.weight.shape[0])
 
+    @property
+    def context_length(self) -> int:
+        config = getattr(self._hf_model, "config", None)
+        text_config = getattr(config, "text_config", None)
+        value = getattr(text_config or config, "max_position_embeddings", None)
+        if not isinstance(value, int) or value <= 0:
+            raise RuntimeError("Could not determine the pinned model context length")
+        return value
+
     def unembedding(self) -> torch.Tensor:
         return self._model._lm_head.weight.detach().to("cpu", dtype=torch.bfloat16).contiguous()
 
