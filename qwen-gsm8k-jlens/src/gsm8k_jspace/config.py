@@ -26,6 +26,17 @@ KNOWN_TOKEN_MODES = (
 )
 KNOWN_INTERVENTION_METHODS = ("mean_replace", "none")
 KNOWN_FEATURE_MODES = ("top_abs", "explicit", "random_matched")
+KNOWN_BENCHMARKS = ("gsm8k", "bipia", "agentdojo", "injecagent")
+KNOWN_PARSERS = (
+    "gsm8k_numeric_v1",
+    "bipia_asr_v1",
+    "agentdojo_asr_v1",
+    "injecagent_asr_v1",
+)
+KNOWN_BIPIA_TASKS = ("email", "table", "code")
+KNOWN_AGENTDOJO_SUITES = ("workspace", "banking", "slack", "travel")
+KNOWN_INJECAGENT_ATTACKS = ("dh", "ds", "both")
+KNOWN_INJECAGENT_SETTINGS = ("base", "enhanced")
 
 
 class ConfigError(ValueError):
@@ -120,7 +131,36 @@ class JLensSection:
 
 
 @dataclass
+class BipiaSection:
+    task: str = "email"
+    data_dir: str = "data/bipia"
+    positions: list[str] = field(default_factory=lambda: ["end", "start", "middle"])
+    attacks: list[str] = field(default_factory=list)
+    enable_stealth: bool = False
+    asr_threshold: int = 80
+
+
+@dataclass
+class AgentDojoSection:
+    suite: str = "workspace"
+    data_dir: str = "data/agentdojo"
+    attack: str = "important_instructions"
+    user_tasks: list[str] = field(default_factory=list)
+    injection_tasks: list[str] = field(default_factory=list)
+
+
+@dataclass
+class InjecAgentSection:
+    attack: str = "dh"
+    setting: str = "base"
+    data_dir: str = "data/injecagent"
+    prompt_type: str = "react"
+    first_step_only: bool = True
+
+
+@dataclass
 class BenchmarkSection:
+    name: str = "gsm8k"
     test_type: str = "full_answer"
     dataset: str = "openai/gsm8k"
     dataset_config: str = "main"
@@ -129,6 +169,9 @@ class BenchmarkSection:
     subset_size: int = 10
     selection: str = "first"
     selection_seed: int = 0
+    bipia: BipiaSection = field(default_factory=BipiaSection)
+    agentdojo: AgentDojoSection = field(default_factory=AgentDojoSection)
+    injecagent: InjecAgentSection = field(default_factory=InjecAgentSection)
 
 
 @dataclass
@@ -281,9 +324,43 @@ class AppConfig:
             self.benchmark.test_type,
             ("full_answer", "gold_next_token"),
         )
+        _require_choice("benchmark.name", self.benchmark.name, KNOWN_BENCHMARKS)
         _require_choice(
             "benchmark.selection", self.benchmark.selection, ("first", "shuffled")
         )
+        _require_choice("evaluation.parser", self.evaluation.parser, KNOWN_PARSERS)
+        _require_choice("benchmark.bipia.task", self.benchmark.bipia.task, KNOWN_BIPIA_TASKS)
+        _require_choice(
+            "benchmark.agentdojo.suite",
+            self.benchmark.agentdojo.suite,
+            KNOWN_AGENTDOJO_SUITES,
+        )
+        _require_choice(
+            "benchmark.injecagent.attack",
+            self.benchmark.injecagent.attack,
+            KNOWN_INJECAGENT_ATTACKS,
+        )
+        _require_choice(
+            "benchmark.injecagent.setting",
+            self.benchmark.injecagent.setting,
+            KNOWN_INJECAGENT_SETTINGS,
+        )
+        expected_parser = {
+            "gsm8k": "gsm8k_numeric_v1",
+            "bipia": "bipia_asr_v1",
+            "agentdojo": "agentdojo_asr_v1",
+            "injecagent": "injecagent_asr_v1",
+        }[self.benchmark.name]
+        if self.evaluation.parser != expected_parser:
+            raise ConfigError(
+                f"benchmark.name={self.benchmark.name!r} requires "
+                f"evaluation.parser={expected_parser!r}, got {self.evaluation.parser!r}"
+            )
+        if self.benchmark.name != "gsm8k" and self.benchmark.test_type != "full_answer":
+            raise ConfigError(
+                f"benchmark.name={self.benchmark.name!r} only supports "
+                "benchmark.test_type='full_answer'"
+            )
         _require_choice("generation.mode", self.generation.mode, ("greedy", "sample"))
         _require_choice(
             "prompt.context_overflow",
@@ -507,11 +584,27 @@ def fingerprint(payload: Any) -> str:
     return f"sha256:{digest}"
 
 
+def _benchmark_fingerprint_payload(cfg: AppConfig) -> dict[str, Any]:
+    data = asdict(cfg.benchmark)
+    name = data.get("name", "gsm8k")
+    if name == "gsm8k":
+        data.pop("name", None)
+        data.pop("bipia", None)
+        data.pop("agentdojo", None)
+        data.pop("injecagent", None)
+        return data
+    keep = {"bipia": "bipia", "agentdojo": "agentdojo", "injecagent": "injecagent"}
+    for key in ("bipia", "agentdojo", "injecagent"):
+        if key != keep.get(name):
+            data.pop(key, None)
+    return data
+
+
 def run_fingerprint(cfg: AppConfig) -> str:
     payload = {
         "model": cfg.model,
         "jlens": cfg.jlens,
-        "benchmark": cfg.benchmark,
+        "benchmark": _benchmark_fingerprint_payload(cfg),
         "prompt": cfg.prompt,
         "generation": cfg.generation,
         "evaluation": cfg.evaluation,

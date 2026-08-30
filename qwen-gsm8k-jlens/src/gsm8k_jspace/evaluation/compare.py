@@ -181,14 +181,17 @@ def compare_runs(
 
 
 def _report(summary: dict[str, Any]) -> str:
+    metric = "ASR" if "asr" in str(summary.get("metric_scope", "")) else "accuracy"
+    base_key = "baseline_accuracy"
+    cand_key = "candidate_accuracy"
     lines = [
-        "# GSM8K paired comparison",
+        f"# Paired comparison ({metric})",
         "",
         f"- Baseline: `{summary['baseline_run']}`",
         f"- Candidate: `{summary['candidate_run']}`",
         f"- Shared examples: {summary['n_shared']}",
-        f"- Baseline accuracy: {summary['baseline_accuracy']:.4f}",
-        f"- Candidate accuracy: {summary['candidate_accuracy']:.4f}",
+        f"- Baseline {metric}: {summary[base_key]:.4f}",
+        f"- Candidate {metric}: {summary[cand_key]:.4f}",
         f"- Absolute change: {summary['absolute_change']:+.4f}",
         f"- McNemar exact p: {summary['mcnemar_exact_p']:.4g}",
         f"- Bootstrap 95% CI: {summary['bootstrap_diff_ci95']}",

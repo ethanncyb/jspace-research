@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gsm8k-jspace"
 version = "0.1.0"
-description = "Configurable GSM8K benchmark with J-Space observation and intervention"
+description = "Configurable GSM8K / BIPIA / AgentDojo / InjecAgent J-Space benchmark"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"

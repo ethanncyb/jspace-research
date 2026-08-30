@@ -35,7 +35,7 @@ class RunCatalogEntry:
             bits.append(str(self.backend))
         if self.accuracy is not None:
             n = self.n_evaluated if self.n_evaluated is not None else "?"
-            bits.append(f"acc={self.accuracy:.3f} n={n}")
+            bits.append(f"metric={self.accuracy:.3f} n={n}")
         if self.model:
             bits.append(str(self.model).split("/")[-1])
         return "  |  ".join(bits)
@@ -55,6 +55,27 @@ def default_outputs_root() -> Path:
     return candidates[0]
 
 
+def default_outputs_roots() -> list[Path]:
+    here = Path(__file__).resolve()
+    package_root = here.parents[3]
+    bases = [
+        Path.cwd() / "outputs",
+        Path.cwd().parent / "outputs",
+        package_root / "outputs",
+    ]
+    roots: list[Path] = []
+    seen: set[Path] = set()
+    for base in bases:
+        if not base.is_dir():
+            continue
+        for child in sorted(base.iterdir()):
+            resolved = child.resolve()
+            if child.is_dir() and resolved not in seen:
+                seen.add(resolved)
+                roots.append(child)
+    return roots
+
+
 def _optional_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -72,45 +93,56 @@ def _sort_key(entry: RunCatalogEntry) -> tuple[str, str]:
 
 def list_runs(root: str | Path | None = None) -> list[RunCatalogEntry]:
     """Return saved runs newest-first. A run is a directory with manifest.json."""
-    root_path = Path(root) if root is not None else default_outputs_root()
-    if not root_path.is_dir():
-        return []
+    if root is not None:
+        roots = [Path(root)]
+    else:
+        roots = default_outputs_roots() or [default_outputs_root()]
     entries: list[RunCatalogEntry] = []
-    for child in root_path.iterdir():
-        manifest_path = child / "manifest.json"
-        if not child.is_dir() or not manifest_path.exists():
+    seen: set[Path] = set()
+    for root_path in roots:
+        if not root_path.is_dir():
             continue
-        manifest = _optional_json(manifest_path)
-        environment = _optional_json(child / "environment.json")
-        summary = _optional_json(child / "evaluation" / "summary.json")
-        backend = environment.get("backend")
-        backend_name = None
-        if isinstance(backend, dict):
-            backend_name = backend.get("resolved") or backend.get("device_name")
-        model = None
-        model_block = manifest.get("model")
-        if isinstance(model_block, dict):
-            model = model_block.get("name")
-        model = summary.get("model") or model
-        accuracy = summary.get("accuracy")
-        n_evaluated = summary.get("n_evaluated")
-        entries.append(
-            RunCatalogEntry(
-                run_id=str(manifest.get("run_id") or child.name),
-                path=child.resolve(),
-                started_at=manifest.get("started_at"),
-                finished_at=manifest.get("finished_at"),
-                status=str(manifest.get("status") or "unknown"),
-                condition=manifest.get("condition") or summary.get("condition"),
-                model=model,
-                backend=backend_name,
-                host_profile=environment.get("host_profile"),
-                accuracy=float(accuracy) if isinstance(accuracy, (int, float)) else None,
-                n_evaluated=int(n_evaluated) if isinstance(n_evaluated, int) else None,
-            )
-        )
+        for child in root_path.iterdir():
+            resolved = child.resolve()
+            if resolved in seen:
+                continue
+            manifest_path = child / "manifest.json"
+            if not child.is_dir() or not manifest_path.exists():
+                continue
+            seen.add(resolved)
+            entries.append(_entry_from_run_dir(child))
     entries.sort(key=_sort_key, reverse=True)
     return entries
+
+
+def _entry_from_run_dir(child: Path) -> RunCatalogEntry:
+    manifest = _optional_json(child / "manifest.json")
+    environment = _optional_json(child / "environment.json")
+    summary = _optional_json(child / "evaluation" / "summary.json")
+    backend = environment.get("backend")
+    backend_name = None
+    if isinstance(backend, dict):
+        backend_name = backend.get("resolved") or backend.get("device_name")
+    model = None
+    model_block = manifest.get("model")
+    if isinstance(model_block, dict):
+        model = model_block.get("name")
+    model = summary.get("model") or model
+    accuracy = summary.get("asr", summary.get("accuracy"))
+    n_evaluated = summary.get("n_evaluated")
+    return RunCatalogEntry(
+        run_id=str(manifest.get("run_id") or child.name),
+        path=child.resolve(),
+        started_at=manifest.get("started_at"),
+        finished_at=manifest.get("finished_at"),
+        status=str(manifest.get("status") or "unknown"),
+        condition=manifest.get("condition") or summary.get("condition"),
+        model=model,
+        backend=backend_name,
+        host_profile=environment.get("host_profile"),
+        accuracy=float(accuracy) if isinstance(accuracy, (int, float)) else None,
+        n_evaluated=int(n_evaluated) if isinstance(n_evaluated, int) else None,
+    )
 
 
 def catalog_rows(entries: Iterable[RunCatalogEntry] | None = None) -> list[dict[str, Any]]:
@@ -267,7 +299,7 @@ class RunPicker:
 
     def _text_catalog(self) -> str:
         if not self.entries:
-            return "No saved runs in outputs/gsm8k."
+            return "No saved runs in outputs/."
         lines = ["Saved experiments (newest first):"]
         for index, entry in enumerate(self.entries):
             marker = "*" if self._fallback is not None and entry.path == self._fallback else " "
@@ -281,7 +313,7 @@ class RunPicker:
 
         rows = catalog_rows(self.entries)
         if not rows:
-            return HTML("<p>No saved runs in <code>outputs/gsm8k</code>.</p>")
+            return HTML("<p>No saved runs in <code>outputs/</code>.</p>")
         try:
             import pandas as pd
 

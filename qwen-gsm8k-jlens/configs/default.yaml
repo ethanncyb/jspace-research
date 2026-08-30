@@ -26,6 +26,7 @@ jlens:
   local_path: null
 
 benchmark:
+  name: "gsm8k"
   test_type: "full_answer"
   dataset: "openai/gsm8k"
   dataset_config: "main"

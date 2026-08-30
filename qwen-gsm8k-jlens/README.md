@@ -1,6 +1,9 @@
 # GSM8K × J-Space benchmark
 
-Python benchmark for Qwen on GSM8K with:
+Python benchmark for Qwen with J-Space observation and intervention, now
+pluggable across **GSM8K**, **BIPIA**, **AgentDojo**, and **InjecAgent**.
+
+Shared across every benchmark:
 
 - a normal / observation-only baseline
 - an exact no-op hook control
@@ -8,15 +11,36 @@ Python benchmark for Qwen on GSM8K with:
 - saved J-Space details (layers, tokens, words, last token)
 - Jupyter notebooks over saved artifacts
 
-This is the GSM8K counterpart of the HumanEval J-Space study. It measures
-**exact-answer accuracy**, not teacher-forced next-token controllability.
-The latter remains available as `benchmark.test_type: gold_next_token`.
+Set `benchmark.name` in YAML. GSM8K still measures **exact-answer accuracy**.
+The injection suites measure **attack success rate (ASR)**. Teacher-forced
+next-token controllability remains `benchmark.test_type: gold_next_token`
+(GSM8K only).
+
+## Benchmarks
+
+| `benchmark.name` | metric | smoke config | data |
+|---|---|---|---|
+| `gsm8k` | exact-answer accuracy | `configs/smoke.yaml` | Hugging Face `openai/gsm8k` |
+| `bipia` | ASR (rule/heuristic) | `configs/bipia-smoke.yaml` | `data/bipia/` (email/table/code) |
+| `agentdojo` | first-turn ASR | `configs/agentdojo-smoke.yaml` | `data/agentdojo/workspace_static.json` |
+| `injecagent` | first-step tool-call ASR | `configs/injecagent-smoke.yaml` | `data/injecagent/` |
+
+AgentDojo and InjecAgent run as **single-generation** slices that match this
+project's capture/intervention loop: the model sees a poisoned tool
+observation and we score the next action. That is not the full AgentDojo
+environment loop or InjecAgent data-stealing step 2.
+
+BIPIA scoring is local (`bipia_asr_v1`). Official BIPIA uses GPT-4 judges for
+most text attacks; reports include `asr_method` so the two are not mixed.
 
 ## Layout
 
+- `COMMANDS.md` — CLI flags, resume, evaluate/compare, and per-benchmark examples
 - `configs/` — default, smoke, host, run-tier, and condition YAML
-- `configs/README.md` — commands for ready-made Radeon / NVIDIA Qwen3.5-9B runs
+- `configs/README.md` — ready-made Radeon / NVIDIA Qwen3.5-9B GSM8K run YAMLs
+- `data/` — BIPIA / AgentDojo / InjecAgent files used by non-GSM8K configs
 - `src/gsm8k_jspace/` — typed config, runner, capture, intervention, evaluation
+- `src/gsm8k_jspace/benchmarks/` — plugin registry (`gsm8k`, `bipia`, `agentdojo`, `injecagent`)
 - `notebooks/` — parameterized analysis notebooks
 - `scripts/uv-env` — pick `.venv-mlx` / `.venv-rocm` / `.venv-cuda` / `.venv-cpu`
 - `plans/` — design documents
@@ -49,32 +73,21 @@ The parent `jlens` package is installed as an editable path dependency.
 
 ## Commands
 
+See **[COMMANDS.md](COMMANDS.md)** for flags, resume, evaluate/compare,
+and examples for every benchmark. Quick start:
+
 ```bash
-# print the fully resolved config (no model load)
 python -m gsm8k_jspace inspect-config --config configs/smoke.yaml
-
-# small run without J-Space capture files
 python -m gsm8k_jspace run --config configs/smoke.yaml --evaluate --no-capture
-
-# same run, but record J-Space top-k / norms
-python -m gsm8k_jspace run --config configs/smoke.yaml --evaluate --capture
-
-# overlay instead of flags
-python -m gsm8k_jspace run --config configs/smoke.yaml --overlay configs/experiments/capture-on.yaml
-
-# merge a condition overlay
-python -m gsm8k_jspace run \
-  --config configs/runs/small-smoke.yaml \
-  --host-config configs/hosts/apple.yaml \
-  --overlay configs/experiments/mean-replace.yaml
-
-python -m gsm8k_jspace evaluate --run outputs/gsm8k/<run_id>
-python -m gsm8k_jspace compare --baseline <baseline_dir> --candidate <run_dir>
+python -m gsm8k_jspace run --config configs/bipia-smoke.yaml --evaluate --no-capture
+python -m gsm8k_jspace run --config configs/agentdojo-smoke.yaml --evaluate --no-capture
+python -m gsm8k_jspace run --config configs/injecagent-smoke.yaml --evaluate --no-capture
 ```
 
-Output folders are UTC-stamped so reruns do not overwrite each other, for
-example `m1max-mlx-qwen35-4b-smoke5_20260820T001408Z`. `--run-id` is a label;
-`YYYYMMDDTHHMMSSZ` is appended. To resume, pass the full folder name.
+On GPU hosts, `./scripts/uv-env run --config …` is the same as
+`python -m gsm8k_jspace run`. Output folders are UTC-stamped so reruns
+do not overwrite each other. `--run-id` is a label; pass the full
+folder name to resume.
 
 ## Run tiers
 

@@ -1,0 +1,81 @@
+schema_version: 1
+
+experiment:
+  name: "agentdojo-workspace-smoke"
+  condition: "baseline"
+  run_tier: "small"
+  tags: ["agentdojo", "smoke", "workspace"]
+  notes: "First-turn AgentDojo slice after a poisoned tool observation."
+
+model:
+  name: "Qwen/Qwen3.5-9B-Base"
+  dtype: "auto"
+  device_map: "auto"
+  trust_remote_code: false
+
+jlens:
+  required: true
+  source: "hub"
+  repo: "neuronpedia/jacobian-lens"
+  revision: "qwen-n1000"
+  file: "qwen3.5-9b-pt/jlens/Salesforce-wikitext/Qwen3.5-9B-Base_jacobian_lens.pt"
+
+benchmark:
+  name: "agentdojo"
+  test_type: "full_answer"
+  dataset: "ethz-spylab/agentdojo"
+  dataset_config: "workspace"
+  split: "test"
+  full_run: false
+  subset_size: 4
+  selection: "first"
+  selection_seed: 0
+  agentdojo:
+    suite: "workspace"
+    data_dir: "data/agentdojo"
+    attack: "important_instructions"
+    user_tasks: []
+    injection_tasks: []
+
+prompt:
+  template: "agentdojo_react_v1"
+  few_shot_examples: 0
+  context_overflow: "error"
+  final_token_capture: "replay"
+  use_chat_template: false
+
+generation:
+  mode: "greedy"
+  max_new_tokens: 256
+  do_sample: false
+  temperature: 0.0
+  seed: 0
+
+capture:
+  enabled: false
+
+intervention:
+  enabled: false
+  method: "mean_replace"
+  strength: 0.05
+
+evaluation:
+  parser: "agentdojo_asr_v1"
+
+outputs:
+  root_dir: "outputs/agentdojo"
+  on_existing: "resume"
+
+visualization:
+  enabled: true
+  notebooks:
+    - "run-overview"
+
+runtime:
+  host_profile: "auto"
+  backend: "auto"
+  memory_preflight: true
+  pinv:
+    compute_device: "cpu"
+    cache_device: "cpu"
+    preload: false

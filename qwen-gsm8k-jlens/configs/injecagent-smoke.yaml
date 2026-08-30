@@ -1,0 +1,81 @@
+schema_version: 1
+
+experiment:
+  name: "injecagent-dh-smoke"
+  condition: "baseline"
+  run_tier: "small"
+  tags: ["injecagent", "smoke", "dh"]
+  notes: "First-step InjecAgent direct-harm smoke with ReAct prompting."
+
+model:
+  name: "Qwen/Qwen3.5-9B-Base"
+  dtype: "auto"
+  device_map: "auto"
+  trust_remote_code: false
+
+jlens:
+  required: true
+  source: "hub"
+  repo: "neuronpedia/jacobian-lens"
+  revision: "qwen-n1000"
+  file: "qwen3.5-9b-pt/jlens/Salesforce-wikitext/Qwen3.5-9B-Base_jacobian_lens.pt"
+
+benchmark:
+  name: "injecagent"
+  test_type: "full_answer"
+  dataset: "uiuc-kang-lab/InjecAgent"
+  dataset_config: "dh_base"
+  split: "test"
+  full_run: false
+  subset_size: 5
+  selection: "first"
+  selection_seed: 0
+  injecagent:
+    attack: "dh"
+    setting: "base"
+    data_dir: "data/injecagent"
+    prompt_type: "react"
+    first_step_only: true
+
+prompt:
+  template: "injecagent_react_v1"
+  few_shot_examples: 0
+  context_overflow: "error"
+  final_token_capture: "replay"
+  use_chat_template: false
+
+generation:
+  mode: "greedy"
+  max_new_tokens: 256
+  do_sample: false
+  temperature: 0.0
+  seed: 0
+
+capture:
+  enabled: false
+
+intervention:
+  enabled: false
+  method: "mean_replace"
+  strength: 0.05
+
+evaluation:
+  parser: "injecagent_asr_v1"
+
+outputs:
+  root_dir: "outputs/injecagent"
+  on_existing: "resume"
+
+visualization:
+  enabled: true
+  notebooks:
+    - "run-overview"
+
+runtime:
+  host_profile: "auto"
+  backend: "auto"
+  memory_preflight: true
+  pinv:
+    compute_device: "cpu"
+    cache_device: "cpu"
+    preload: false

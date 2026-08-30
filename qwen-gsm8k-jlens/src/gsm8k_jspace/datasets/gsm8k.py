@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import hashlib
-import random
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from typing import Any
 
 from gsm8k_jspace.config import AppConfig
+from gsm8k_jspace.datasets.selection import select_examples
 from gsm8k_jspace.types import GSM8KExample
 
 _CALCULATOR_ANNOTATION = re.compile(r"<<[^<>]*>>")
@@ -61,23 +61,6 @@ def records_from_rows(
     return examples
 
 
-def select_examples(
-    examples: Sequence[GSM8KExample],
-    *,
-    full_run: bool,
-    subset_size: int,
-    selection: str,
-    seed: int,
-) -> list[GSM8KExample]:
-    ordered = list(examples)
-    if selection == "shuffled":
-        rng = random.Random(seed)
-        rng.shuffle(ordered)
-    if full_run:
-        return ordered
-    return ordered[: int(subset_size)]
-
-
 def load_gsm8k_examples(
     cfg: AppConfig,
     *,
@@ -107,18 +90,3 @@ def load_gsm8k_examples(
         f"(full_run={bench.full_run}, selection={bench.selection})"
     )
     return selected
-
-
-def selection_records(examples: Sequence[GSM8KExample]) -> list[dict[str, Any]]:
-    return [
-        {
-            "example_id": example.example_id,
-            "source_index": example.source_index,
-            "dataset": example.dataset,
-            "dataset_config": example.dataset_config,
-            "split": example.split,
-            "question_sha256": example.question_sha256,
-            "gold_answer": example.gold_answer,
-        }
-        for example in examples
-    ]

@@ -15,21 +15,22 @@ from gsm8k_jspace.artifacts.manifest import (
     write_progress,
 )
 from gsm8k_jspace.artifacts.writer import append_jsonl, write_json
+from gsm8k_jspace.benchmarks import get_benchmark
 from gsm8k_jspace.capture.hooks import JSpaceCapture
 from gsm8k_jspace.capture.selectors import resolve_layers
 from gsm8k_jspace.config import AppConfig, ConfigError
-from gsm8k_jspace.datasets.gsm8k import load_gsm8k_examples, selection_records
+from gsm8k_jspace.datasets.selection import completion_extra_fields, selection_records
 from gsm8k_jspace.interventions import build_controller
 from gsm8k_jspace.models.jlens_adapter import load_jlens
 from gsm8k_jspace.models.loader import ModelBundle, load_model_bundle
-from gsm8k_jspace.platform.diagnostics import collect_environment
 from gsm8k_jspace.platform.device import (
     pin_visible_gpu,
     prepare_worker_device_config,
     resolve_gpus,
     should_run_parallel,
 )
-from gsm8k_jspace.prompting.gsm8k import format_model_prompt, render_prompt
+from gsm8k_jspace.platform.diagnostics import collect_environment
+from gsm8k_jspace.prompting.format import format_model_prompt
 from gsm8k_jspace.runner.generation import generate_completion
 from gsm8k_jspace.types import GSM8KExample
 
@@ -76,12 +77,13 @@ def _run_examples_loop(
     )
     n_written = len(done)
     prefix = f"[run:{worker_label}]" if worker_label else "[run]"
+    benchmark = get_benchmark(cfg)
     with controller:
         for example in examples:
             if example.example_id in done:
                 continue
             prompt = format_model_prompt(
-                render_prompt(example, cfg), bundle.tokenizer, cfg
+                benchmark.render_prompt(example, cfg), bundle.tokenizer, cfg
             )
             prompt_len = _prompt_len(bundle.tokenizer, prompt)
             controller.reset_example(example.example_id, prompt_len)
@@ -153,6 +155,7 @@ def _run_examples_loop(
                 "gold_answer": example.gold_answer,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
+            record.update(completion_extra_fields(example))
             if worker_label is not None:
                 record["worker"] = worker_label
             append_jsonl(completions_path, record)
@@ -231,7 +234,7 @@ def run_experiment(
     project_root: Path | None = None,
 ) -> Path:
     if examples is None:
-        examples = load_gsm8k_examples(cfg)
+        examples = get_benchmark(cfg).load_examples(cfg)
     selection = selection_records(examples)
     gpus = resolve_gpus(cfg)
 

@@ -1,6 +1,17 @@
 # Ready-made GSM8K run configs
 
 Self-contained YAMLs (model + host + benchmark). Run from `qwen-gsm8k-jlens/`.
+Full CLI flag reference and per-benchmark examples: [COMMANDS.md](../COMMANDS.md).
+
+Injection-suite smokes (same CLI, different `benchmark.name`):
+
+```bash
+./scripts/uv-env run --config configs/bipia-smoke.yaml --evaluate --no-capture
+./scripts/uv-env run --config configs/agentdojo-smoke.yaml --evaluate --no-capture
+./scripts/uv-env run --config configs/injecagent-smoke.yaml --evaluate --no-capture
+```
+
+Outputs land under `outputs/bipia/`, `outputs/agentdojo/`, and `outputs/injecagent/`.
 
 First sync the matching environment:
 
@@ -116,8 +127,11 @@ cat outputs/gsm8k/<run_id>/progress.json
 
 ## Inspect config
 
+`uv-env run` always invokes the `run` subcommand. Use the module CLI
+for `inspect-config`:
+
 ```bash
-./scripts/uv-env run python -m gsm8k_jspace inspect-config \
+python -m gsm8k_jspace inspect-config \
   --config configs/radeon-qwen35-9b-smoke-jlens.yaml
 ```
 

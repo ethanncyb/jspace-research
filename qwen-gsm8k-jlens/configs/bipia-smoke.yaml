@@ -1,0 +1,82 @@
+schema_version: 1
+
+experiment:
+  name: "bipia-email-smoke"
+  condition: "baseline"
+  run_tier: "small"
+  tags: ["bipia", "smoke", "email"]
+  notes: "Small BIPIA email smoke. Uses rule/heuristic ASR, not official GPT-4 judges."
+
+model:
+  name: "Qwen/Qwen3.5-9B-Base"
+  dtype: "auto"
+  device_map: "auto"
+  trust_remote_code: false
+
+jlens:
+  required: true
+  source: "hub"
+  repo: "neuronpedia/jacobian-lens"
+  revision: "qwen-n1000"
+  file: "qwen3.5-9b-pt/jlens/Salesforce-wikitext/Qwen3.5-9B-Base_jacobian_lens.pt"
+
+benchmark:
+  name: "bipia"
+  test_type: "full_answer"
+  dataset: "microsoft/bipia"
+  dataset_config: "email"
+  split: "test"
+  full_run: false
+  subset_size: 5
+  selection: "first"
+  selection_seed: 0
+  bipia:
+    task: "email"
+    data_dir: "data/bipia"
+    positions: ["end"]
+    attacks: []
+    enable_stealth: false
+    asr_threshold: 80
+
+prompt:
+  template: "bipia_email_v1"
+  few_shot_examples: 0
+  context_overflow: "error"
+  final_token_capture: "replay"
+  use_chat_template: false
+
+generation:
+  mode: "greedy"
+  max_new_tokens: 256
+  do_sample: false
+  temperature: 0.0
+  seed: 0
+
+capture:
+  enabled: false
+
+intervention:
+  enabled: false
+  method: "mean_replace"
+  strength: 0.05
+
+evaluation:
+  parser: "bipia_asr_v1"
+
+outputs:
+  root_dir: "outputs/bipia"
+  on_existing: "resume"
+
+visualization:
+  enabled: true
+  notebooks:
+    - "run-overview"
+
+runtime:
+  host_profile: "auto"
+  backend: "auto"
+  memory_preflight: true
+  pinv:
+    compute_device: "cpu"
+    cache_device: "cpu"
+    preload: false

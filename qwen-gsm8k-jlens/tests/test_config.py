@@ -124,3 +124,25 @@ def test_cli_capture_flags_parse():
     assert on.capture is True
     off = parser.parse_args(["run", "--config", "configs/smoke.yaml", "--no-capture"])
     assert off.capture is False
+
+
+def test_new_benchmark_configs_load():
+    bipia = load_config(CONFIGS / "bipia-smoke.yaml")
+    assert bipia.benchmark.name == "bipia"
+    assert bipia.evaluation.parser == "bipia_asr_v1"
+    agentdojo = load_config(CONFIGS / "agentdojo-smoke.yaml")
+    assert agentdojo.benchmark.name == "agentdojo"
+    injecagent = load_config(CONFIGS / "injecagent-smoke.yaml")
+    assert injecagent.benchmark.injecagent.attack == "dh"
+
+
+def test_parser_must_match_benchmark(tmp_path: Path):
+    path = tmp_path / "bad.yaml"
+    path.write_text(
+        "schema_version: 1\n"
+        "benchmark:\n  name: bipia\n"
+        "evaluation:\n  parser: gsm8k_numeric_v1\n"
+    )
+    with pytest.raises(ConfigError, match="evaluation.parser='bipia_asr_v1'"):
+        load_config(path)
+

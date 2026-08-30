@@ -125,7 +125,7 @@ def _add_config_args(parser: argparse.ArgumentParser) -> None:
         "--no-capture",
         action="store_false",
         dest="capture",
-        help="Skip J-Space capture recording (GSM8K completions still saved)",
+        help="Skip J-Space capture recording (completions still saved)",
     )
     parser.set_defaults(capture=None)
 

@@ -31,27 +31,6 @@ DEFAULT_FEW_SHOT: list[tuple[str, str]] = [
 ]
 
 
-def format_model_prompt(user_text: str, tokenizer, cfg: AppConfig) -> str:
-    """Optionally wrap the scientific prompt in the tokenizer chat template."""
-    if not cfg.prompt.use_chat_template:
-        return user_text
-    inner = getattr(tokenizer, "_inner", tokenizer)
-    apply = getattr(inner, "apply_chat_template", None) or getattr(
-        tokenizer, "apply_chat_template", None
-    )
-    if apply is None:
-        return user_text
-    rendered = apply(
-        [{"role": "user", "content": user_text}],
-        add_generation_prompt=True,
-        tokenize=False,
-    )
-    if isinstance(rendered, list):
-        decode = getattr(inner, "decode", None) or getattr(tokenizer, "decode", None)
-        return decode(rendered) if decode is not None else user_text
-    return str(rendered)
-
-
 def render_prompt(example: GSM8KExample, cfg: AppConfig) -> str:
     template = cfg.prompt.template
     n_shot = int(cfg.prompt.few_shot_examples)

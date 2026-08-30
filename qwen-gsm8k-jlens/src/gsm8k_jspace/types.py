@@ -31,6 +31,11 @@ class GSM8KExample:
     dataset: str = "openai/gsm8k"
     dataset_config: str = "main"
     split: str = "test"
+    extra: dict[str, Any] = field(default_factory=dict)
+
+
+# Generic alias used by the multi-benchmark runner.
+BenchmarkExample = GSM8KExample
 
 
 @dataclass
