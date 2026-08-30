@@ -15,6 +15,7 @@ There are three supported GPU workflows using the same commands:
 | Google Colab | A hosted Colab GPU runtime | Mount Google Drive or download the run directory before the runtime ends |
 | Cloud GPU over SSH | A CUDA server reached from a local terminal | Use the server's persistent disk, then copy the run directory locally with `rsync` or `scp` |
 | Local CUDA machine | A workstation with a compatible NVIDIA GPU | Write directly under the local repository or another persistent disk |
+| Local Jupyter notebook | Same machine as above | [`notebooks/JSpace_End_to_End_Local.ipynb`](notebooks/JSpace_End_to_End_Local.ipynb) writes under `artifacts/` |
 
 A typical Mac can run dataset preparation, tests, Phase 2/4 analysis, and all of Phase 3, but it cannot run Phase 1 `capture`/`analyze`, Phase 2 `generate`, or Phase 4 `generate`, which require CUDA. The experiment is file-based, so GPU work may run in Colab or over SSH and the complete run directory can then be copied elsewhere.
 
@@ -23,7 +24,7 @@ A typical Mac can run dataset preparation, tests, Phase 2/4 analysis, and all of
 The repository pins:
 
 - Jacobian-lens to `581d398613e5602a5af361e1c34d3a92ea82ba8e`;
-- BIPIA to `a004b69ec0dd446e0afd461d98cb5e96e120a5d0`;
+- BIPIA to `a004b69ec0dd446e0afd461d98cb5e96e120a5d0` (git submodule at `BIPIA/`);
 - AgentDojo to `089ed468cf3ed0322acc66b0211f26d9d90dbf60` with benchmark version `v1.2.2`;
 - InjecAgent to `f19c9f2c79a41046eb13c03c51a24c567a8ffa07`;
 - the model and fitted lens to the revisions and hashes in the Phase 1 YAML configurations.
@@ -84,17 +85,20 @@ Writing directly to Drive prioritizes persistence over I/O speed. Alternatively,
 
 Run the following commands directly on a local CUDA workstation or in an SSH session on a cloud GPU. SSH does not automatically share the laptop's filesystem, so remote runs should use a persistent server volume for the repository, datasets, model cache, and output.
 
+For a Jupyter workflow on a local Linux CUDA machine, open [`notebooks/JSpace_End_to_End_Local.ipynb`](notebooks/JSpace_End_to_End_Local.ipynb). Launch it from the repository root with `uv run jupyter notebook notebooks/JSpace_End_to_End_Local.ipynb`; the first cell runs `uv sync --extra phase4 --extra notebook` and verifies the kernel is using `.venv/`. Results are written under `artifacts/`. AgentDojo and InjecAgent are cloned to `../jspace-benchmarks/` by default, or to the directory named by `JSPACE_BENCHMARKS_ROOT`.
+
 From the remote shell, clone and install the experiment:
 
 ```bash
-git clone --branch prompt-injection-experiment \
+git clone --recurse-submodules --branch prompt-injection-experiment \
   https://github.com/ethanncyb/jspace-research.git
 cd jspace-research
 
 uv sync --extra test --extra phase4
 
-git clone https://github.com/microsoft/BIPIA.git /path/to/BIPIA
-git -C /path/to/BIPIA checkout a004b69ec0dd446e0afd461d98cb5e96e120a5d0
+# If the repository was cloned without --recurse-submodules:
+git submodule update --init BIPIA
+
 git clone https://github.com/ethz-spylab/agentdojo.git /path/to/agentdojo
 git -C /path/to/agentdojo checkout 089ed468cf3ed0322acc66b0211f26d9d90dbf60
 git clone https://github.com/uiuc-kang-lab/InjecAgent.git /path/to/InjecAgent
@@ -115,7 +119,6 @@ Run the smoke experiment phase by phase. Phase 1 and Phase 2 resume compatible w
 ```bash
 jspace-phase1 \
   --config configs/phase1_smoke.yaml \
-  --bipia-root /path/to/BIPIA/benchmark \
   --output-dir ./artifacts/smoke/phase1 \
   --stage all
 
@@ -140,7 +143,7 @@ jspace-phase4 \
   --config configs/phase1_smoke.yaml \
   --phase1 ./artifacts/smoke/phase1/selected_layer.json \
   --phase3 ./artifacts/smoke/phase3 \
-  --bipia-root /path/to/BIPIA/benchmark \
+  --bipia-root ./BIPIA/benchmark \
   --agentdojo-root /path/to/agentdojo \
   --injecagent-root /path/to/InjecAgent \
   --output-dir ./artifacts/smoke/phase4 \
@@ -149,12 +152,12 @@ jspace-phase4 \
 
 Then run the full five-task experiment:
 
-Before Phase 4, provide the licensed BIPIA-format test files at `/path/to/BIPIA/benchmark/qa/test.jsonl` and `/path/to/BIPIA/benchmark/abstract/test.jsonl`. The Phase 1 `--webqa-train` and `--summarization-train` arguments supply only training files; they do not supply these official-test inputs.
+Before Phase 4, provide the licensed BIPIA-format test files at `BIPIA/benchmark/qa/test.jsonl` and `BIPIA/benchmark/abstract/test.jsonl`. The Phase 1 `--webqa-train` and `--summarization-train` arguments supply only training files; they do not supply these official-test inputs.
 
 ```bash
 jspace-phase1 \
   --config configs/phase1_full.yaml \
-  --bipia-root /path/to/BIPIA/benchmark \
+  --bipia-root ./BIPIA/benchmark \
   --webqa-train /path/to/webqa/train.jsonl \
   --summarization-train /path/to/summarization/train.jsonl \
   --output-dir ./artifacts/full/phase1 \
@@ -181,7 +184,7 @@ jspace-phase4 \
   --config configs/phase1_full.yaml \
   --phase1 ./artifacts/full/phase1/selected_layer.json \
   --phase3 ./artifacts/full/phase3 \
-  --bipia-root /path/to/BIPIA/benchmark \
+  --bipia-root ./BIPIA/benchmark \
   --agentdojo-root /path/to/agentdojo \
   --injecagent-root /path/to/InjecAgent \
   --output-dir ./artifacts/full/phase4 \
@@ -203,9 +206,9 @@ Replace the example user, host, and paths with those supplied by the GPU provide
 `--stage all` runs `prepare`, `capture`, and `analyze` in sequence. They may instead be run separately with the same configuration, inputs, and output directory:
 
 ```bash
-jspace-phase1 --config configs/phase1_smoke.yaml --bipia-root /path/to/BIPIA/benchmark --output-dir /path/to/output --stage prepare
-jspace-phase1 --config configs/phase1_smoke.yaml --bipia-root /path/to/BIPIA/benchmark --output-dir /path/to/output --stage capture
-jspace-phase1 --config configs/phase1_smoke.yaml --bipia-root /path/to/BIPIA/benchmark --output-dir /path/to/output --stage analyze
+jspace-phase1 --config configs/phase1_smoke.yaml --output-dir /path/to/output --stage prepare
+jspace-phase1 --config configs/phase1_smoke.yaml --output-dir /path/to/output --stage capture
+jspace-phase1 --config configs/phase1_smoke.yaml --output-dir /path/to/output --stage analyze
 ```
 
 The activation and decomposition caches are resumable. Reuse the exact same output directory to resume the same run. Scientific identity excludes machine-local dataset and output paths, so a complete run directory can be moved between machines without changing its identity. The source datasets are required for `prepare`; after the manifest is frozen, `capture` and `analyze` read the manifest and do not require the original source files. If a scientific setting, manifest, model, lens, layer, or cache shape changes, the pipeline stops rather than silently reusing stale data; create a new output directory for a different run.
@@ -249,7 +252,7 @@ jspace-phase4 \
   --config configs/phase1_full.yaml \
   --phase1 artifacts/full/phase1/selected_layer.json \
   --phase3 artifacts/full/phase3 \
-  --bipia-root /path/to/BIPIA/benchmark \
+  --bipia-root ./BIPIA/benchmark \
   --agentdojo-root /path/to/agentdojo \
   --injecagent-root /path/to/InjecAgent \
   --output-dir artifacts/full/phase4 \
@@ -259,7 +262,7 @@ jspace-phase4 \
   --config configs/phase1_full.yaml \
   --phase1 artifacts/full/phase1/selected_layer.json \
   --phase3 artifacts/full/phase3 \
-  --bipia-root /path/to/BIPIA/benchmark \
+  --bipia-root ./BIPIA/benchmark \
   --agentdojo-root /path/to/agentdojo \
   --injecagent-root /path/to/InjecAgent \
   --output-dir artifacts/full/phase4 \

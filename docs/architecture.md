@@ -78,7 +78,7 @@ YAML task keys: `email`, `qa`, `table`, `abstract`, `code` (EmailQA, WebQA, Tabl
 
 ## External data
 
-BIPIA, AgentDojo, and InjecAgent are cloned checkouts. Runtime code verifies `git rev-parse` against the pinned commits. They are not vendored.
+BIPIA is vendored as a git submodule at `BIPIA/` and pinned to `a004b69ec0dd446e0afd461d98cb5e96e120a5d0`. AgentDojo and InjecAgent remain separate cloned checkouts. Runtime code verifies `git rev-parse` against the pinned commits.
 
 WebQA and Summarization `train.jsonl` (Phase 1 full) and BIPIA-format `qa/test.jsonl` / `abstract/test.jsonl` (Phase 4 full) are researcher-provided. The pipeline does not download or reconstruct them. Smoke uses BIPIA EmailQA only.
 

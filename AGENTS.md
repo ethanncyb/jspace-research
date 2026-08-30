@@ -21,6 +21,8 @@ Primary model: `google/gemma-4-12B-it` (BF16, single `cuda:0`). Primary lens: `s
 
 `pint-benchmark/` is an unrelated local checkout. It is not part of this experiment and is not wired into the pipeline.
 
+`BIPIA/` is a git submodule pinned to `a004b69ec0dd446e0afd461d98cb5e96e120a5d0`. After cloning, run `git submodule update --init BIPIA` if you did not use `--recurse-submodules`. Do not `pip install` BIPIA.
+
 ## Engineering conventions
 
 From PLAN.md §2.1:
@@ -56,12 +58,13 @@ Pinned revisions (also in YAML and provenance):
 
 ```bash
 uv sync --extra test --extra phase4
+git submodule update --init BIPIA
 pytest
 ```
 
 Tests do not need the 12B model or a GPU. Ruff: line length 100, Python 3.10, rules E/F/I/UP/B.
 
-CLIs: `jspace-phase1`, `jspace-phase2`, `jspace-phase3`, `jspace-phase4`. Smoke config: [`configs/phase1_smoke.yaml`](configs/phase1_smoke.yaml). Full config: [`configs/phase1_full.yaml`](configs/phase1_full.yaml).
+CLIs: `jspace-phase1`, `jspace-phase2`, `jspace-phase3`, `jspace-phase4`. Smoke config: [`configs/phase1_smoke.yaml`](configs/phase1_smoke.yaml). Full config: [`configs/phase1_full.yaml`](configs/phase1_full.yaml). Local Jupyter launcher: [`notebooks/JSpace_End_to_End_Local.ipynb`](notebooks/JSpace_End_to_End_Local.ipynb).
 
 GPU stages: Phase 1 `capture`/`analyze`, Phase 2 `generate`, Phase 4 `generate`. CPU/API: Phase 2 `analyze`, Phase 3, Phase 4 `analyze` (OpenRouter only for BIPIA). Full command sequences and split-machine workflow: README.md.
 
