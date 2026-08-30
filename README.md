@@ -87,6 +87,8 @@ Run the following commands directly on a local CUDA workstation or in an SSH ses
 
 For a Jupyter workflow on a local Linux CUDA machine, open [`notebooks/JSpace_End_to_End_Local.ipynb`](notebooks/JSpace_End_to_End_Local.ipynb). It defaults to the Qwen 3.5 9B smoke config and lets you choose a physical GPU with `PHYSICAL_GPU_INDEX` on multi-GPU nodes (for example 4x L4). Results are written under `artifacts/jspace-qwen35_9b-smoke-gpu{N}/`.
 
+For a terminal workflow with the same defaults, edit [`scripts/config.yaml`](scripts/config.yaml) and run `./scripts/setup.sh` then `./scripts/run_all.sh`. Run `./scripts/download_repos.sh` first if you only need to fetch BIPIA, AgentDojo, and InjecAgent. See [`scripts/README.md`](scripts/README.md) for per-phase scripts (`phase1.sh`–`phase4.sh`) and config options.
+
 From the remote shell, clone and install the experiment:
 
 ```bash

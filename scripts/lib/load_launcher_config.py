@@ -87,16 +87,109 @@ def _section(data: dict[str, Any], key: str) -> dict[str, Any]:
     return section
 
 
+def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in overlay.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _merge_config_data(
+    unified: dict[str, Any],
+    run_data: dict[str, Any],
+    env_data: dict[str, Any],
+) -> dict[str, Any]:
+    merged = dict(unified)
+    if run_data:
+        merged = _deep_merge(merged, run_data)
+    if env_data:
+        merged = _deep_merge(merged, env_data)
+    return merged
+
+
+def _derive_run_name(config_path: Path, physical_gpu_index: int) -> str:
+    stem = config_path.stem
+    if stem.startswith("phase1_"):
+        stem = stem[len("phase1_") :]
+    if "_" in stem:
+        model_part, mode_part = stem.rsplit("_", 1)
+        name_part = f"{model_part}-{mode_part}"
+    else:
+        name_part = stem
+    return f"jspace-{name_part}-gpu{physical_gpu_index}"
+
+
+def _resolve_config_path(
+    repo_root: Path,
+    experiment: dict[str, Any],
+    model_key: str,
+    run_mode: str,
+) -> Path:
+    config_path = _expand_path(repo_root, experiment.get("config"))
+    if config_path is None:
+        config_path = str(
+            (repo_root / "configs" / f"phase1_{model_key}_{run_mode}.yaml").resolve()
+        )
+    return Path(config_path)
+
+
+def _resolve_run_root(
+    repo_root: Path,
+    experiment: dict[str, Any],
+    output: dict[str, Any],
+    config_path: Path,
+    physical_gpu_index: int,
+    model_key: str,
+    run_mode: str,
+) -> str:
+    run_root = _expand_path(repo_root, output.get("run_root"))
+    if run_root is None:
+        run_root = _expand_path(repo_root, experiment.get("run_root"))
+    if run_root is None:
+        run_name = output.get("run_name") or experiment.get("run_name")
+        if run_name:
+            run_root = str((repo_root / "artifacts" / str(run_name)).resolve())
+        else:
+            run_root = str(
+                (
+                    repo_root
+                    / "artifacts"
+                    / _derive_run_name(config_path, physical_gpu_index)
+                ).resolve()
+            )
+    return run_root
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, required=True)
+    parser.add_argument("--config", type=Path, default=None)
+    parser.add_argument("--local-config", type=Path, default=None)
     parser.add_argument("--run-config", type=Path, default=None)
     parser.add_argument("--env-config", type=Path, default=None)
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
+    unified_data: dict[str, Any] = {}
     run_data: dict[str, Any] = {}
     env_data: dict[str, Any] = {}
+
+    if args.config is not None:
+        if not args.config.is_file():
+            raise RuntimeError(f"config not found: {args.config}")
+        unified_data = _load_yaml(args.config.resolve())
+        local_config = args.local_config
+        if local_config is None:
+            local_candidate = args.config.with_name(f"{args.config.stem}.local.yaml")
+            if local_candidate.is_file():
+                local_config = local_candidate
+        if local_config is not None:
+            if not local_config.is_file():
+                raise RuntimeError(f"local config not found: {local_config}")
+            unified_data = _deep_merge(unified_data, _load_yaml(local_config.resolve()))
 
     if args.run_config is not None:
         if not args.run_config.is_file():
@@ -108,33 +201,30 @@ def main() -> int:
             raise RuntimeError(f"env config not found: {args.env_config}")
         env_data = _load_yaml(args.env_config.resolve())
 
-    experiment = _section(run_data, "experiment")
-    pipeline = _section(run_data, "pipeline")
-    runtime = _section(env_data, "runtime")
-    paths = _section(env_data, "paths")
-    credentials = _section(env_data, "credentials")
+    data = _merge_config_data(unified_data, run_data, env_data)
+
+    experiment = _section(data, "experiment")
+    hardware = _section(data, "hardware")
+    output = _section(data, "output")
+    pipeline = _section(data, "pipeline")
+    runtime = _section(data, "runtime")
+    paths = _section(data, "paths")
+    credentials = _section(data, "credentials")
 
     model_key = experiment.get("model_key", "qwen35_9b")
     run_mode = experiment.get("run_mode", "smoke")
-    physical_gpu_index = experiment.get("physical_gpu_index", 0)
+    physical_gpu_index = hardware.get("physical_gpu_index", experiment.get("physical_gpu_index", 0))
 
-    config_path = _expand_path(repo_root, experiment.get("config"))
-    if config_path is None:
-        config_path = str((repo_root / "configs" / f"phase1_{model_key}_{run_mode}.yaml").resolve())
-
-    run_root = _expand_path(repo_root, experiment.get("run_root"))
-    if run_root is None:
-        run_name = experiment.get("run_name")
-        if run_name:
-            run_root = str((repo_root / "artifacts" / str(run_name)).resolve())
-        else:
-            run_root = str(
-                (
-                    repo_root
-                    / "artifacts"
-                    / f"jspace-{model_key}-{run_mode}-gpu{physical_gpu_index}"
-                ).resolve()
-            )
+    config_path = _resolve_config_path(repo_root, experiment, model_key, run_mode)
+    run_root = _resolve_run_root(
+        repo_root,
+        experiment,
+        output,
+        config_path,
+        int(physical_gpu_index),
+        model_key,
+        run_mode,
+    )
 
     benchmarks_root = _expand_path(
         repo_root,
@@ -160,7 +250,7 @@ def main() -> int:
     _export_if_unset("JSPACE_MODEL_KEY", model_key)
     _export_if_unset("JSPACE_RUN_MODE", run_mode)
     _export_if_unset("JSPACE_PHYSICAL_GPU_INDEX", physical_gpu_index)
-    _export_if_unset("JSPACE_CONFIG_PATH", config_path)
+    _export_if_unset("JSPACE_CONFIG_PATH", str(config_path))
     _export_if_unset("JSPACE_RUN_ROOT", run_root)
     _export_if_unset("JSPACE_BENCHMARKS_ROOT", benchmarks_root)
     _export_if_unset("JSPACE_BIPIA_CHECKOUT", bipia_checkout)

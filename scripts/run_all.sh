@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Run Phases 1–4 end to end.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

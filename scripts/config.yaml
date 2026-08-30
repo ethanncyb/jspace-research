@@ -1,0 +1,45 @@
+# Launcher config for ./scripts/run_all.sh and ./scripts/phase{1,2,3,4}.sh
+# For machine-specific overrides without editing this file, use scripts/config.local.yaml (gitignored).
+
+experiment:
+  # Scientific phase YAML shared by all phases (relative to repo root or absolute).
+  # Examples:
+  #   configs/phase1_qwen35_9b_smoke.yaml  (Qwen 3.5 9B smoke)
+  #   configs/phase1_smoke.yaml            (Gemma smoke)
+  #   configs/phase1_qwen35_9b_full.yaml   (Qwen full run)
+  config: configs/phase1_qwen35_9b_smoke.yaml
+
+hardware:
+  # Physical GPU index remapped to logical cuda:0 via CUDA_VISIBLE_DEVICES.
+  # On a multi-GPU node (e.g. 4x L4), use 0, 1, 2, or 3.
+  physical_gpu_index: 0
+
+output:
+  # Artifact root for phase1/, phase2/, phase3/, phase4/ subdirs.
+  # null = auto-derive from experiment config + GPU index.
+  # Example: configs/phase1_qwen35_9b_smoke.yaml + GPU 0
+  #          -> artifacts/jspace-qwen35_9b-smoke-gpu0
+  run_root: null
+
+paths:
+  benchmarks_root: ../jspace-benchmarks  # AgentDojo and InjecAgent clone target
+  bipia_checkout: BIPIA                    # BIPIA submodule path (see ./scripts/download_repos.sh)
+  agentdojo_checkout: null      # defaults to benchmarks_root/agentdojo
+  injecagent_checkout: null     # defaults to benchmarks_root/InjecAgent
+  webqa_train_path: null        # required for full Phase 1 qa task
+  summarization_train_path: null  # required for full Phase 1 abstract task
+
+credentials:
+  # Read secrets from files (paths expand ~). Leave null to use env vars:
+  #   export HF_TOKEN='...'
+  #   export OPENROUTER_API_KEY='...'
+  hf_token_file: null
+  openrouter_api_key_file: null
+
+runtime:
+  use_project_venv: true
+  venv_dir: .venv
+
+pipeline:
+  skip_setup: false       # set true to skip ./scripts/setup.sh in run_all.sh
+  skip_gpu_check: false   # set true to skip CUDA preflight in run_all.sh

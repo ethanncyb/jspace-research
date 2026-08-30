@@ -4,117 +4,101 @@ Shell equivalents of [`notebooks/JSpace_End_to_End_Local.ipynb`](../notebooks/JS
 
 ## Quick start
 
-### Option A: YAML configs (recommended)
-
 ```bash
-cp scripts/config/run.example.yaml scripts/config/run.yaml
-cp scripts/config/env.example.yaml scripts/config/env.yaml
-# edit run.yaml (experiment config) and env.yaml (paths + token files)
+# 1. Edit the launcher config (experiment YAML, GPU, output path)
+vim scripts/config.yaml
 
-./scripts/setup.sh
-./scripts/run_e2e.sh
-```
-
-### Option B: environment variables only
-
-```bash
+# 2. Export API keys (or point to token files in config.yaml)
 export OPENROUTER_API_KEY='your-key'
 export HF_TOKEN='your-hf-token'
 
-./scripts/setup.sh
-./scripts/run_e2e.sh
+# 3. Run
+./scripts/setup.sh          # once per machine (repos + Python deps)
+./scripts/run_all.sh        # phases 1–4
 ```
 
-Default run settings match the local notebook:
+Default settings use Qwen 3.5 9B smoke:
 
 - experiment config: `configs/phase1_qwen35_9b_smoke.yaml`
 - output: `artifacts/jspace-qwen35_9b-smoke-gpu0/`
 
-## YAML configs
+## Launcher config
 
-Two launcher files live under `scripts/config/`:
+Edit [`scripts/config.yaml`](config.yaml) to change:
 
-| File | Purpose |
+| Section | Purpose |
 | --- | --- |
-| `run.yaml` | Which scientific phase YAML to run, GPU index, run root, pipeline flags |
-| `env.yaml` | Machine paths, venv settings, and credential **file** locations |
+| `experiment.config` | Scientific phase YAML under `configs/` |
+| `hardware.physical_gpu_index` | Physical GPU remapped to logical `cuda:0` |
+| `output.run_root` | Artifact root (`null` = auto-derive from config name + GPU) |
+| `paths` | BIPIA checkout, benchmark roots, optional train data |
+| `credentials` | Token file paths (optional; env vars work too) |
+| `runtime` | Virtualenv settings |
+| `pipeline` | `skip_setup`, `skip_gpu_check`, default `stage` |
 
-Committed templates:
+For machine-specific overrides without editing the committed config, copy snippets into `scripts/config.local.yaml` (gitignored). That file is merged on top of `config.yaml`.
 
-- [`run.example.yaml`](config/run.example.yaml)
-- [`env.example.yaml`](config/env.example.yaml)
+Reference copy with comments: [`config.example.yaml`](config.example.yaml).
 
-Copy them to `run.yaml` and `env.yaml` (gitignored). Environment variables always override YAML.
-
-Example `run.yaml`:
+### Example: switch model or GPU
 
 ```yaml
 experiment:
-  config: configs/phase1_qwen35_9b_smoke.yaml
-  physical_gpu_index: 0
-```
+  config: configs/phase1_smoke.yaml   # Gemma smoke
 
-Example `env.yaml`:
+hardware:
+  physical_gpu_index: 2               # use GPU 2 on a 4x L4 node
 
-```yaml
-runtime:
-  use_project_venv: false   # TLJH / JupyterHub
-
-paths:
-  benchmarks_root: /opt/dlami/nvme/jspace-benchmarks
-
-credentials:
-  hf_token_file: ~/.config/jspace/hf_token
-  openrouter_api_key_file: ~/.config/jspace/openrouter_key
-```
-
-Pass explicit paths on the command line:
-
-```bash
-./scripts/run_e2e.sh \
-  --run-config scripts/config/run.yaml \
-  --env-config scripts/config/env.local.yaml
-```
-
-## Environment variables
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `JSPACE_RUN_CONFIG` | `scripts/config/run.yaml` if present | Launcher run YAML |
-| `JSPACE_ENV_CONFIG` | `scripts/config/env.yaml` if present | Launcher env YAML |
-| `JSPACE_MODEL_KEY` | `qwen35_9b` | Config/model prefix when `experiment.config` omitted |
-| `JSPACE_RUN_MODE` | `smoke` | `smoke` or `full` when `experiment.config` omitted |
-| `JSPACE_CONFIG_PATH` | derived | Direct path to phase YAML |
-| `JSPACE_PHYSICAL_GPU_INDEX` | `0` | Physical GPU remapped to logical `cuda:0` |
-| `JSPACE_RUN_ROOT` | derived | Override artifact root |
-| `JSPACE_BENCHMARKS_ROOT` | `../jspace-benchmarks` | AgentDojo / InjecAgent checkouts |
-| `JSPACE_USE_PROJECT_VENV` | `1` | Use `.venv`; set `0` on restricted hubs |
-| `JSPACE_PYTHON` | auto | Force a specific Python executable |
-| `WEBQA_TRAIN_PATH` | unset | Required for full Phase 1 |
-| `SUMMARIZATION_TRAIN_PATH` | unset | Required for full Phase 1 |
-| `STAGE` | phase-specific | Override stage for per-phase scripts |
-| `SKIP_SETUP` | `0` | Set `1` in `run_e2e.sh` to skip checkout/setup |
-| `SKIP_GPU_CHECK` | `0` | Set `1` to skip the CUDA preflight |
-
-Examples:
-
-```bash
-JSPACE_PHYSICAL_GPU_INDEX=2 ./scripts/run_phase1.sh
-
-./scripts/run_e2e.sh --run-config scripts/config/run.yaml --env-config scripts/config/env.yaml
-
-STAGE=analyze ./scripts/run_phase2.sh
+output:
+  run_root: artifacts/my-gemma-smoke-gpu2
 ```
 
 ## Scripts
 
-| Script | Notebook section | Purpose |
+| Script | Purpose |
+| --- | --- |
+| `download_repos.sh` | Clone/init BIPIA, AgentDojo, InjecAgent at pinned revisions |
+| `setup.sh` | `download_repos.sh` + install Python package + verify CLI |
+| `run_all.sh` | Phases 1–4 end to end (setup optional via `pipeline.skip_setup`) |
+| `phase1.sh` | Phase 1 (`STAGE=prepare\|capture\|analyze\|all`) |
+| `phase2.sh` | Phase 2 (`STAGE=generate\|analyze`) |
+| `phase3.sh` | Phase 3 detectors |
+| `phase4.sh` | Phase 4 transfer (`STAGE=generate\|analyze\|all`) |
+
+All scripts accept `--config PATH` (default: `scripts/config.yaml`).
+
+```bash
+./scripts/download_repos.sh   # repos only
+./scripts/setup.sh            # repos + Python install
+./scripts/phase1.sh
+STAGE=analyze ./scripts/phase2.sh
+JSPACE_PHYSICAL_GPU_INDEX=2 ./scripts/phase1.sh
+./scripts/run_all.sh --config scripts/config.yaml
+```
+
+## Environment variables
+
+Environment variables override YAML values.
+
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `setup.sh` | 1 | Install package, init BIPIA submodule, clone benchmark pins |
-| `run_e2e.sh` | 4–13 | Full Phases 1–4 |
-| `run_phase1.sh` | 6 | Phase 1 only (`STAGE=prepare\|capture\|analyze\|all`) |
-| `run_phase2.sh` | 8–9 | Phase 2 (`STAGE=generate\|analyze`) |
-| `run_phase3.sh` | 11 | Phase 3 detectors |
-| `run_phase4.sh` | 12 | Phase 4 transfer (`STAGE=generate\|analyze\|all`) |
+| `JSPACE_CONFIG_PATH` | from `experiment.config` | Scientific phase YAML |
+| `JSPACE_PHYSICAL_GPU_INDEX` | `0` | Physical GPU remapped to logical `cuda:0` |
+| `JSPACE_RUN_ROOT` | derived | Artifact root |
+| `JSPACE_BENCHMARKS_ROOT` | `../jspace-benchmarks` | AgentDojo / InjecAgent checkouts |
+| `JSPACE_USE_PROJECT_VENV` | `1` | Use `.venv`; set `0` on restricted hubs |
+| `WEBQA_TRAIN_PATH` | unset | Required for full Phase 1 |
+| `SUMMARIZATION_TRAIN_PATH` | unset | Required for full Phase 1 |
+| `STAGE` | phase-specific | Override stage for per-phase scripts |
+| `SKIP_SETUP` | `0` | Set `1` in `run_all.sh` to skip checkout/setup |
+| `SKIP_GPU_CHECK` | `0` | Set `1` to skip the CUDA preflight in `run_all.sh` |
 
 Pipeline commands use `python -m jspace_research.phaseN.cli`, so they do not require `jspace-phase*` entry points on `PATH`.
+
+## Multi-GPU nodes
+
+The pipeline runs on a single GPU (`cuda:0`). Set `hardware.physical_gpu_index` to pick which physical card is remapped to `cuda:0`. To run two experiments in parallel on a multi-GPU machine, use separate terminal sessions with different `physical_gpu_index` and `output.run_root` values.
+
+## Legacy launcher configs
+
+Older two-file launchers (`scripts/config/run.yaml` + `scripts/config/env.yaml`) are still supported via `--run-config` and `--env-config`. Prefer the unified `scripts/config.yaml`.

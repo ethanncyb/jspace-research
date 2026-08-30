@@ -10,6 +10,7 @@ set -euo pipefail
 
 AGENTDOJO_REVISION='089ed468cf3ed0322acc66b0211f26d9d90dbf60'
 INJECAGENT_REVISION='f19c9f2c79a41046eb13c03c51a24c567a8ffa07'
+BIPIA_REVISION='a004b69ec0dd446e0afd461d98cb5e96e120a5d0'
 PIP_EXTRAS='phase4'
 
 jspace_repo_root() {
@@ -42,6 +43,16 @@ jspace_die() {
 jspace_parse_launcher_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --config)
+        [[ $# -ge 2 ]] || jspace_die "--config requires a path"
+        JSPACE_LAUNCHER_CONFIG="$2"
+        shift 2
+        ;;
+      --local-config)
+        [[ $# -ge 2 ]] || jspace_die "--local-config requires a path"
+        JSPACE_LOCAL_CONFIG="$2"
+        shift 2
+        ;;
       --run-config)
         [[ $# -ge 2 ]] || jspace_die "--run-config requires a path"
         JSPACE_RUN_CONFIG="$2"
@@ -54,14 +65,14 @@ jspace_parse_launcher_args() {
         ;;
       -h | --help)
         cat <<'EOF'
-Usage: ./scripts/<script>.sh [--run-config PATH] [--env-config PATH]
+Usage: ./scripts/<script>.sh [--config PATH] [--local-config PATH]
 
-  --run-config PATH   Launcher run YAML (experiment config, GPU, run root)
-  --env-config PATH   Launcher env YAML (paths, token files, runtime)
+  --config PATH         Unified launcher YAML (default: scripts/config.yaml)
+  --local-config PATH   Optional local overrides (default: scripts/config.local.yaml)
 
-Defaults:
-  scripts/config/run.yaml
-  scripts/config/env.yaml
+Legacy (still supported):
+  --run-config PATH     Old launcher run YAML
+  --env-config PATH     Old launcher env YAML
 
 Environment variables override YAML values.
 EOF
@@ -76,23 +87,36 @@ EOF
 
 jspace_apply_launcher_configs() {
   local loader="${JSPACE_REPO_ROOT}/scripts/lib/load_launcher_config.py"
-  local default_run="${JSPACE_REPO_ROOT}/scripts/config/run.yaml"
-  local default_env="${JSPACE_REPO_ROOT}/scripts/config/env.yaml"
+  local default_config="${JSPACE_REPO_ROOT}/scripts/config.yaml"
+  local launcher_config="${JSPACE_LAUNCHER_CONFIG:-}"
+  local local_config="${JSPACE_LOCAL_CONFIG:-}"
   local run_config="${JSPACE_RUN_CONFIG:-}"
   local env_config="${JSPACE_ENV_CONFIG:-}"
   local args=(--repo-root "${JSPACE_REPO_ROOT}")
+  local has_config=0
 
-  if [[ -z "${run_config}" && -f "${default_run}" ]]; then
-    run_config="${default_run}"
-  fi
-  if [[ -z "${env_config}" && -f "${default_env}" ]]; then
-    env_config="${default_env}"
+  if [[ -z "${launcher_config}" && -f "${default_config}" ]]; then
+    launcher_config="${default_config}"
   fi
 
-  [[ -n "${run_config}" && -f "${run_config}" ]] && args+=(--run-config "${run_config}")
-  [[ -n "${env_config}" && -f "${env_config}" ]] && args+=(--env-config "${env_config}")
+  if [[ -n "${launcher_config}" && -f "${launcher_config}" ]]; then
+    args+=(--config "${launcher_config}")
+    has_config=1
+  fi
+  if [[ -n "${local_config}" && -f "${local_config}" ]]; then
+    args+=(--local-config "${local_config}")
+    has_config=1
+  fi
+  if [[ -n "${run_config}" && -f "${run_config}" ]]; then
+    args+=(--run-config "${run_config}")
+    has_config=1
+  fi
+  if [[ -n "${env_config}" && -f "${env_config}" ]]; then
+    args+=(--env-config "${env_config}")
+    has_config=1
+  fi
 
-  if [[ ${#args[@]} -eq 2 ]]; then
+  if [[ "${has_config}" -eq 0 ]]; then
     return 0
   fi
 
@@ -108,6 +132,8 @@ jspace_apply_launcher_configs() {
   fi
 
   jspace_log "Loading launcher config"
+  [[ -n "${launcher_config}" && -f "${launcher_config}" ]] && jspace_log "  config: ${launcher_config}"
+  [[ -n "${local_config}" && -f "${local_config}" ]] && jspace_log "  local: ${local_config}"
   [[ -n "${run_config}" && -f "${run_config}" ]] && jspace_log "  run: ${run_config}"
   [[ -n "${env_config}" && -f "${env_config}" ]] && jspace_log "  env: ${env_config}"
   eval "$("${loader_python}" "${loader}" "${args[@]}")"
@@ -288,32 +314,46 @@ jspace_run_module() {
 }
 
 jspace_ensure_checkouts() {
-  jspace_log "Initializing BIPIA submodule"
+  jspace_log "Initializing BIPIA submodule at ${JSPACE_BIPIA_CHECKOUT}"
   git -C "${JSPACE_REPO_ROOT}" submodule update --init BIPIA
+  if [[ ! -d "${JSPACE_BIPIA_CHECKOUT}" ]] || ! git -C "${JSPACE_BIPIA_CHECKOUT}" rev-parse HEAD >/dev/null 2>&1; then
+    jspace_die "BIPIA checkout missing after submodule init: ${JSPACE_BIPIA_CHECKOUT}"
+  fi
+  jspace_log "Checking out pinned BIPIA revision ${BIPIA_REVISION}"
+  git -C "${JSPACE_BIPIA_CHECKOUT}" checkout "${BIPIA_REVISION}"
 
   mkdir -p "${JSPACE_BENCHMARKS_ROOT}"
   if [[ ! -d "${JSPACE_AGENTDOJO_CHECKOUT}/.git" ]]; then
     jspace_log "Cloning AgentDojo into ${JSPACE_AGENTDOJO_CHECKOUT}"
     git clone https://github.com/ethz-spylab/agentdojo.git "${JSPACE_AGENTDOJO_CHECKOUT}"
   fi
+  jspace_log "Checking out pinned AgentDojo revision ${AGENTDOJO_REVISION}"
   git -C "${JSPACE_AGENTDOJO_CHECKOUT}" checkout "${AGENTDOJO_REVISION}"
 
   if [[ ! -d "${JSPACE_INJECAGENT_CHECKOUT}/.git" ]]; then
     jspace_log "Cloning InjecAgent into ${JSPACE_INJECAGENT_CHECKOUT}"
     git clone https://github.com/uiuc-kang-lab/InjecAgent.git "${JSPACE_INJECAGENT_CHECKOUT}"
   fi
+  jspace_log "Checking out pinned InjecAgent revision ${INJECAGENT_REVISION}"
   git -C "${JSPACE_INJECAGENT_CHECKOUT}" checkout "${INJECAGENT_REVISION}"
 }
 
-jspace_print_runtime_info() {
+jspace_print_checkout_info() {
   jspace_log "Repository root: ${JSPACE_REPO_ROOT}"
   jspace_log "Benchmarks root: ${JSPACE_BENCHMARKS_ROOT}"
-  jspace_log "Runtime mode: ${JSPACE_RUNTIME_MODE}"
-  jspace_log "Runtime python: ${JSPACE_PYTHON}"
+  jspace_log "BIPIA checkout: ${JSPACE_BIPIA_CHECKOUT}"
+  jspace_log "AgentDojo checkout: ${JSPACE_AGENTDOJO_CHECKOUT}"
+  jspace_log "InjecAgent checkout: ${JSPACE_INJECAGENT_CHECKOUT}"
   jspace_log "Research revision: $(git -C "${JSPACE_REPO_ROOT}" rev-parse HEAD)"
   jspace_log "BIPIA revision: $(git -C "${JSPACE_BIPIA_CHECKOUT}" rev-parse HEAD)"
   jspace_log "AgentDojo revision: $(git -C "${JSPACE_AGENTDOJO_CHECKOUT}" rev-parse HEAD)"
   jspace_log "InjecAgent revision: $(git -C "${JSPACE_INJECAGENT_CHECKOUT}" rev-parse HEAD)"
+}
+
+jspace_print_runtime_info() {
+  jspace_print_checkout_info
+  jspace_log "Runtime mode: ${JSPACE_RUNTIME_MODE}"
+  jspace_log "Runtime python: ${JSPACE_PYTHON}"
 }
 
 jspace_check_credentials() {

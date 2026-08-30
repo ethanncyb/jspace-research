@@ -1,0 +1,42 @@
+# Copy to scripts/config.local.yaml for machine-specific overrides (gitignored).
+# Or edit scripts/config.yaml directly.
+
+experiment:
+  # Scientific phase YAML (relative to repo root or absolute).
+  config: configs/phase1_qwen35_9b_smoke.yaml
+
+  # Legacy shorthand when config is omitted:
+  # model_key: qwen35_9b
+  # run_mode: smoke
+
+hardware:
+  # Physical GPU index remapped to logical cuda:0 via CUDA_VISIBLE_DEVICES.
+  # On a 4x L4 node, use 0, 1, 2, or 3.
+  physical_gpu_index: 0
+
+output:
+  # null = auto-derive from experiment config basename + GPU index.
+  # Example: configs/phase1_qwen35_9b_smoke.yaml + GPU 0
+  #          -> artifacts/jspace-qwen35_9b-smoke-gpu0
+  run_root: null
+
+paths:
+  benchmarks_root: ../jspace-benchmarks
+  bipia_checkout: BIPIA
+  agentdojo_checkout: null
+  injecagent_checkout: null
+  webqa_train_path: null
+  summarization_train_path: null
+
+credentials:
+  # Read secrets from files (paths expand ~). Leave null to use env vars only.
+  hf_token_file: null
+  openrouter_api_key_file: null
+
+runtime:
+  use_project_venv: true
+  venv_dir: .venv
+
+pipeline:
+  skip_setup: false
+  skip_gpu_check: false
