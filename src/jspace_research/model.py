@@ -8,9 +8,17 @@ import torch
 
 def _validate_primary_gpu_placement(hf_model: Any) -> None:
     device_map = getattr(hf_model, "hf_device_map", None)
-    if not isinstance(device_map, dict) or not device_map:
+    if isinstance(device_map, dict) and device_map:
+        placements = {str(device).lower() for device in device_map.values()}
+    else:
+        parameters = getattr(hf_model, "parameters", None)
+        placements = (
+            {str(parameter.device).lower() for parameter in parameters()}
+            if callable(parameters)
+            else set()
+        )
+    if not placements:
         raise RuntimeError("Could not verify model placement on the primary CUDA GPU")
-    placements = {str(device).lower() for device in device_map.values()}
     if not placements.issubset({"0", "cuda", "cuda:0"}):
         raise RuntimeError(
             "The model must fit entirely on CUDA GPU 0; CPU, disk, and multi-GPU "

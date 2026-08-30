@@ -54,6 +54,23 @@ def test_model_placement_must_be_verifiable() -> None:
         _validate_primary_gpu_placement(object())
 
 
+def test_model_placement_falls_back_to_parameter_devices() -> None:
+    class Parameter:
+        def __init__(self, device: str) -> None:
+            self.device = torch.device(device)
+
+    class Model:
+        def __init__(self, devices: tuple[str, ...]) -> None:
+            self._parameters = [Parameter(device) for device in devices]
+
+        def parameters(self) -> list[Parameter]:
+            return self._parameters
+
+    _validate_primary_gpu_placement(Model(("cuda:0", "cuda:0")))
+    with pytest.raises(RuntimeError, match="fit entirely on CUDA GPU 0"):
+        _validate_primary_gpu_placement(Model(("cuda:0", "cpu")))
+
+
 class RecordingBlock(nn.Module):
     def forward(self, hidden: torch.Tensor) -> tuple[torch.Tensor, str]:
         return hidden + 1, "cache"
