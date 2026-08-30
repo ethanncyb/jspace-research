@@ -1,0 +1,3 @@
+[submodule "BIPIA"]
+	path = BIPIA
+	url = https://github.com/microsoft/BIPIA.git
