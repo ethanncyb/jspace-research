@@ -85,7 +85,7 @@ Writing directly to Drive prioritizes persistence over I/O speed. Alternatively,
 
 Run the following commands directly on a local CUDA workstation or in an SSH session on a cloud GPU. SSH does not automatically share the laptop's filesystem, so remote runs should use a persistent server volume for the repository, datasets, model cache, and output.
 
-For a Jupyter workflow on a local Linux CUDA machine, open [`notebooks/JSpace_End_to_End_Local.ipynb`](notebooks/JSpace_End_to_End_Local.ipynb). It defaults to the Qwen 3.5 9B smoke config (`configs/phase1_qwen35_9b_smoke.yaml`). Create `.venv/`, run `pip install -e '.[phase4,notebook]'`, and launch Jupyter from the activated virtualenv. Section 2 of the notebook accepts manual Hugging Face and OpenRouter tokens when they are not in the shell environment. Results are written under `artifacts/jspace-qwen35_9b-smoke/`. AgentDojo and InjecAgent are cloned to `../jspace-benchmarks/` by default, or to the directory named by `JSPACE_BENCHMARKS_ROOT`.
+For a Jupyter workflow on a local Linux CUDA machine, open [`notebooks/JSpace_End_to_End_Local.ipynb`](notebooks/JSpace_End_to_End_Local.ipynb). It defaults to the Qwen 3.5 9B smoke config and lets you choose a physical GPU with `PHYSICAL_GPU_INDEX` on multi-GPU nodes (for example 4x L4). Results are written under `artifacts/jspace-qwen35_9b-smoke-gpu{N}/`.
 
 From the remote shell, clone and install the experiment:
 
