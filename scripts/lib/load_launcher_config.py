@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Load launcher YAML files and emit shell export statements."""
+"""Load launcher YAML files for shell scripts and notebooks."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shlex
 import sys
@@ -163,27 +164,24 @@ def _resolve_run_root(
     return run_root
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo-root", type=Path, required=True)
-    parser.add_argument("--config", type=Path, default=None)
-    parser.add_argument("--local-config", type=Path, default=None)
-    parser.add_argument("--run-config", type=Path, default=None)
-    parser.add_argument("--env-config", type=Path, default=None)
-    args = parser.parse_args()
-
-    repo_root = args.repo_root.resolve()
+def _load_merged_launcher_data(
+    repo_root: Path,
+    *,
+    config: Path | None = None,
+    local_config: Path | None = None,
+    run_config: Path | None = None,
+    env_config: Path | None = None,
+) -> dict[str, Any]:
     unified_data: dict[str, Any] = {}
     run_data: dict[str, Any] = {}
     env_data: dict[str, Any] = {}
 
-    if args.config is not None:
-        if not args.config.is_file():
-            raise RuntimeError(f"config not found: {args.config}")
-        unified_data = _load_yaml(args.config.resolve())
-        local_config = args.local_config
+    if config is not None:
+        if not config.is_file():
+            raise RuntimeError(f"config not found: {config}")
+        unified_data = _load_yaml(config.resolve())
         if local_config is None:
-            local_candidate = args.config.with_name(f"{args.config.stem}.local.yaml")
+            local_candidate = config.with_name(f"{config.stem}.local.yaml")
             if local_candidate.is_file():
                 local_config = local_candidate
         if local_config is not None:
@@ -191,17 +189,40 @@ def main() -> int:
                 raise RuntimeError(f"local config not found: {local_config}")
             unified_data = _deep_merge(unified_data, _load_yaml(local_config.resolve()))
 
-    if args.run_config is not None:
-        if not args.run_config.is_file():
-            raise RuntimeError(f"run config not found: {args.run_config}")
-        run_data = _load_yaml(args.run_config.resolve())
+    if run_config is not None:
+        if not run_config.is_file():
+            raise RuntimeError(f"run config not found: {run_config}")
+        run_data = _load_yaml(run_config.resolve())
 
-    if args.env_config is not None:
-        if not args.env_config.is_file():
-            raise RuntimeError(f"env config not found: {args.env_config}")
-        env_data = _load_yaml(args.env_config.resolve())
+    if env_config is not None:
+        if not env_config.is_file():
+            raise RuntimeError(f"env config not found: {env_config}")
+        env_data = _load_yaml(env_config.resolve())
 
-    data = _merge_config_data(unified_data, run_data, env_data)
+    return _merge_config_data(unified_data, run_data, env_data)
+
+
+def resolve_launcher_config(
+    repo_root: str | Path,
+    *,
+    config: str | Path | None = None,
+    local_config: str | Path | None = None,
+    run_config: str | Path | None = None,
+    env_config: str | Path | None = None,
+) -> dict[str, Any]:
+    repo_root = Path(repo_root).resolve()
+    config_path_arg = Path(config).resolve() if config is not None else None
+    local_config_arg = Path(local_config).resolve() if local_config is not None else None
+    run_config_arg = Path(run_config).resolve() if run_config is not None else None
+    env_config_arg = Path(env_config).resolve() if env_config is not None else None
+
+    data = _load_merged_launcher_data(
+        repo_root,
+        config=config_path_arg,
+        local_config=local_config_arg,
+        run_config=run_config_arg,
+        env_config=env_config_arg,
+    )
 
     experiment = _section(data, "experiment")
     hardware = _section(data, "hardware")
@@ -211,9 +232,11 @@ def main() -> int:
     paths = _section(data, "paths")
     credentials = _section(data, "credentials")
 
-    model_key = experiment.get("model_key", "qwen35_9b")
+    model_key = experiment.get("model_key", "qwen35_4b")
     run_mode = experiment.get("run_mode", "smoke")
-    physical_gpu_index = hardware.get("physical_gpu_index", experiment.get("physical_gpu_index", 0))
+    physical_gpu_index = int(
+        hardware.get("physical_gpu_index", experiment.get("physical_gpu_index", 0))
+    )
 
     config_path = _resolve_config_path(repo_root, experiment, model_key, run_mode)
     run_root = _resolve_run_root(
@@ -221,7 +244,7 @@ def main() -> int:
         experiment,
         output,
         config_path,
-        int(physical_gpu_index),
+        physical_gpu_index,
         model_key,
         run_mode,
     )
@@ -247,31 +270,75 @@ def main() -> int:
     hf_token_file = _expand_path(repo_root, credentials.get("hf_token_file"))
     openrouter_file = _expand_path(repo_root, credentials.get("openrouter_api_key_file"))
 
-    _export_if_unset("JSPACE_MODEL_KEY", model_key)
-    _export_if_unset("JSPACE_RUN_MODE", run_mode)
-    _export_if_unset("JSPACE_PHYSICAL_GPU_INDEX", physical_gpu_index)
-    _export_if_unset("JSPACE_CONFIG_PATH", str(config_path))
-    _export_if_unset("JSPACE_RUN_ROOT", run_root)
-    _export_if_unset("JSPACE_BENCHMARKS_ROOT", benchmarks_root)
-    _export_if_unset("JSPACE_BIPIA_CHECKOUT", bipia_checkout)
-    _export_if_unset("JSPACE_AGENTDOJO_CHECKOUT", agentdojo_checkout)
-    _export_if_unset("JSPACE_INJECAGENT_CHECKOUT", injecagent_checkout)
-    _export_if_unset("JSPACE_BIPIA_ROOT", bipia_root)
-    _export_if_unset("JSPACE_USE_PROJECT_VENV", int(_as_bool(runtime.get("use_project_venv"), True)))
-    _export_if_unset("JSPACE_VENV_DIR", venv_dir)
-    _export_if_unset("JSPACE_PYTHON", python_path)
-    _export_if_unset("WEBQA_TRAIN_PATH", _expand_path(repo_root, paths.get("webqa_train_path")))
-    _export_if_unset(
-        "SUMMARIZATION_TRAIN_PATH",
-        _expand_path(repo_root, paths.get("summarization_train_path")),
-    )
-    _export_if_unset("SKIP_SETUP", int(_as_bool(pipeline.get("skip_setup"), False)))
-    _export_if_unset("SKIP_GPU_CHECK", int(_as_bool(pipeline.get("skip_gpu_check"), False)))
-    if pipeline.get("stage") is not None:
-        _export_if_unset("STAGE", pipeline.get("stage"))
-
     hf_token = _read_secret_file(hf_token_file)
     openrouter_key = _read_secret_file(openrouter_file)
+
+    phase1_dir = str(Path(run_root) / "phase1")
+    return {
+        "repo_root": str(repo_root),
+        "launcher_config": str(config_path_arg) if config_path_arg is not None else None,
+        "model_key": model_key,
+        "run_mode": run_mode,
+        "physical_gpu_index": physical_gpu_index,
+        "config_path": str(config_path),
+        "run_root": run_root,
+        "benchmarks_root": benchmarks_root,
+        "bipia_checkout": bipia_checkout,
+        "agentdojo_checkout": agentdojo_checkout,
+        "injecagent_checkout": injecagent_checkout,
+        "bipia_root": bipia_root,
+        "phase1_dir": phase1_dir,
+        "phase2_dir": str(Path(run_root) / "phase2"),
+        "phase3_dir": str(Path(run_root) / "phase3"),
+        "phase4_dir": str(Path(run_root) / "phase4"),
+        "webqa_train_path": _expand_path(repo_root, paths.get("webqa_train_path")),
+        "summarization_train_path": _expand_path(
+            repo_root, paths.get("summarization_train_path")
+        ),
+        "newsqa_dir": _expand_path(repo_root, paths.get("newsqa_dir")),
+        "skip_setup": _as_bool(pipeline.get("skip_setup"), False),
+        "skip_gpu_check": _as_bool(pipeline.get("skip_gpu_check"), False),
+        "use_project_venv": _as_bool(runtime.get("use_project_venv"), True),
+        "venv_dir": venv_dir,
+        "python_path": python_path,
+        "hf_token_env": hf_env,
+        "openrouter_api_key_env": openrouter_env,
+        "hf_token_file": hf_token_file,
+        "openrouter_api_key_file": openrouter_file,
+        "hf_token": hf_token,
+        "openrouter_api_key": openrouter_key,
+    }
+
+
+def emit_shell_exports(resolved: dict[str, Any]) -> None:
+    repo_root = resolved["repo_root"]
+    hf_env = resolved["hf_token_env"]
+    openrouter_env = resolved["openrouter_api_key_env"]
+
+    _export_if_unset("JSPACE_REPO_ROOT", repo_root)
+    _export_if_unset("JSPACE_MODEL_KEY", resolved["model_key"])
+    _export_if_unset("JSPACE_RUN_MODE", resolved["run_mode"])
+    _export_if_unset("JSPACE_PHYSICAL_GPU_INDEX", resolved["physical_gpu_index"])
+    _export_if_unset("JSPACE_CONFIG_PATH", resolved["config_path"])
+    _export_if_unset("JSPACE_RUN_ROOT", resolved["run_root"])
+    _export_if_unset("JSPACE_BENCHMARKS_ROOT", resolved["benchmarks_root"])
+    _export_if_unset("JSPACE_BIPIA_CHECKOUT", resolved["bipia_checkout"])
+    _export_if_unset("JSPACE_AGENTDOJO_CHECKOUT", resolved["agentdojo_checkout"])
+    _export_if_unset("JSPACE_INJECAGENT_CHECKOUT", resolved["injecagent_checkout"])
+    _export_if_unset("JSPACE_BIPIA_ROOT", resolved["bipia_root"])
+    _export_if_unset(
+        "JSPACE_USE_PROJECT_VENV", int(resolved["use_project_venv"])
+    )
+    _export_if_unset("JSPACE_VENV_DIR", resolved["venv_dir"])
+    _export_if_unset("JSPACE_PYTHON", resolved["python_path"])
+    _export_if_unset("WEBQA_TRAIN_PATH", resolved["webqa_train_path"])
+    _export_if_unset("SUMMARIZATION_TRAIN_PATH", resolved["summarization_train_path"])
+    _export_if_unset("JSPACE_NEWSQA_DIR", resolved["newsqa_dir"])
+    _export_if_unset("SKIP_SETUP", int(resolved["skip_setup"]))
+    _export_if_unset("SKIP_GPU_CHECK", int(resolved["skip_gpu_check"]))
+
+    hf_token = resolved["hf_token"]
+    openrouter_key = resolved["openrouter_api_key"]
     if hf_token:
         _export_if_unset(hf_env, hf_token)
         if hf_env != "HF_TOKEN":
@@ -283,11 +350,39 @@ def main() -> int:
         if openrouter_env != "OPENROUTER_API_KEY":
             _export_if_unset("OPENROUTER_API_KEY", openrouter_key)
 
-    phase1_dir = str(Path(run_root) / "phase1")
-    _export_if_unset("JSPACE_PHASE1_DIR", phase1_dir)
-    _export_if_unset("JSPACE_PHASE2_DIR", str(Path(run_root) / "phase2"))
-    _export_if_unset("JSPACE_PHASE3_DIR", str(Path(run_root) / "phase3"))
-    _export_if_unset("JSPACE_PHASE4_DIR", str(Path(run_root) / "phase4"))
+    _export_if_unset("JSPACE_PHASE1_DIR", resolved["phase1_dir"])
+    _export_if_unset("JSPACE_PHASE2_DIR", resolved["phase2_dir"])
+    _export_if_unset("JSPACE_PHASE3_DIR", resolved["phase3_dir"])
+    _export_if_unset("JSPACE_PHASE4_DIR", resolved["phase4_dir"])
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, required=True)
+    parser.add_argument("--config", type=Path, default=None)
+    parser.add_argument("--local-config", type=Path, default=None)
+    parser.add_argument("--run-config", type=Path, default=None)
+    parser.add_argument("--env-config", type=Path, default=None)
+    parser.add_argument(
+        "--format",
+        choices=("shell", "json"),
+        default="shell",
+        help="Output shell export statements (default) or JSON for notebooks.",
+    )
+    args = parser.parse_args()
+
+    resolved = resolve_launcher_config(
+        args.repo_root.resolve(),
+        config=args.config,
+        local_config=args.local_config,
+        run_config=args.run_config,
+        env_config=args.env_config,
+    )
+
+    if args.format == "json":
+        print(json.dumps(resolved, indent=2))
+    else:
+        emit_shell_exports(resolved)
 
     return 0
 

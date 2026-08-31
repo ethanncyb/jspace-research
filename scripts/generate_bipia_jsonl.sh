@@ -17,7 +17,7 @@ Generate licensed BIPIA context files required for full Phase 1 / Phase 4 runs.
 
 Options:
   --tasks TASKS         webqa | summarization | all (default: all)
-  --newsqa-dir PATH     Directory with NewsQA combined-csv files (required for webqa)
+  --newsqa-dir PATH     Directory with NewsQA combined-csv files (or set paths.newsqa_dir)
   --config PATH         Launcher config (default: scripts/config.yaml)
   -h, --help            Show this help
 
@@ -71,6 +71,10 @@ done
 jspace_bootstrap --config "${JSPACE_LAUNCHER_CONFIG:-${JSPACE_REPO_ROOT}/scripts/config.yaml}"
 jspace_resolve_python
 
+if [[ -z "${NEWSQA_DIR}" && -n "${JSPACE_NEWSQA_DIR:-}" ]]; then
+  NEWSQA_DIR="${JSPACE_NEWSQA_DIR}"
+fi
+
 QA_DIR="${JSPACE_BIPIA_ROOT}/benchmark/qa"
 ABSTRACT_DIR="${JSPACE_BIPIA_ROOT}/benchmark/abstract"
 
@@ -87,7 +91,26 @@ jspace_ensure_bipia_data_deps() {
 }
 
 jspace_generate_webqa() {
-  [[ -n "${NEWSQA_DIR}" ]] || jspace_die "--newsqa-dir is required for WebQA generation"
+  if [[ -z "${NEWSQA_DIR}" ]]; then
+    jspace_die "$(cat <<'EOF'
+WebQA generation needs the raw NewsQA files.
+
+Option 1 — pass the download directory:
+  ./scripts/generate_bipia_jsonl.sh --newsqa-dir /path/to/newsqa --tasks webqa
+
+Option 2 — set paths.newsqa_dir in scripts/config.yaml, then rerun.
+
+Option 3 — generate Summarization only (no NewsQA):
+  ./scripts/generate_bipia_jsonl.sh --tasks summarization
+
+Download NewsQA first (BIPIA/benchmark/README.md):
+  1. Follow https://github.com/Maluuba/newsqa (or use docker pull bryant1410/newsqa)
+  2. Place these files in your newsqa directory:
+       combined-newsqa-data-v1.csv
+       combined-newsqa-data-v1.json
+EOF
+)"
+  fi
   local newsqa_path
   newsqa_path="$(cd "${NEWSQA_DIR}" && pwd)"
   [[ -f "${newsqa_path}/combined-newsqa-data-v1.csv" ]] \

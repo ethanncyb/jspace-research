@@ -12,6 +12,10 @@ jspace_resolve_python
 jspace_validate_config
 jspace_print_run_paths
 
+if [[ "${STAGE}" == "analyze" || "${STAGE}" == "all" ]]; then
+  jspace_check_credentials
+fi
+
 jspace_run_module jspace_research.phase2.cli \
   --config "${JSPACE_CONFIG_PATH}" \
   --phase1 "${JSPACE_PHASE1_DIR}/selected_layer.json" \

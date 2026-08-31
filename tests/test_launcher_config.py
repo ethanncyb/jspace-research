@@ -136,6 +136,35 @@ output:
     assert exports["JSPACE_RUN_ROOT"].endswith("artifacts/jspace-smoke-gpu1")
 
 
+def test_json_format(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+experiment:
+  config: configs/phase1_qwen35_4b_smoke.yaml
+hardware:
+  physical_gpu_index: 1
+output:
+  run_root: null
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(LOADER), "--repo-root", str(REPO_ROOT), "--config", str(config_path), "--format", "json"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    import json
+
+    payload = json.loads(result.stdout)
+    assert payload["physical_gpu_index"] == 1
+    assert payload["config_path"].endswith("configs/phase1_qwen35_4b_smoke.yaml")
+    assert payload["run_root"].endswith("artifacts/jspace-qwen35_4b-smoke-gpu1")
+
+
 def test_committed_config_loads() -> None:
     config_path = REPO_ROOT / "scripts" / "config.yaml"
     if not config_path.is_file():
@@ -143,5 +172,5 @@ def test_committed_config_loads() -> None:
 
     exports = _run_loader("--config", str(config_path))
 
-    assert "phase1_qwen35_9b_smoke.yaml" in exports["JSPACE_CONFIG_PATH"]
+    assert "phase1_qwen35_4b_smoke.yaml" in exports["JSPACE_CONFIG_PATH"]
     assert exports["JSPACE_PHYSICAL_GPU_INDEX"] == "0"

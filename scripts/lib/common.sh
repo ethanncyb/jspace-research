@@ -30,6 +30,7 @@ jspace_repo_root() {
 }
 
 JSPACE_REPO_ROOT="$(jspace_repo_root)"
+export JSPACE_REPO_ROOT
 
 jspace_log() {
   printf '%s\n' "$*"
@@ -143,7 +144,7 @@ jspace_init_run_paths() {
   JSPACE_BENCHMARKS_ROOT="${JSPACE_BENCHMARKS_ROOT:-${JSPACE_REPO_ROOT}/../jspace-benchmarks}"
   JSPACE_USE_PROJECT_VENV="${JSPACE_USE_PROJECT_VENV:-1}"
   JSPACE_VENV_DIR="${JSPACE_VENV_DIR:-${JSPACE_REPO_ROOT}/.venv}"
-  JSPACE_MODEL_KEY="${JSPACE_MODEL_KEY:-qwen35_9b}"
+  JSPACE_MODEL_KEY="${JSPACE_MODEL_KEY:-qwen35_4b}"
   JSPACE_RUN_MODE="${JSPACE_RUN_MODE:-smoke}"
   JSPACE_PHYSICAL_GPU_INDEX="${JSPACE_PHYSICAL_GPU_INDEX:-0}"
 
@@ -463,65 +464,19 @@ jspace_phase1_extra_args() {
 }
 
 jspace_validate_phase1_data_requirements() {
-  "${JSPACE_PYTHON}" - <<'PY'
-from __future__ import annotations
-
-import os
-import sys
-from pathlib import Path
-
-import yaml
-
-config_path = Path(os.environ["JSPACE_CONFIG_PATH"])
-repo_root = Path(os.environ["JSPACE_REPO_ROOT"])
-raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-tasks = tuple(raw.get("tasks", ()))
-data = raw.get("data", {})
-bipia_root = Path(os.environ.get("JSPACE_BIPIA_ROOT", data.get("bipia_root", "BIPIA/benchmark")))
-if not bipia_root.is_absolute():
-    bipia_root = (repo_root / bipia_root).resolve()
-webqa = os.environ.get("WEBQA_TRAIN_PATH") or data.get("webqa_train_path")
-summary = os.environ.get("SUMMARIZATION_TRAIN_PATH") or data.get("summarization_train_path")
-
-def is_file(path: str | None) -> bool:
-    return bool(path) and Path(path).expanduser().is_file()
-
-errors: list[str] = []
-if "qa" in tasks:
-    if not is_file(webqa):
-        errors.append(
-            "Phase 1 task 'qa' (WebQA) needs a researcher-provided BIPIA-format train.jsonl. "
-            "Generate it per BIPIA/benchmark/README.md (WebQA section), then set "
-            "paths.webqa_train_path in scripts/config.yaml or export WEBQA_TRAIN_PATH."
-        )
-    test_path = bipia_root / "qa" / "test.jsonl"
-    if not test_path.is_file():
-        errors.append(
-            "Phase 4 also needs BIPIA/benchmark/qa/test.jsonl for the full WebQA task. "
-            "Generate train.jsonl and test.jsonl together with BIPIA/benchmark/qa/process.py."
-        )
-if "abstract" in tasks:
-    if not is_file(summary):
-        errors.append(
-            "Phase 1 task 'abstract' (Summarization) needs a researcher-provided "
-            "BIPIA-format train.jsonl. Generate it per BIPIA/benchmark/README.md "
-            "(Summarization section), then set paths.summarization_train_path in "
-            "scripts/config.yaml or export SUMMARIZATION_TRAIN_PATH."
-        )
-    test_path = bipia_root / "abstract" / "test.jsonl"
-    if not test_path.is_file():
-        errors.append(
-            "Phase 4 also needs BIPIA/benchmark/abstract/test.jsonl for the full "
-            "Summarization task. Generate it with BIPIA/benchmark/abstract/process.py."
-        )
-
-if errors:
-    print(f"Config: {config_path}", file=sys.stderr)
-    print(f"Tasks: {list(tasks)}", file=sys.stderr)
-    for message in errors:
-        print(f"error: {message}", file=sys.stderr)
-    raise SystemExit(1)
-PY
+  local validator="${JSPACE_REPO_ROOT}/scripts/lib/validate_phase1_data.py"
+  local args=(
+    --config "${JSPACE_CONFIG_PATH}"
+    --repo-root "${JSPACE_REPO_ROOT}"
+    --bipia-root "${JSPACE_BIPIA_ROOT}"
+  )
+  if [[ -n "${WEBQA_TRAIN_PATH:-}" ]]; then
+    args+=(--webqa-train "${WEBQA_TRAIN_PATH}")
+  fi
+  if [[ -n "${SUMMARIZATION_TRAIN_PATH:-}" ]]; then
+    args+=(--summarization-train "${SUMMARIZATION_TRAIN_PATH}")
+  fi
+  "${JSPACE_PYTHON}" "${validator}" "${args[@]}"
 }
 
 jspace_assert_run_complete() {
