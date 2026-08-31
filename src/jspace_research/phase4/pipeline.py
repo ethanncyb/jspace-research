@@ -281,6 +281,13 @@ def _balanced_bipia_rows(predictions: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([attacks, matched_controls], ignore_index=True)
 
 
+def _defined_mean(values: pd.Series) -> tuple[float, int]:
+    defined = values.dropna()
+    if defined.empty:
+        return float("nan"), 0
+    return float(defined.mean()), len(defined)
+
+
 def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     thresholds = {
@@ -337,6 +344,7 @@ def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFr
                 ("fpr", clean[f"{detector}_prediction"]),
                 ("tpr", attacked[f"{detector}_prediction"]),
             ):
+                value, count = _defined_mean(values)
                 rows.append(
                     _detector_rows(
                         benchmark="agentdojo",
@@ -344,8 +352,8 @@ def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFr
                         subgroup=subgroup,
                         metric=metric,
                         detector=detector,
-                        value=float(values.mean()),
-                        n=len(values),
+                        value=value,
+                        n=count,
                         threshold=thresholds[detector],
                     )
                 )
@@ -354,6 +362,7 @@ def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFr
             ("utility_under_attack", subset[subset.condition == "attack"].native_utility),
             ("targeted_asr", subset[subset.condition == "attack"].native_attack_success),
         ):
+            value, count = _defined_mean(values)
             rows.append(
                 _detector_rows(
                     benchmark="agentdojo",
@@ -361,8 +370,8 @@ def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFr
                     subgroup=subgroup,
                     metric=metric,
                     detector="native",
-                    value=float(values.mean()),
-                    n=len(values),
+                    value=value,
+                    n=count,
                     threshold=None,
                 )
             )

@@ -118,6 +118,32 @@ def test_phase4_uses_benchmark_specific_metrics() -> None:
             "native_valid": None,
         },
         {
+            "benchmark": "agentdojo",
+            "condition": "control",
+            "subgroup": "slack",
+            "injection_exposed": False,
+            "mean_score": None,
+            "mean_prediction": None,
+            "logistic_score": None,
+            "logistic_prediction": None,
+            "native_utility": True,
+            "native_attack_success": None,
+            "native_valid": None,
+        },
+        {
+            "benchmark": "agentdojo",
+            "condition": "attack",
+            "subgroup": "slack",
+            "injection_exposed": False,
+            "mean_score": None,
+            "mean_prediction": None,
+            "logistic_score": None,
+            "logistic_prediction": None,
+            "native_utility": False,
+            "native_attack_success": False,
+            "native_valid": None,
+        },
+        {
             "benchmark": "injecagent",
             "condition": "attack",
             "subgroup": "direct_harm",
@@ -156,6 +182,14 @@ def test_phase4_uses_benchmark_specific_metrics() -> None:
     assert {"valid_rate", "asr_valid", "asr_all"}.issubset(
         set(metrics[metrics.benchmark == "injecagent"].metric)
     )
+    undefined_tpr = metrics[
+        (metrics.benchmark == "agentdojo")
+        & (metrics.subgroup == "slack")
+        & (metrics.metric == "tpr")
+        & (metrics.detector == "mean")
+    ].iloc[0]
+    assert undefined_tpr.n == 0
+    assert pd.isna(undefined_tpr.value)
 
 
 def test_phase4_record_resumption_rejects_stale_identity(tmp_path) -> None:
