@@ -40,6 +40,9 @@ phase4 = [
   "cohere>=5.3.4",
   "google-genai>=1.15.0",
 ]
+bipia-data = [
+  "datasets>=2.8.0",
+]
 
 [project.scripts]
 jspace-phase1 = "jspace_research.phase1.cli:main"

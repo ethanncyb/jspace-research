@@ -19,6 +19,7 @@ jspace_validate_config
 jspace_check_credentials
 jspace_print_run_paths
 jspace_phase1_extra_args
+jspace_validate_phase1_data_requirements
 
 if [[ "${SKIP_GPU_CHECK}" != "1" ]]; then
   jspace_log "All visible GPUs on this machine:"

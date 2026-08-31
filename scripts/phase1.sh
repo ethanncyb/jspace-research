@@ -12,6 +12,7 @@ jspace_resolve_python
 jspace_validate_config
 jspace_print_run_paths
 jspace_phase1_extra_args
+jspace_validate_phase1_data_requirements
 
 jspace_run_module jspace_research.phase1.cli \
   --config "${JSPACE_CONFIG_PATH}" \
