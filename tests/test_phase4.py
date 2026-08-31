@@ -322,3 +322,6 @@ def test_end_to_end_notebook_runs_phase4_after_phase3() -> None:
         index for index, text in enumerate(cells) if "Confirm persistence" in text
     )
     assert phase3_index < phase4_index < persistence_index
+    assert "import pandas as pd" in cells[phase4_index]
+    assert "from IPython.display import Image, display" in cells[phase4_index]
+    assert "selection = json.loads" in cells[persistence_index + 1]
