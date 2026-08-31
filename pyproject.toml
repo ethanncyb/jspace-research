@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jspace-research"
+version = "0.1.0"
+description = "Focused J-space prompt-injection representation research"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "accelerate",
+  "huggingface-hub",
+  "jsonlines",
+  "matplotlib",
+  "nltk",
+  "numpy",
+  "pandas",
+  "pyarrow",
+  "pyyaml",
+  "openai>=1.66",
+  "rouge-score",
+  "scipy",
+  "scikit-learn",
+  "torch",
+  "tqdm",
+  "transformers>=5.5",
+  "jlens @ git+https://github.com/anthropics/jacobian-lens.git@581d398613e5602a5af361e1c34d3a92ea82ba8e",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "ruff>=0.6"]
+phase4 = [
+  "agentdojo @ git+https://github.com/ethz-spylab/agentdojo.git@089ed468cf3ed0322acc66b0211f26d9d90dbf60",
+]
+
+[project.scripts]
+jspace-phase1 = "jspace_research.phase1.cli:main"
+jspace-phase2 = "jspace_research.phase2.cli:main"
+jspace-phase3 = "jspace_research.phase3.cli:main"
+jspace-phase4 = "jspace_research.phase4.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
