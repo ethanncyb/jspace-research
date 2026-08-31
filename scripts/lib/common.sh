@@ -209,6 +209,34 @@ jspace_import_check() {
     'import jspace_research, pandas, torch; from jspace_research.phase1.cli import main'
 }
 
+jspace_phase4_import_check() {
+  local python_executable="$1"
+  local use_user_site="${2:-0}"
+  local env=()
+  if [[ "${use_user_site}" == "1" ]]; then
+    env=(env PIP_USER=1)
+  else
+    env=(env PIP_USER=0 VIRTUAL_ENV="${JSPACE_VENV_DIR}" PYTHONNOUSERSITE=1)
+  fi
+  "${env[@]}" "${python_executable}" -c \
+    "import sys; sys.path.insert(0, '${JSPACE_AGENTDOJO_CHECKOUT}/src'); import anthropic, cohere; from google import genai; from agentdojo.agent_pipeline import AgentPipeline"
+}
+
+jspace_pip_install_agentdojo_checkout() {
+  local python_executable="$1"
+  local use_user_site="$2"
+  local cmd=(
+    "${python_executable}" -Im pip install
+  )
+  if [[ "${use_user_site}" == "1" ]]; then
+    cmd+=(--user)
+  else
+    cmd+=(--no-user)
+  fi
+  cmd+=(-e "${JSPACE_AGENTDOJO_CHECKOUT}")
+  (cd "${JSPACE_AGENTDOJO_CHECKOUT}" && "${cmd[@]}")
+}
+
 jspace_pip_install() {
   local python_executable="$1"
   local editable="$2"
@@ -252,6 +280,14 @@ jspace_try_project_venv() {
     fi
   fi
   jspace_import_check "${venv_python}" 0 || return 1
+  if ! jspace_phase4_import_check "${venv_python}" 0; then
+    jspace_log "Phase 4 dependencies missing; installing AgentDojo checkout and [phase4] extra"
+    jspace_pip_install_agentdojo_checkout "${venv_python}" 0 || return 1
+    if ! jspace_pip_install "${venv_python}" 1 0; then
+      jspace_pip_install "${venv_python}" 0 0 || return 1
+    fi
+    jspace_phase4_import_check "${venv_python}" 0 || return 1
+  fi
   JSPACE_PYTHON="${venv_python}"
   JSPACE_RUNTIME_MODE='project .venv'
 }
@@ -269,6 +305,8 @@ jspace_ensure_system_python() {
   fi
   jspace_import_check "${runtime_python}" 1 \
     || jspace_die "system python still cannot import jspace_research after pip install --user"
+  jspace_phase4_import_check "${runtime_python}" 1 \
+    || jspace_die "Phase 4 requires google-genai (AgentDojo dependency). Re-run ./scripts/setup.sh or: pip install 'jspace-research[phase4]'"
   JSPACE_PYTHON="${runtime_python}"
   JSPACE_RUNTIME_MODE='system python (--user install)'
 }
@@ -285,6 +323,31 @@ jspace_resolve_python() {
     jspace_log "Project virtualenv setup failed; falling back to system python with pip --user"
   fi
   jspace_ensure_system_python
+}
+
+jspace_check_phase4_dependencies() {
+  local use_user_site=0
+  if [[ "${JSPACE_RUNTIME_MODE:-}" == *"system python"* ]]; then
+    use_user_site=1
+  fi
+  jspace_phase4_import_check "${JSPACE_PYTHON}" "${use_user_site}" \
+    || jspace_die "Phase 4 requires AgentDojo runtime packages (anthropic, cohere, google-genai). Run ./scripts/setup.sh or: pip install 'jspace-research[phase4]'"
+}
+
+jspace_ensure_phase4_dependencies() {
+  local use_user_site=0
+  if [[ "${JSPACE_RUNTIME_MODE:-}" == *"system python"* ]]; then
+    use_user_site=1
+  fi
+  if jspace_phase4_import_check "${JSPACE_PYTHON}" "${use_user_site}"; then
+    return 0
+  fi
+  jspace_log "Installing AgentDojo checkout and Phase 4 dependencies"
+  jspace_pip_install_agentdojo_checkout "${JSPACE_PYTHON}" "${use_user_site}"
+  if ! jspace_pip_install "${JSPACE_PYTHON}" 1 "${use_user_site}"; then
+    jspace_pip_install "${JSPACE_PYTHON}" 0 "${use_user_site}"
+  fi
+  jspace_check_phase4_dependencies
 }
 
 jspace_pipeline_env() {

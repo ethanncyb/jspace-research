@@ -10,6 +10,7 @@ STAGE="${STAGE:-all}"
 
 jspace_resolve_python
 jspace_validate_config
+jspace_check_phase4_dependencies
 jspace_print_run_paths
 
 jspace_run_module jspace_research.phase4.cli \
