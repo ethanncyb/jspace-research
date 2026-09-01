@@ -1,0 +1,64 @@
+# Smoke run adapted for Qwen3.5-9B-Base on a 24 GB GPU (RTX 5090m).
+# Model revision is the current main-branch commit of Qwen/Qwen3.5-9B-Base.
+# Lens pins come from the prior qwen-humaneval-jlens study (layers 0-30).
+model:
+  id: Qwen/Qwen3.5-9B-Instruct
+  revision: 68c46c4b3498877f3ef123c856ecfde50c39f404
+  precision: bfloat16
+  quantization: "none"
+
+lens:
+  repository: neuronpedia/jacobian-lens
+  revision: qwen-n1000
+  filename: qwen3.5-9b-pt/jlens/Salesforce-wikitext/Qwen3.5-9B-Base_jacobian_lens.pt
+  sha256: a22ae1995d5adee383fee5626c77f5d105b8386f8772cadb8a34f2239e76f616
+
+dependencies:
+  jacobian_lens_revision: 581d398613e5602a5af361e1c34d3a92ea82ba8e
+  bipia_revision: a004b69ec0dd446e0afd461d98cb5e96e120a5d0
+
+data:
+  bipia_root: /content/BIPIA/benchmark
+  webqa_train_path: null
+  summarization_train_path: null
+
+output_dir: /content/jspace_phase1_smoke_qwen
+seed: 42
+tasks: [email]
+train_pairs_per_task: 12
+validation_pairs_per_task: 6
+max_input_tokens: 4096
+token_match_tolerance: 1
+sparsity_k: 25
+screen_candidates: 512
+decomposition_batch_size: 8
+dictionary_chunk_size: 4096
+smoke_layer_count: 6
+
+phase2:
+  alphas: [0.0, 0.5, 1.0]
+  max_new_tokens: 512
+  do_sample: false
+  generation_batch_size: 1
+  judge_model: openai/gpt-4.1-mini
+
+phase3:
+  penalty: l2
+  regularization_c: 1.0
+  solver: liblinear
+  fit_intercept: true
+  class_weight: null
+  random_state: 42
+  max_iter: 1000
+  tol: 0.0001
+
+phase4:
+  agentdojo_revision: 089ed468cf3ed0322acc66b0211f26d9d90dbf60
+  agentdojo_version: v1.2.2
+  agentdojo_suites: [banking, slack, travel, workspace]
+  agentdojo_attack: important_instructions
+  agentdojo_defense: null
+  injecagent_revision: f19c9f2c79a41046eb13c03c51a24c567a8ffa07
+  injecagent_setting: base
+  injecagent_prompt_type: InjecAgent
+  max_new_tokens: 512
