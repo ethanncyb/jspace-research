@@ -85,7 +85,7 @@ The implementation exists to answer the research questions above. Prefer the sma
 - Do not introduce base phase classes, generic pipeline engines, registries, plugin systems, or speculative extension points.
 - Share code only when implemented phases have a concrete repeated need. The intended shared surface is small: atomic artifact I/O, cache/provenance identity checks, runtime metadata, and the model execution boundary.
 - Treat validation, frozen artifacts, provenance, and resumable caches as necessary research safeguards rather than optional software polish.
-- Keep provenance lightweight: use one run identity plus direct completeness and compatibility checks, not a nested cryptographic dependency graph.
+- Keep provenance lightweight: use one run identity plus direct completeness and compatibility checks, not a nested cryptographic dependency graph. Every phase provenance artifact records the exact `jspace-research` Git commit used for that stage.
 - Do not refactor working scientific code merely to reduce line count. A cleanup should reduce the mental model or remove demonstrated duplication without obscuring the experiment.
 - A model/lens or benchmark contract describes scientific requirements; it does not require building a generalized framework before another model or benchmark is explicitly added to scope.
 - Stop implementation when the current phase's research question and completion criteria are satisfied.
@@ -1123,7 +1123,7 @@ The smoke run is integration validation only and may not change any frozen scien
 
 Smoke must prove the complete path for every benchmark: native input/trajectory \(\rightarrow\) correct decision point \(\rightarrow\) selected-layer decomposition \(\rightarrow\) both frozen detectors \(\rightarrow\) native outcome evaluation \(\rightarrow\) saved record. The scientific Phase 4 result requires every frozen benchmark condition above; do not create a larger smoke-test matrix.
 
-The smoke run must also confirm that the selected transfer prompts fit the frozen 4,096-token input limit. Fail on an overlength prompt; do not add benchmark-specific truncation.
+The smoke run must also confirm that each selected transfer prompt plus the fixed generation allowance fits the pinned model revision's native context window. Fail on an overlength prompt; do not add benchmark-specific truncation.
 
 ---
 

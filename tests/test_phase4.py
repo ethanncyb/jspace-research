@@ -325,3 +325,11 @@ def test_end_to_end_notebook_runs_phase4_after_phase3() -> None:
     assert "import pandas as pd" in cells[phase4_index]
     assert "from IPython.display import Image, display" in cells[phase4_index]
     assert "selection = json.loads" in cells[persistence_index + 1]
+
+    config_cell = next(text for text in cells if "RUN_MODE = 'smoke'" in text)
+    assert "DATA_ROOT = Path('/content/drive/MyDrive/jspace-research/data')" in config_cell
+    assert "if RUN_MODE == 'full':" in config_cell
+    assert "DATA_ROOT / 'webqa/train.jsonl'" in config_cell
+    assert "DATA_ROOT / 'summarization/train.jsonl'" in config_cell
+    assert "shutil.copy2(webqa_test" in config_cell
+    assert "shutil.copy2(summarization_test" in config_cell

@@ -51,7 +51,7 @@ print("CUDA available:", torch.cuda.is_available())
 print("GPU:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None")
 ```
 
-The pipeline refuses to run Phase 1 `capture`/`analyze` or Phase 2 `generate` without CUDA and records GPU identity in each phase's `provenance.json`.
+The pipeline refuses to run Phase 1 `capture`/`analyze` or Phase 2 `generate` without CUDA and records GPU identity in each phase's `provenance.json`. Every phase provenance file also records the exact `jspace-research` Git commit used for that stage, so scientific runs must execute from a Git checkout.
 
 ### Persist Colab results
 
@@ -69,14 +69,19 @@ RUN_ROOT = Path("/content/drive/MyDrive/jspace-research/runs") / RUN_NAME
 RUN_ROOT.mkdir(parents=True, exist_ok=True)
 ```
 
-For a full run, place the external datasets in persistent storage as well and configure their paths:
+For a full run, place the four researcher-provided BIPIA-format files under the notebook's single data root:
 
-```python
-WEBQA_TRAIN_PATH = Path("/content/drive/MyDrive/jspace-research/data/webqa/train.jsonl")
-SUMMARIZATION_TRAIN_PATH = Path(
-    "/content/drive/MyDrive/jspace-research/data/summarization/train.jsonl"
-)
+```text
+MyDrive/jspace-research/data/
+├── webqa/
+│   ├── train.jsonl
+│   └── test.jsonl
+└── summarization/
+    ├── train.jsonl
+    └── test.jsonl
 ```
+
+The canonical notebook derives all four paths from this layout, validates them, and stages the two test files into the temporary BIPIA checkout. After the one-time upload, switching `RUN_MODE` from `"smoke"` to `"full"` is the only required configuration change. With `USE_DRIVE = False`, use the same layout under `/content/jspace-data`; local and SSH users can keep the files anywhere and pass their paths through the existing phase CLIs.
 
 Writing directly to Drive prioritizes persistence over I/O speed. Alternatively, run under `/content` and copy the entire run root to Drive before the runtime ends. Use a new run root after changing frozen scientific inputs; reusing the same root resumes an identical run.
 

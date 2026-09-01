@@ -4,7 +4,17 @@ from pathlib import Path
 
 import pytest
 
-from jspace_research.runtime import append_jsonl, read_resumable_jsonl
+from jspace_research.runtime import (
+    append_jsonl,
+    read_resumable_jsonl,
+    repository_git_commit,
+)
+
+
+def test_repository_git_commit_is_exact_revision() -> None:
+    commit = repository_git_commit()
+    assert len(commit) in (40, 64)
+    assert set(commit) <= set("0123456789abcdef")
 
 
 def test_jsonl_cache_repairs_only_an_incomplete_final_record(tmp_path: Path) -> None:
