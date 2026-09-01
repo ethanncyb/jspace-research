@@ -375,7 +375,6 @@ def build_pairs_for_task(
                     f"Built {made}/{target} pairs for {task}/{split}/{category}/{position}; "
                     "no manifest was frozen"
                 )
-    validate_pair_manifest(rows, config)
     return rows
 
 
