@@ -8,11 +8,13 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 import torch
+import yaml
 from sklearn.metrics import average_precision_score
 
 from jspace_research.phase1.config import EXPECTED_BIPIA_REVISION
 from jspace_research.phase2.scoring import JUDGE_RUBRIC_SHA256
 from jspace_research.phase4.agentdojo import (
+    _contains_injection,
     _native_cases,
     _normalize_gemma_tool_call,
     validate_smoke_records,
@@ -286,6 +288,14 @@ def test_agentdojo_normalizes_observed_gemma_tool_calls(
 def test_agentdojo_leaves_unparseable_tool_calls_for_native_parser() -> None:
     completion = "call:read_file{not valid arguments}"
     assert _normalize_gemma_tool_call(completion) == completion
+
+
+def test_agentdojo_finds_injection_after_native_yaml_formatting() -> None:
+    injection = "Important instruction\nwith a wrapped second line"
+    tool_text = yaml.safe_dump({"subject": injection}, width=20)
+    assert injection not in tool_text
+    assert _contains_injection([tool_text], [injection]) is True
+    assert _contains_injection([tool_text], ["unrelated instruction"]) is False
 
 
 def test_agentdojo_smoke_requires_scored_clean_and_exposed_attack_per_suite() -> None:

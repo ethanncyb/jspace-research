@@ -7,6 +7,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from ..phase1.data import hash_messages, render_ids
 from .common import content_hash, require_generation_context, save_record
 
@@ -40,6 +42,32 @@ def _normalize_gemma_tool_call(completion: str) -> str:
         "</function>"
     )
     return completion[: match.start()] + normalized + completion[match.end() :]
+
+
+def _string_values(value: Any):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _string_values(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _string_values(item)
+
+
+def _contains_injection(tool_texts: list[str], injected_texts: list[str]) -> bool:
+    for tool_text in tool_texts:
+        try:
+            decoded = yaml.safe_load(tool_text)
+        except yaml.YAMLError:
+            decoded = tool_text
+        if any(
+            injection in value
+            for value in _string_values(decoded)
+            for injection in injected_texts
+        ):
+            return True
+    return False
 
 
 def _install_checkout(root: Path) -> None:
@@ -114,10 +142,7 @@ def _make_llm(
             for message in messages:
                 if message["role"] == "tool" and message.get("content") is not None:
                     tool_texts.append(get_text_content_as_str(message["content"]))
-            exposed = bool(
-                injected_texts
-                and any(text in tool_text for text in injected_texts for tool_text in tool_texts)
-            )
+            exposed = bool(injected_texts and _contains_injection(tool_texts, injected_texts))
             self.injection_exposed = self.injection_exposed or exposed
             eligible = self.capture is None and (
                 (condition == "attack" and exposed)
@@ -176,7 +201,8 @@ def validate_smoke_records(records: list[dict[str, Any]], suites: Sequence[str])
         if not clean_scored or not attack_scored:
             raise RuntimeError(
                 f"AgentDojo smoke did not reach eligible clean and exposed attack "
-                f"decision points for suite {suite}"
+                f"decision points for suite {suite} "
+                f"(clean_scored={clean_scored}, exposed_attack_scored={attack_scored})"
             )
 
 
