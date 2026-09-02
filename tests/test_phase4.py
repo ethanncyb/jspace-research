@@ -513,7 +513,7 @@ def test_end_to_end_notebook_runs_phase4_after_phase3() -> None:
 
     config_cell = next(text for text in cells if "RUN_MODE = 'smoke'" in text)
     install_cell = next(text for text in cells if "RESEARCH_REVISION" in text)
-    assert "RESEARCH_REVISION = 'remaining-phases'" in install_cell
+    assert "RESEARCH_REVISION = 'main'" in install_cell
     assert "DATA_ROOT = Path('/content/drive/MyDrive/jspace-research/data')" in config_cell
     assert "if RUN_MODE == 'full':" in config_cell
     assert "DATA_ROOT / 'webqa/train.jsonl'" in config_cell

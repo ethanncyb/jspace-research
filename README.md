@@ -34,7 +34,7 @@ Always start with the end-to-end smoke run. It uses EmailQA, 12 training pairs, 
 
 ## Option A: Google Colab
 
-Open the canonical [`notebooks/JSpace_End_to_End_Colab.ipynb`](notebooks/JSpace_End_to_End_Colab.ipynb), or [launch it directly in Colab](https://colab.research.google.com/github/ethanncyb/jspace-research/blob/remaining-phases/notebooks/JSpace_End_to_End_Colab.ipynb).
+Open the canonical [`notebooks/JSpace_End_to_End_Colab.ipynb`](notebooks/JSpace_End_to_End_Colab.ipynb), or [launch it directly in Colab](https://colab.research.google.com/github/ethanncyb/jspace-research/blob/main/notebooks/JSpace_End_to_End_Colab.ipynb).
 
 1. In Colab, select **Runtime → Change runtime type → GPU**. An A100-class runtime is recommended.
 2. Run the installation cell. It clones the experiment and the three pinned benchmark checkouts, installs the Phase 4 extra, and prints every resolved revision.
@@ -92,7 +92,7 @@ Run the following commands directly on a local CUDA workstation or in an SSH ses
 From the remote shell, clone and install the experiment:
 
 ```bash
-git clone --branch remaining-phases \
+git clone --branch main \
   https://github.com/ethanncyb/jspace-research.git
 cd jspace-research
 
