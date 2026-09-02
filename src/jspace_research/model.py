@@ -11,12 +11,13 @@ def _validate_primary_gpu_placement(hf_model: Any) -> None:
     if isinstance(device_map, dict) and device_map:
         placements = {str(device).lower() for device in device_map.values()}
     else:
+        placements: set[str] = set()
         parameters = getattr(hf_model, "parameters", None)
-        placements = (
-            {str(parameter.device).lower() for parameter in parameters()}
-            if callable(parameters)
-            else set()
-        )
+        if callable(parameters):
+            placements.update(str(parameter.device).lower() for parameter in parameters())
+        buffers = getattr(hf_model, "buffers", None)
+        if callable(buffers):
+            placements.update(str(buffer.device).lower() for buffer in buffers())
     if not placements:
         raise RuntimeError("Could not verify model placement on the primary CUDA GPU")
     if not placements.issubset({"0", "cuda", "cuda:0"}):

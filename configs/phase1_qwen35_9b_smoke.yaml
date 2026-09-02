@@ -1,14 +1,14 @@
 model:
-  id: google/gemma-4-12B-it
-  revision: 5926caa4ec0cac5cbfadaf4077420520de1d5205
+  id: Qwen/Qwen3.5-9B
+  revision: c202236235762e1c871ad0ccb60c8ee5ba337b9a
   precision: bfloat16
   quantization: "none"
 
 lens:
-  repository: solarkyle/jspace-lenses
-  revision: 1d95a2fc8a5c5a26c75a8c01c145173353e5fb65
-  filename: gemma-4-12b-it/lens.pt
-  sha256: 214ba70486c648d97cccb3c88d05cfb17adf9467c93b5d1f268fc4902e360048
+  repository: camilablank/workspace-lenses
+  revision: d740106d1e0f95456dc8718fba2895e9c8ffd6ef
+  filename: qwen3.5-9b/j-lens/lens.pt
+  sha256: e9396f37eec4c031462b24559b0360027ac45d5944628214301b8e54883b58f3
 
 dependencies:
   jacobian_lens_revision: 581d398613e5602a5af361e1c34d3a92ea82ba8e
@@ -19,18 +19,18 @@ data:
   webqa_train_path: null
   summarization_train_path: null
 
-output_dir: /content/jspace_phase1_full
+output_dir: artifacts/jspace-qwen35_9b-smoke/phase1
 seed: 42
-tasks: [email, qa, table, abstract, code]
-train_pairs_per_task: 500
-validation_pairs_per_task: 250
+tasks: [email]
+train_pairs_per_task: 12
+validation_pairs_per_task: 6
 max_input_tokens: 4096
 token_match_tolerance: 1
 sparsity_k: 25
 screen_candidates: 512
 decomposition_batch_size: 8
 dictionary_chunk_size: 4096
-smoke_layer_count: null
+smoke_layer_count: 6
 
 phase2:
   alphas: [0.0, 0.5, 1.0]

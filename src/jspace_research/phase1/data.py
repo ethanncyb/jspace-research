@@ -246,7 +246,9 @@ def _load_bipia_helpers() -> tuple[Any, dict[str, Callable[..., str]]]:
         from bipia.data.utils import insert_end, insert_middle, insert_start
     except ImportError as exc:
         raise RuntimeError(
-            "BIPIA is not importable. Install the pinned checkout before running prepare."
+            "BIPIA is not importable from the pinned checkout. Clone BIPIA at the "
+            "expected revision and ensure runtime dependencies (for example jsonlines "
+            "and nltk) are installed in the active environment."
         ) from exc
     return AutoPIABuilder, {
         "start": insert_start,
