@@ -177,7 +177,7 @@ def update_provenance(
     updates: dict[str, Any] | None = None,
 ) -> None:
     target = Path(path)
-    base = {**base, "jspace_research_git_commit": repository_git_commit()}
+    current_commit = repository_git_commit()
     if target.exists():
         value = read_json(target)
         for key, expected in base.items():
@@ -187,6 +187,16 @@ def update_provenance(
                 )
     else:
         value = {**base, **(defaults or {})}
+    commits = value.get("jspace_research_git_commits")
+    if commits is None:
+        previous_commit = value.get("jspace_research_git_commit")
+        commits = [] if previous_commit is None else [previous_commit]
+    if not isinstance(commits, list) or not all(isinstance(item, str) for item in commits):
+        raise RuntimeError(f"Invalid repository commit history in {target}")
+    if current_commit not in commits:
+        commits.append(current_commit)
+    value["jspace_research_git_commit"] = current_commit
+    value["jspace_research_git_commits"] = commits
     if updates:
         value.update(updates)
     atomic_write_json(target, value)
