@@ -56,15 +56,16 @@ def _string_values(value: Any):
 
 
 def _contains_injection(tool_texts: list[str], injected_texts: list[str]) -> bool:
+    normalized_injections = [" ".join(text.split()) for text in injected_texts if text.strip()]
     for tool_text in tool_texts:
         try:
             decoded = yaml.safe_load(tool_text)
         except yaml.YAMLError:
             decoded = tool_text
         if any(
-            injection in value
+            injection in " ".join(value.split())
             for value in _string_values(decoded)
-            for injection in injected_texts
+            for injection in normalized_injections
         ):
             return True
     return False

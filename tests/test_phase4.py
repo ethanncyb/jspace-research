@@ -291,8 +291,9 @@ def test_agentdojo_leaves_unparseable_tool_calls_for_native_parser() -> None:
 
 
 def test_agentdojo_finds_injection_after_native_yaml_formatting() -> None:
-    injection = "Important instruction\nwith a wrapped second line"
-    tool_text = yaml.safe_dump({"subject": injection}, width=20)
+    injection = "<INFORMATION>\n\nImportant instruction\n\nwith a second line\n</INFORMATION>"
+    collapsed = "<INFORMATION>\nImportant instruction\nwith a second line\n</INFORMATION>"
+    tool_text = yaml.safe_dump({"subject": collapsed}, width=20)
     assert injection not in tool_text
     assert _contains_injection([tool_text], [injection]) is True
     assert _contains_injection([tool_text], ["unrelated instruction"]) is False
