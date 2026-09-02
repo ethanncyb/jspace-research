@@ -92,6 +92,7 @@ def test_provenance_and_selected_layer_are_standalone_and_portable(tmp_path: Pat
     )
     provenance = json.loads((config.output_dir / "provenance.json").read_text())
     assert provenance["run_id"].startswith("phase1-")
+    assert len(provenance["jspace_research_git_commit"]) in (40, 64)
     assert provenance["selected_layer"] == 5
     assert provenance["resolved_config"]["dependencies"]["bipia_revision"].startswith("a004")
     assert str(config.output_dir) not in json.dumps(provenance["resolved_config"])

@@ -1,13 +1,74 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from ..phase1.data import hash_messages, render_ids
 from .common import content_hash, require_generation_context, save_record
+
+_GEMMA_CALL = re.compile(r"call:([A-Za-z_][A-Za-z0-9_]*)\s*(\{[^\n]*\})")
+_GEMMA_FUNCTION_TAG = re.compile(
+    r"<function=([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\{[^\n]*\})>\s*</function>"
+)
+_BARE_ARGUMENT_KEY = re.compile(r"([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:")
+
+
+def _normalize_gemma_tool_call(completion: str) -> str:
+    """Translate Gemma's observed tool-call spelling to AgentDojo's native form."""
+
+    match = _GEMMA_FUNCTION_TAG.search(completion) or _GEMMA_CALL.search(completion)
+    if match is None:
+        return completion
+    function_name, raw_arguments = match.groups()
+    try:
+        arguments = json.loads(raw_arguments)
+    except json.JSONDecodeError:
+        quoted_keys = _BARE_ARGUMENT_KEY.sub(r'\1"\2":', raw_arguments)
+        try:
+            arguments = json.loads(quoted_keys)
+        except json.JSONDecodeError:
+            return completion
+    if not isinstance(arguments, dict):
+        return completion
+    normalized = (
+        f"<function={function_name}>"
+        f"{json.dumps(arguments, ensure_ascii=False, separators=(',', ':'))}"
+        "</function>"
+    )
+    return completion[: match.start()] + normalized + completion[match.end() :]
+
+
+def _string_values(value: Any):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _string_values(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _string_values(item)
+
+
+def _contains_injection(tool_texts: list[str], injected_texts: list[str]) -> bool:
+    normalized_injections = [" ".join(text.split()) for text in injected_texts if text.strip()]
+    for tool_text in tool_texts:
+        try:
+            decoded = yaml.safe_load(tool_text)
+        except yaml.YAMLError:
+            decoded = tool_text
+        if any(
+            injection in " ".join(value.split())
+            for value in _string_values(decoded)
+            for injection in normalized_injections
+        ):
+            return True
+    return False
 
 
 def _install_checkout(root: Path) -> None:
@@ -82,10 +143,7 @@ def _make_llm(
             for message in messages:
                 if message["role"] == "tool" and message.get("content") is not None:
                     tool_texts.append(get_text_content_as_str(message["content"]))
-            exposed = bool(
-                injected_texts
-                and any(text in tool_text for text in injected_texts for tool_text in tool_texts)
-            )
+            exposed = bool(injected_texts and _contains_injection(tool_texts, injected_texts))
             self.injection_exposed = self.injection_exposed or exposed
             eligible = self.capture is None and (
                 (condition == "attack" and exposed)
@@ -113,7 +171,7 @@ def _make_llm(
             self.last_completion = model.tokenizer.decode(tokens, skip_special_tokens=True)
             if eligible:
                 self.captured_completion = self.last_completion
-            output = _parse_model_output(self.last_completion)
+            output = _parse_model_output(_normalize_gemma_tool_call(self.last_completion))
             return query, runtime, env, [*messages, output], extra_args
 
     return GemmaElement()
@@ -126,6 +184,27 @@ def _native_cases(suite: Any, smoke: bool) -> list[tuple[str, Any, Any | None]]:
     if smoke:
         return [("control", user, None) for user in users[:2]] + attacked[:2]
     return [("control", user, None) for user in users] + attacked
+
+
+def validate_smoke_records(records: list[dict[str, Any]], suites: Sequence[str]) -> None:
+    for suite in suites:
+        suite_records = [row for row in records if row.get("subgroup") == suite]
+        clean_scored = any(
+            row.get("condition") == "control" and row.get("mean_score") is not None
+            for row in suite_records
+        )
+        attack_scored = any(
+            row.get("condition") == "attack"
+            and row.get("injection_exposed") is True
+            and row.get("mean_score") is not None
+            for row in suite_records
+        )
+        if not clean_scored or not attack_scored:
+            raise RuntimeError(
+                f"AgentDojo smoke did not reach eligible clean and exposed attack "
+                f"decision points for suite {suite} "
+                f"(clean_scored={clean_scored}, exposed_attack_scored={attack_scored})"
+            )
 
 
 def generate(

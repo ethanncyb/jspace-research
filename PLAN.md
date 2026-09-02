@@ -85,7 +85,7 @@ The implementation exists to answer the research questions above. Prefer the sma
 - Do not introduce base phase classes, generic pipeline engines, registries, plugin systems, or speculative extension points.
 - Share code only when implemented phases have a concrete repeated need. The intended shared surface is small: atomic artifact I/O, cache/provenance identity checks, runtime metadata, and the model execution boundary.
 - Treat validation, frozen artifacts, provenance, and resumable caches as necessary research safeguards rather than optional software polish.
-- Keep provenance lightweight: use one run identity plus direct completeness and compatibility checks, not a nested cryptographic dependency graph.
+- Keep provenance lightweight: use one run identity plus direct completeness and compatibility checks, not a nested cryptographic dependency graph. Every phase provenance artifact records the exact `jspace-research` Git commit used for that stage.
 - Do not refactor working scientific code merely to reduce line count. A cleanup should reduce the mental model or remove demonstrated duplication without obscuring the experiment.
 - A model/lens or benchmark contract describes scientific requirements; it does not require building a generalized framework before another model or benchmark is explicitly added to scope.
 - Stop implementation when the current phase's research question and completion criteria are satisfied.
@@ -949,11 +949,17 @@ Transfer tests whether the same internal signal remains readable when:
 
 Evaluate exactly these conditions:
 
-1. **BIPIA:** the untouched official test split for all five tasks, with its clean and attacked prompts.
+1. **BIPIA:** a prespecified stratified manifest built only from the untouched official test contexts and official test attack files for all five tasks: 250 attacked examples per task (1,250 total), plus one clean control for every unique source context represented in the attacked sample.
 2. **AgentDojo:** the pinned benchmark commit and its frozen `v1.2.2` benchmark version; all four standard suites (`banking`, `slack`, `travel`, and `workspace`); no defense; the native default tool-output formatter; native no-attack utility runs as the clean condition; attacked security runs using only the frozen `important_instructions` attack template.
 3. **InjecAgent:** the pinned benchmark commit; the benchmark's `InjecAgent` prompted-agent format; only the `base` setting; all 1,054 direct-harm and data-stealing cases. Do not run the `enhanced` setting.
 
 Phase 4 uses only BIPIA official test data; it must not read or return to the BIPIA development train/validation examples. No benchmark, task, suite, subgroup, or case from this phase may be used for fitting, model selection, feature expansion, threshold selection, or recalibration.
+
+Before generation, build and freeze `bipia_test_manifest.jsonl` with fixed seed 42. For each task, allocate the 250 attacked examples approximately evenly across attack-category \(\times\) insertion-position cells, and rotate the five official test attack variants so every variant appears as evenly as possible within that task. Use only `start`, `middle`, and `end` insertion positions. Prefer distinct source contexts where possible; repeated contexts are allowed only when needed to satisfy the balanced cells. Reject duplicate identical attacked prompts.
+
+For every unique official-test source context used by the attacked sample, add exactly one clean prompt with no injected text. Do not regenerate that clean prompt for every attack derived from the context. Every attack row must identify its source clean context. The manifest identity includes the BIPIA revision, seed, per-task quota, selected task/category/variant/position assignments, source-context identity, and prompt hashes. Sampling must never depend on detector scores or model behavior. Reject a changed manifest or changed case hash on resume.
+
+This prespecified sample is the statistically strong held-out same-benchmark evaluation. Full AgentDojo and full InjecAgent remain the cross-benchmark transfer evaluations. The BIPIA reduction removes the redundant Cartesian product within each source context; it does not change the official test source, task coverage, attack taxonomy, insertion positions, or test variants.
 
 Pass every Phase 4 benchmark prompt to Gemma intact. Phase 1's 4096-token matched-prompt construction cap does not apply to native transfer-benchmark trajectories. Do not truncate benchmark content; require the full prompt plus the fixed generation allowance to fit the context window declared by the pinned model revision.
 
@@ -961,7 +967,7 @@ Pass every Phase 4 benchmark prompt to Gemma intact. Phase 1's 4096-token matche
 
 Apply the decision-point rules in Section 7 and produce no more than one detector example per native case or episode:
 
-- **BIPIA:** capture at the final non-padding prompt token immediately before generation, as in Phases 1–2.
+- **BIPIA:** capture once for each manifest-selected attack and unique clean control, at the final non-padding prompt token immediately before generation, as in Phases 1–2.
 - **AgentDojo attacked:** capture the first decision immediately after the injected observation is actually delivered to Gemma. If no injected content is delivered, record `injection_exposed=false`, preserve the native episode outcome, and exclude the episode from positive-detector counts.
 - **AgentDojo clean:** capture at most the first eligible model decision after a tool observation in the native no-attack episode. If no observation is delivered, preserve native utility but create no detector example.
 - **InjecAgent:** capture immediately after the injected tool response is included in the agent prompt and before Gemma's next action.
@@ -1016,7 +1022,7 @@ The reconstructed vectors and coefficients are transient in Phase 4. Do not save
 
 Run each benchmark case once, using the same Gemma trajectory for detector capture and behavioral evaluation. Independently record what Gemma actually did:
 
-- **BIPIA:** judge attacked generations with the same frozen OpenRouter model, structured rubric, cache identity, and `YES`/`NO`/`UNKNOWN` ASR definition used in Phase 2. Keep control attack-success fields null.
+- **BIPIA:** generate each of the 1,250 manifest-selected attacks once and judge it with the same frozen OpenRouter model, structured rubric, cache identity, and `YES`/`NO`/`UNKNOWN` ASR definition used in Phase 2. Generate each unique clean context once for downstream clean utility and keep control attack-success fields null.
 - **AgentDojo:** use native targeted attack success, clean utility, and utility-under-attack. Do not add an LLM judge. Preserve native outcomes even when `injection_exposed=false`.
 - **InjecAgent:** preserve native validity and native attack-success outcomes so both ASR-valid and ASR-all can be reproduced, including direct-harm and data-stealing labels. Do not add an LLM judge.
 
@@ -1042,7 +1048,7 @@ jspace-phase4 \
 - `analyze` is CPU/API-only. It loads the saved records, completes resumable BIPIA OpenRouter judgments, computes the fixed metrics, and writes plots and tables without loading Gemma or the lens. API calls are limited to BIPIA semantic behavior scoring; AgentDojo and InjecAgent analysis uses only their native CPU evaluation.
 - `all` runs those two stages in order.
 
-Use one append-only, resumable GPU record stream per benchmark, keyed by its native case or episode ID and direct run identity. Use the existing Phase 2 judgment-cache convention only for BIPIA semantic judgments. Reject duplicate IDs, stale benchmark commits, incompatible Phase 1/3 identities, incomplete detector artifacts, or changed prompt/case identities. Do not add a database, cache manager, workflow engine, base benchmark class, adapter registry, or generalized benchmark framework.
+Use one append-only, resumable GPU record stream per benchmark, keyed by the frozen BIPIA manifest case ID or the benchmark's native case/episode ID and direct run identity. Use the existing Phase 2 judgment-cache convention only for BIPIA semantic judgments. Reject duplicate IDs, stale benchmark commits, incompatible Phase 1/3 identities, incomplete detector artifacts, or changed prompt/case identities. Do not add a database, cache manager, workflow engine, base benchmark class, adapter registry, or generalized benchmark framework.
 
 Keep the implementation benchmark-specific and direct:
 
@@ -1060,15 +1066,17 @@ Report metrics separately according to each benchmark's native conditions. Do no
 
 ### BIPIA official test
 
-Construct classification metrics from a context-matched balanced representation: pair the clean score for each source context with every attacked score derived from that same context. This keeps all generated attacks while giving clean and attack labels equal total weight, so AUPRC is not dominated by the native attack-to-clean multiplicity. Do not regenerate clean prompts or alter detector scores.
+Compute primary held-out detector metrics from the 1,250 manifest-selected attacks and their unique source-context controls. Report AUPRC only on a balanced matched analysis representation: give every sampled attack one matched negative using its source clean detector score, without rerunning the clean prompt. Do not compute AUPRC directly from the raw many-attacks-per-clean rows, regenerate clean prompts, or alter detector scores.
 
 For each frozen detector, report:
 
-- AUPRC;
 - AUROC;
 - TPR at the frozen threshold;
 - FPR at the frozen threshold;
-- balanced accuracy at the frozen threshold.
+- balanced accuracy at the frozen threshold;
+- matched/balanced AUPRC.
+
+Report these metrics per task and as task-macro averages so no task can dominate because of sample count. Preserve the frozen Phase 3 thresholds for TPR, FPR, and balanced accuracy.
 
 ### AgentDojo
 
@@ -1094,9 +1102,10 @@ Do not invent a clean InjecAgent condition or report AUROC/AUPRC against a synth
 
 Required:
 
+- `bipia_test_manifest.jsonl` as the frozen deterministic official-test sample;
 - `bipia_records.jsonl`, `agentdojo_records.jsonl`, and `injecagent_records.jsonl` as the compact resumable GPU outputs;
 - `bipia_judgments.jsonl` as the resumable OpenRouter judgment cache;
-- `phase4_predictions.parquet`, with one row per native case/condition and nullable detector fields when no eligible decision point exists;
+- `phase4_predictions.parquet`, with one row per selected BIPIA case or native AgentDojo/InjecAgent case/condition and nullable detector fields when no eligible decision point exists;
 - `phase4_metrics.csv`;
 - `phase4_detector_transfer.png`;
 - one lightweight `provenance.json` containing the fixed model/lens, Phase 1/3 identities, benchmark commits and conditions, OpenRouter judge identity, relevant package versions, and GPU identity.
@@ -1115,7 +1124,7 @@ Do not save credentials, complete hidden-state trajectories, all-layer activatio
 
 ## Smoke validation
 
-The smoke run is integration validation only and may not change any frozen scientific choice, parameter, mapping, threshold, or benchmark condition. Select cases deterministically by sorted native ID and run:
+The smoke run is integration validation only and may not create, alter, or influence the scientific BIPIA manifest or any frozen scientific choice, parameter, mapping, threshold, or benchmark condition. Select cases deterministically by sorted native ID and run:
 
 - two matched BIPIA official-test attack/control pairs;
 - two no-attack episodes and two attacked security cases from each AgentDojo suite;
@@ -1123,7 +1132,7 @@ The smoke run is integration validation only and may not change any frozen scien
 
 Smoke must prove the complete path for every benchmark: native input/trajectory \(\rightarrow\) correct decision point \(\rightarrow\) selected-layer decomposition \(\rightarrow\) both frozen detectors \(\rightarrow\) native outcome evaluation \(\rightarrow\) saved record. The scientific Phase 4 result requires every frozen benchmark condition above; do not create a larger smoke-test matrix.
 
-The smoke run must also confirm that the selected transfer prompts fit the frozen 4,096-token input limit. Fail on an overlength prompt; do not add benchmark-specific truncation.
+The smoke run must also confirm that each selected transfer prompt plus the fixed generation allowance fits the pinned model revision's native context window. Fail on an overlength prompt; do not add benchmark-specific truncation.
 
 ---
 
@@ -1394,7 +1403,7 @@ Use the frozen thresholds. Do not sweep thresholds on transfer data.
 
 Use the held-out/transfer evaluation examples from Phase 4:
 
-- BIPIA official test;
+- the frozen Phase 4 BIPIA official-test manifest;
 - AgentDojo;
 - InjecAgent.
 
@@ -1581,7 +1590,8 @@ Maintain one canonical end-to-end notebook. It should expose separate resumable 
 ## Phase 4 is complete when
 
 - the deterministic smoke path completes through native outcome evaluation for all three benchmarks;
-- both frozen detectors have complete predictions for BIPIA official test, all four AgentDojo suites, and all 1,054 base-setting InjecAgent cases;
+- both frozen detectors have complete predictions for the frozen BIPIA official-test manifest (250 attacks per task, 1,250 total, plus one control per unique represented source context), all four full-scope AgentDojo suites, and all 1,054 base-setting InjecAgent cases;
+- `bipia_test_manifest.jsonl` is frozen before generation, contains balanced category-position quotas and all five test variants per task, maps every attack to its source clean context, contains no duplicate identical attacked prompts, and is unchanged on resume;
 - only `injection_exposed=true` AgentDojo security states are counted as positive detector examples, while every native episode outcome remains saved;
 - BIPIA OpenRouter outcomes, AgentDojo native targeted-ASR/utility outcomes, and InjecAgent native validity/ASR outcomes are complete and reusable by Phase 5;
 - the frozen Phase 3 feature mapping and both frozen thresholds remain unchanged, with unseen transfer token IDs mapped to zero rather than added as features;

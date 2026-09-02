@@ -34,7 +34,7 @@ Always start with the end-to-end smoke run. It uses EmailQA, 12 training pairs, 
 
 ## Option A: Google Colab
 
-Open the canonical [`notebooks/JSpace_End_to_End_Colab.ipynb`](notebooks/JSpace_End_to_End_Colab.ipynb), or [launch it directly in Colab](https://colab.research.google.com/github/ethanncyb/jspace-research/blob/prompt-injection-experiment/notebooks/JSpace_End_to_End_Colab.ipynb).
+Open the canonical [`notebooks/JSpace_End_to_End_Colab.ipynb`](notebooks/JSpace_End_to_End_Colab.ipynb), or [launch it directly in Colab](https://colab.research.google.com/github/ethanncyb/jspace-research/blob/main/notebooks/JSpace_End_to_End_Colab.ipynb).
 
 1. In Colab, select **Runtime → Change runtime type → GPU**. An A100-class runtime is recommended.
 2. Run the installation cell. It clones the experiment and the three pinned benchmark checkouts, installs the Phase 4 extra, and prints every resolved revision.
@@ -51,7 +51,7 @@ print("CUDA available:", torch.cuda.is_available())
 print("GPU:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None")
 ```
 
-The pipeline refuses to run Phase 1 `capture`/`analyze` or Phase 2 `generate` without CUDA and records GPU identity in each phase's `provenance.json`.
+The pipeline refuses to run Phase 1 `capture`/`analyze` or Phase 2 `generate` without CUDA and records GPU identity in each phase's `provenance.json`. Every phase provenance file also records the exact `jspace-research` Git commit used for that stage, so scientific runs must execute from a Git checkout.
 
 ### Persist Colab results
 
@@ -69,14 +69,19 @@ RUN_ROOT = Path("/content/drive/MyDrive/jspace-research/runs") / RUN_NAME
 RUN_ROOT.mkdir(parents=True, exist_ok=True)
 ```
 
-For a full run, place the external datasets in persistent storage as well and configure their paths:
+For a full run, place the four researcher-provided BIPIA-format files under the notebook's single data root:
 
-```python
-WEBQA_TRAIN_PATH = Path("/content/drive/MyDrive/jspace-research/data/webqa/train.jsonl")
-SUMMARIZATION_TRAIN_PATH = Path(
-    "/content/drive/MyDrive/jspace-research/data/summarization/train.jsonl"
-)
+```text
+MyDrive/jspace-research/data/
+├── webqa/
+│   ├── train.jsonl
+│   └── test.jsonl
+└── summarization/
+    ├── train.jsonl
+    └── test.jsonl
 ```
+
+The canonical notebook derives all four paths from this layout, validates them, and stages the two test files into the temporary BIPIA checkout. After the one-time upload, switching `RUN_MODE` from `"smoke"` to `"full"` is the only required configuration change. With `USE_DRIVE = False`, use the same layout under `/content/jspace-data`; local and SSH users can keep the files anywhere and pass their paths through the existing phase CLIs.
 
 Writing directly to Drive prioritizes persistence over I/O speed. Alternatively, run under `/content` and copy the entire run root to Drive before the runtime ends. Use a new run root after changing frozen scientific inputs; reusing the same root resumes an identical run.
 
@@ -87,7 +92,7 @@ Run the following commands directly on a local CUDA workstation or in an SSH ses
 From the remote shell, clone and install the experiment:
 
 ```bash
-git clone --branch prompt-injection-experiment \
+git clone --branch main \
   https://github.com/ethanncyb/jspace-research.git
 cd jspace-research
 
@@ -268,7 +273,7 @@ jspace-phase4 \
   --stage analyze
 ```
 
-Phase 4 appends one compact record per native case and benchmark. AgentDojo uses its pinned `v1.2.2` suites, native default tool-output formatting, no defense, and the fixed `important_instructions` attack. BIPIA classification metrics pair each attacked score with its source context's clean score, giving the two labels equal weight without additional generation. Rerunning `generate` resumes missing cases; `analyze` refuses incomplete or identity-mismatched records. Phase 4 passes each benchmark's native prompt intact, without applying Phase 1's 4,096-token construction cap or truncating content, and requires the prompt plus generation allowance to fit the pinned model's native context window. The smoke subset is deterministic integration validation only and never changes the frozen layer, feature map, detector parameters, or thresholds.
+Phase 4 appends one compact record per selected case and benchmark. Its BIPIA evaluation freezes a deterministic seed-42 `bipia_test_manifest.jsonl` before generation: 250 attacks per task (1,250 total) sampled only from official test contexts and test attack files, balanced as evenly as possible across attack-category × insertion-position cells and all five test variants. Every sampled attack maps to its source context, and each unique represented context is generated only once as a clean control. This is the prespecified held-out same-benchmark evaluation; the complete AgentDojo and InjecAgent runs are the cross-benchmark transfer tests. AgentDojo uses its pinned `v1.2.2` suites, native default tool-output formatting, no defense, and the fixed `important_instructions` attack. BIPIA AUPRC uses a matched balanced representation that pairs every sampled attack score with its source clean score without additional generation; primary metrics also include AUROC, frozen-threshold TPR/FPR, and balanced accuracy, reported per task and task-macro. Rerunning `generate` resumes missing cases and rejects a changed manifest or case identity; `analyze` refuses incomplete or identity-mismatched records. Phase 4 passes each selected benchmark prompt intact, without applying Phase 1's 4,096-token construction cap or truncating content, and requires the prompt plus generation allowance to fit the pinned model's native context window. The smoke subset is deterministic integration validation only and never affects the scientific manifest, frozen layer, feature map, detector parameters, or thresholds.
 
 ## Outputs and phase boundaries
 
@@ -300,7 +305,7 @@ Clean utility is ROUGE-based reference overlap against the frozen BIPIA `constru
 
 Phase 3 writes `mean_detector.pt`, `logistic_detector.pt`, `phase3_validation_scores.parquet`, `phase3_metrics.csv`, `phase3_detector_comparison.png`, and lightweight `provenance.json`. These are development results: the mean detector is reused from Phase 1, the logistic detector is fitted only on Phase 1 training examples, and both thresholds are selected on Phase 1 validation examples. Phase 4 is responsible for unbiased held-out evaluation.
 
-Phase 4 writes compact resumable `bipia_records.jsonl`, `agentdojo_records.jsonl`, and `injecagent_records.jsonl`, plus `bipia_judgments.jsonl`, `phase4_predictions.parquet`, `phase4_metrics.csv`, `phase4_detector_transfer.png`, and lightweight `provenance.json`. It captures only the frozen selected layer and does not retain hidden-state or reconstruction arrays. BIPIA receives classification metrics, AgentDojo receives frozen-threshold detector rates plus native utility/security outcomes, and InjecAgent receives frozen-threshold score distributions plus native validity and ASR. No Phase 4 example is used for tuning.
+Phase 4 writes the frozen `bipia_test_manifest.jsonl`, compact resumable `bipia_records.jsonl`, `agentdojo_records.jsonl`, and `injecagent_records.jsonl`, plus `bipia_judgments.jsonl`, `phase4_predictions.parquet`, `phase4_metrics.csv`, `phase4_detector_transfer.png`, and lightweight `provenance.json`. It captures only the frozen selected layer and does not retain hidden-state or reconstruction arrays. BIPIA receives matched held-out classification metrics, AgentDojo receives frozen-threshold detector rates plus native utility/security outcomes, and InjecAgent receives frozen-threshold score distributions plus native validity and ASR. No Phase 4 example is used for tuning.
 
 Verify and load a copied handoff with:
 

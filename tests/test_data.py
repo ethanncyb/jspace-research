@@ -138,6 +138,15 @@ def test_manifest_invariants_and_duplicate_rejection(tmp_path: Path) -> None:
         validate_pair_manifest(incomplete, config)
 
 
+def test_partial_task_validation_uses_only_current_task_quota(tmp_path: Path) -> None:
+    config = replace(make_config(tmp_path), tasks=("email", "qa"))
+    rows = [row("train", "ctx-train", 0, "train"), row("validation", "ctx-val", 3, "val")]
+
+    validate_pair_manifest(rows, config, tasks=("email",))
+    with pytest.raises(ValueError, match="Pair quotas do not match"):
+        validate_pair_manifest(rows, config)
+
+
 def test_manifest_rejects_unbalanced_category_position_cells(tmp_path: Path) -> None:
     config = replace(
         make_config(tmp_path),

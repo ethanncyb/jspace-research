@@ -4,6 +4,7 @@ import hashlib
 import importlib.metadata
 import json
 import os
+import subprocess
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
@@ -176,6 +177,7 @@ def update_provenance(
     updates: dict[str, Any] | None = None,
 ) -> None:
     target = Path(path)
+    base = {**base, "jspace_research_git_commit": repository_git_commit()}
     if target.exists():
         value = read_json(target)
         for key, expected in base.items():
@@ -188,6 +190,27 @@ def update_provenance(
     if updates:
         value.update(updates)
     atomic_write_json(target, value)
+
+
+def repository_git_commit() -> str:
+    """Return the exact repository commit used to execute an experiment stage."""
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=Path(__file__).resolve().parent,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise RuntimeError(
+            "Cannot determine the jspace-research Git commit; run from a Git checkout"
+        ) from exc
+    commit = result.stdout.strip().lower()
+    if len(commit) not in (40, 64) or any(character not in "0123456789abcdef" for character in commit):
+        raise RuntimeError("Git returned an invalid jspace-research commit")
+    return commit
 
 
 def package_versions(names: Iterable[str]) -> dict[str, str | None]:

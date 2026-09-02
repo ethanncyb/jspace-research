@@ -375,14 +375,19 @@ def build_pairs_for_task(
                     f"Built {made}/{target} pairs for {task}/{split}/{category}/{position}; "
                     "no manifest was frozen"
                 )
-    validate_pair_manifest(rows, config)
+    validate_pair_manifest(rows, config, tasks=(task,))
     return rows
 
 
-def validate_pair_manifest(rows: Sequence[dict[str, Any]], config: Phase1Config) -> None:
-    expected = {(task, "train"): config.train_pairs_per_task for task in config.tasks}
+def validate_pair_manifest(
+    rows: Sequence[dict[str, Any]],
+    config: Phase1Config,
+    tasks: Sequence[str] | None = None,
+) -> None:
+    expected_tasks = tuple(config.tasks if tasks is None else tasks)
+    expected = {(task, "train"): config.train_pairs_per_task for task in expected_tasks}
     expected.update(
-        {(task, "validation"): config.validation_pairs_per_task for task in config.tasks}
+        {(task, "validation"): config.validation_pairs_per_task for task in expected_tasks}
     )
     counts: dict[tuple[str, str], int] = {}
     pair_ids: set[str] = set()
@@ -432,7 +437,7 @@ def validate_pair_manifest(rows: Sequence[dict[str, Any]], config: Phase1Config)
 
     if counts != expected:
         raise ValueError(f"Pair quotas do not match: expected {expected}, found {counts}")
-    for task in config.tasks:
+    for task in expected_tasks:
         if not contexts[(task, "train")].isdisjoint(contexts[(task, "validation")]):
             raise ValueError(f"Source-context leakage for task {task}")
         if not variants[(task, "train")].isdisjoint(variants[(task, "validation")]):
