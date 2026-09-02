@@ -14,6 +14,7 @@ from ..phase1.config import load_config as load_phase1_config
 AGENTDOJO_REVISION = "089ed468cf3ed0322acc66b0211f26d9d90dbf60"
 INJECAGENT_REVISION = "f19c9f2c79a41046eb13c03c51a24c567a8ffa07"
 AGENTDOJO_SUITES = ("banking", "slack", "travel", "workspace")
+BIPIA_ATTACKS_PER_TASK = 250
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,14 @@ class Phase4Config:
             "benchmarks": {
                 "bipia_revision": self.phase1.dependencies.bipia_revision,
                 "bipia_split": "official_test",
+                "bipia_sampling": {
+                    "seed": 42,
+                    "attacks_per_task": BIPIA_ATTACKS_PER_TASK,
+                    "stratification": "attack_category_x_insertion_position",
+                    "test_variants": [0, 1, 2, 3, 4],
+                    "positions": ["start", "middle", "end"],
+                    "clean_controls": "one_per_unique_source_context",
+                },
                 "bipia_metric_weighting": "context_matched_class_balance",
                 "agentdojo_revision": self.agentdojo_revision,
                 "agentdojo_version": self.agentdojo_version,

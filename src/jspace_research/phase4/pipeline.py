@@ -65,6 +65,9 @@ def _identity(config: Phase4Config, handoff: Any, detectors: FrozenDetectors) ->
     return {
         "schema_version": 1,
         "phase4_config_sha256": config.identity_hash(),
+        "bipia_test_manifest_sha256": sha256_file(
+            config.output_dir / bipia.MANIFEST_NAME
+        ),
         "phase1_run_id": handoff.metadata["run_id"],
         "phase3_config_sha256": detectors.mean["phase3_config_sha256"],
         "mean_detector_sha256": sha256_file(config.phase3_dir / "mean_detector.pt"),
@@ -123,6 +126,7 @@ def generate(config: Phase4Config) -> Path:
     verify_bipia_revision(config.phase1)
     verify_checkout(config.agentdojo_root, config.agentdojo_revision, "AgentDojo")
     verify_checkout(config.injecagent_root, config.injecagent_revision, "InjecAgent")
+    bipia.prepare_manifest(config)
     handoff, detectors = _handoff(config)
     identity = _identity(config, handoff, detectors)
     _provenance(config, handoff, detectors)
@@ -288,46 +292,92 @@ def _defined_mean(values: pd.Series) -> tuple[float, int]:
     return float(defined.mean()), len(defined)
 
 
+def _append_bipia_metrics(
+    rows: list[dict[str, Any]],
+    predictions: pd.DataFrame,
+    thresholds: dict[str, float],
+    *,
+    scope: str,
+    subgroup: str | None,
+) -> None:
+    attacks = predictions[predictions.condition == "attack"]
+    controls = (
+        predictions[predictions.condition == "control"]
+        .sort_values("case_id")
+        .drop_duplicates("context_id")
+    )
+    if attacks.empty or controls.empty:
+        raise RuntimeError("BIPIA metrics require attacked and clean examples")
+    raw = pd.concat([attacks, controls], ignore_index=True)
+    raw_labels = (raw.condition == "attack").to_numpy(dtype=np.int64)
+    matched = _balanced_bipia_rows(predictions)
+    matched_labels = (matched.condition == "attack").to_numpy(dtype=np.int64)
+
+    for detector in ("mean", "logistic"):
+        threshold = thresholds[detector]
+        attack_scores = attacks[f"{detector}_score"].to_numpy(dtype=float)
+        control_scores = controls[f"{detector}_score"].to_numpy(dtype=float)
+        raw_scores = raw[f"{detector}_score"].to_numpy(dtype=float)
+        matched_scores = matched[f"{detector}_score"].to_numpy(dtype=float)
+        tpr = float((attack_scores >= threshold).mean())
+        fpr = float((control_scores >= threshold).mean())
+        values = {
+            "auprc": (average_precision_score(matched_labels, matched_scores), len(matched)),
+            "auroc": (roc_auc_score(raw_labels, raw_scores), len(raw)),
+            "tpr": (tpr, len(attacks)),
+            "fpr": (fpr, len(controls)),
+            "balanced_accuracy": ((tpr + 1 - fpr) / 2, len(raw)),
+        }
+        for metric, (value, count) in values.items():
+            rows.append(
+                _detector_rows(
+                    benchmark="bipia",
+                    scope=scope,
+                    subgroup=subgroup,
+                    metric=metric,
+                    detector=detector,
+                    value=float(value),
+                    n=count,
+                    threshold=threshold,
+                )
+            )
+
+
 def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     thresholds = {
         "mean": float(detectors.mean["threshold"]),
         "logistic": float(detectors.logistic["threshold"]),
     }
-    bipia_rows = _balanced_bipia_rows(predictions)
-    labels = (bipia_rows.condition == "attack").to_numpy(dtype=np.int64)
-    for detector in ("mean", "logistic"):
-        scores = bipia_rows[f"{detector}_score"].to_numpy(dtype=float)
-        decisions = scores >= thresholds[detector]
-        tpr = float(decisions[labels == 1].mean())
-        fpr = float(decisions[labels == 0].mean())
-        values = {
-            "auprc": average_precision_score(labels, scores),
-            "auroc": roc_auc_score(labels, scores),
-            "tpr": tpr,
-            "fpr": fpr,
-            "balanced_accuracy": (tpr + 1 - fpr) / 2,
-        }
-        for metric, value in values.items():
-            count = (
-                int((labels == 1).sum())
-                if metric == "tpr"
-                else int((labels == 0).sum())
-                if metric == "fpr"
-                else len(bipia_rows)
+    bipia_predictions = predictions[predictions.benchmark == "bipia"]
+    _append_bipia_metrics(
+        rows, bipia_predictions, thresholds, scope="overall", subgroup=None
+    )
+    for task in sorted(bipia_predictions.task.dropna().unique()):
+        _append_bipia_metrics(
+            rows,
+            bipia_predictions[bipia_predictions.task == task],
+            thresholds,
+            scope="task",
+            subgroup=str(task),
+        )
+    task_rows = pd.DataFrame(rows)
+    task_rows = task_rows[
+        (task_rows.benchmark == "bipia") & (task_rows.scope == "task")
+    ]
+    for (detector, metric), values in task_rows.groupby(["detector", "metric"], sort=True):
+        rows.append(
+            _detector_rows(
+                benchmark="bipia",
+                scope="macro",
+                subgroup=None,
+                metric=str(metric),
+                detector=str(detector),
+                value=float(values.value.mean()),
+                n=len(values),
+                threshold=thresholds[str(detector)],
             )
-            rows.append(
-                _detector_rows(
-                    benchmark="bipia",
-                    scope="overall",
-                    subgroup=None,
-                    metric=metric,
-                    detector=detector,
-                    value=float(value),
-                    n=count,
-                    threshold=thresholds[detector],
-                )
-            )
+        )
 
     dojo = predictions[predictions.benchmark == "agentdojo"]
     for subgroup in [None, *sorted(dojo.subgroup.dropna().unique())]:
@@ -456,6 +506,7 @@ def _plot(config: Phase4Config, metrics: pd.DataFrame) -> Path:
 
 def analyze(config: Phase4Config, *, judge: Any | None = None) -> Path:
     config.output_dir.mkdir(parents=True, exist_ok=True)
+    manifest_cases = bipia.load_manifest(config)
     handoff, detectors = _handoff(config)
     identity = _identity(config, handoff, detectors)
     _provenance(config, handoff, detectors)
@@ -473,6 +524,10 @@ def analyze(config: Phase4Config, *, judge: Any | None = None) -> Path:
     actual_counts = {name: len(values) for name, values in records.items()}
     if provenance.get("generation_record_counts") != actual_counts:
         raise RuntimeError("Phase 4 generation record counts do not match provenance")
+    expected_bipia_ids = {row["case_id"] for row in manifest_cases}
+    actual_bipia_ids = {row["case_id"] for row in records["bipia"]}
+    if actual_bipia_ids != expected_bipia_ids:
+        raise RuntimeError("Phase 4 BIPIA records do not match the frozen test manifest")
     judgments, routing = _judge_bipia(config, records["bipia"], judge)
 
     rows: list[dict[str, Any]] = []
@@ -483,10 +538,14 @@ def analyze(config: Phase4Config, *, judge: Any | None = None) -> Path:
                 {
                     "case_id": value["case_id"],
                     "context_id": value.get("context_id"),
+                    "source_clean_case_id": value.get("source_clean_case_id"),
                     "benchmark": benchmark,
                     "task": value.get("task"),
                     "subgroup": value.get("subgroup"),
                     "condition": value["condition"],
+                    "attack_category": value.get("attack_category"),
+                    "attack_variant_id": value.get("attack_variant_id"),
+                    "position": value.get("position"),
                     "injection_exposed": value.get("injection_exposed"),
                     "mean_score": value.get("mean_score"),
                     "mean_prediction": value.get("mean_prediction"),
@@ -525,6 +584,10 @@ def analyze(config: Phase4Config, *, judge: Any | None = None) -> Path:
             "analysis_packages": package_versions(PACKAGES),
             "judge_routing": routing,
             "artifacts": {
+                "bipia_test_manifest": {
+                    "path": bipia.MANIFEST_NAME,
+                    "sha256": sha256_file(config.output_dir / bipia.MANIFEST_NAME),
+                },
                 "predictions": {
                     "path": predictions_path.name,
                     "sha256": sha256_file(predictions_path),
