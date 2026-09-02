@@ -155,6 +155,11 @@ def generate(config: Phase4Config) -> Path:
 
     bipia.generate(config, model, detectors, cached["bipia"], identity)
     agentdojo.generate(config, model, detectors, cached["agentdojo"], identity)
+    if config.smoke:
+        agentdojo.validate_smoke_records(
+            read_resumable_jsonl(config.output_dir / "agentdojo_records.jsonl"),
+            config.agentdojo_suites,
+        )
     injecagent.generate(config, model, detectors, cached["injecagent"], identity)
 
     _provenance(

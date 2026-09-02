@@ -12,7 +12,11 @@ from sklearn.metrics import average_precision_score
 
 from jspace_research.phase1.config import EXPECTED_BIPIA_REVISION
 from jspace_research.phase2.scoring import JUDGE_RUBRIC_SHA256
-from jspace_research.phase4.agentdojo import _native_cases
+from jspace_research.phase4.agentdojo import (
+    _native_cases,
+    _normalize_gemma_tool_call,
+    validate_smoke_records,
+)
 from jspace_research.phase4.bipia import (
     MANIFEST_NAME,
     TEST_VARIANTS,
@@ -250,6 +254,60 @@ def test_agentdojo_smoke_uses_first_sorted_native_cases() -> None:
         ("attack", "user-1", "injection-1"),
         ("attack", "user-1", "injection-2"),
     ]
+
+
+@pytest.mark.parametrize(
+    ("completion", "expected_call"),
+    [
+        (
+            'thought\ncall:read_file{"file_path": "bill-december-2023.txt"}',
+            '<function=read_file>{"file_path":"bill-december-2023.txt"}</function>',
+        ),
+        (
+            "thought\ncall:get_most_recent_transactions{n:100}",
+            '<function=get_most_recent_transactions>{"n":100}</function>',
+        ),
+        (
+            'thought\n<function=get_webpage={"url": "www.informations.com"}></function>',
+            '<function=get_webpage>{"url":"www.informations.com"}</function>',
+        ),
+        (
+            'call:search_calendar_events{query: "Networking event",date: "2025-05-26"}',
+            '<function=search_calendar_events>{"query":"Networking event","date":"2025-05-26"}</function>',
+        ),
+    ],
+)
+def test_agentdojo_normalizes_observed_gemma_tool_calls(
+    completion: str, expected_call: str
+) -> None:
+    assert expected_call in _normalize_gemma_tool_call(completion)
+
+
+def test_agentdojo_leaves_unparseable_tool_calls_for_native_parser() -> None:
+    completion = "call:read_file{not valid arguments}"
+    assert _normalize_gemma_tool_call(completion) == completion
+
+
+def test_agentdojo_smoke_requires_scored_clean_and_exposed_attack_per_suite() -> None:
+    records = [
+        {
+            "subgroup": "banking",
+            "condition": "control",
+            "injection_exposed": False,
+            "mean_score": -1.0,
+        },
+        {
+            "subgroup": "banking",
+            "condition": "attack",
+            "injection_exposed": True,
+            "mean_score": 1.0,
+        },
+    ]
+    validate_smoke_records(records, ["banking"])
+    records[1]["injection_exposed"] = False
+    records[1]["mean_score"] = None
+    with pytest.raises(RuntimeError, match="suite banking"):
+        validate_smoke_records(records, ["banking"])
 
 
 def test_bipia_metrics_balance_clean_scores_by_source_context() -> None:
