@@ -6,6 +6,8 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from typing import Any
 
+from tqdm.auto import tqdm
+
 from ..phase1.data import (
     POSITIONS,
     TASK_DISPLAY,
@@ -274,6 +276,9 @@ def generate(
     unexpected = sorted(set(completed) - expected_ids)
     if unexpected:
         raise RuntimeError(f"Unexpected cached BIPIA case ID: {unexpected[0]}")
+    progress = tqdm(
+        total=len(cases), initial=len(completed), desc="Phase 4 BIPIA generation"
+    )
     for case in cases:
         if case["case_id"] in completed:
             if completed[case["case_id"]].get("case_hash") != content_hash(case):
@@ -304,3 +309,5 @@ def generate(
                 "native_attack_success": None,
             },
         )
+        progress.update()
+    progress.close()

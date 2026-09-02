@@ -7,6 +7,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from tqdm.auto import tqdm
+
 from ..phase1.data import hash_messages, render_ids
 from .common import content_hash, require_generation_context, save_record
 
@@ -128,6 +130,9 @@ def generate(
     unexpected = sorted(set(completed) - expected_ids)
     if unexpected:
         raise RuntimeError(f"Unexpected cached InjecAgent case ID: {unexpected[0]}")
+    progress = tqdm(
+        total=len(cases), initial=len(completed), desc="Phase 4 InjecAgent generation"
+    )
     for case in cases:
         case_hash = content_hash(case)
         if case["case_id"] in completed:
@@ -204,3 +209,5 @@ def generate(
                 "native_step2_result": second_eval["eval"] if second_eval else None,
             },
         )
+        progress.update()
+    progress.close()

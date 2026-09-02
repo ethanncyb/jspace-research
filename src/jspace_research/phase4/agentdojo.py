@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from tqdm.auto import tqdm
 
 from ..phase1.data import hash_messages, render_ids
 from .common import content_hash, require_generation_context, save_record
@@ -244,6 +245,9 @@ def generate(
     if unexpected:
         raise RuntimeError(f"Unexpected cached AgentDojo case ID: {unexpected[0]}")
 
+    progress = tqdm(
+        total=len(suite_cases), initial=len(completed), desc="Phase 4 AgentDojo generation"
+    )
     for suite_name, suite, condition, user_task, injection_task, case_basis in suite_cases:
         case_id = case_basis["case_id"]
         tracker = _make_llm(
@@ -328,3 +332,5 @@ def generate(
                 ),
             },
         )
+        progress.update()
+    progress.close()
