@@ -36,6 +36,18 @@ def test_render_ids_unwraps_mapping_tokenizer_output() -> None:
     assert input_ids.shape == (1, 3)
 
 
+def test_render_ids_disables_thinking_for_qwen_templates() -> None:
+    class QwenTokenizer:
+        chat_template = "{% if enable_thinking %}think{% endif %}"
+
+        def apply_chat_template(self, *args: object, **kwargs: object) -> torch.Tensor:
+            assert kwargs.get("enable_thinking") is False
+            return torch.tensor([[1, 2, 3]])
+
+    input_ids = render_ids(QwenTokenizer(), [{"role": "user", "content": "test"}])
+    assert input_ids.shape == (1, 3)
+
+
 def test_construct_target_uses_bipia_builder_response() -> None:
     class Builder:
         def construct_response(self, record: dict) -> str:

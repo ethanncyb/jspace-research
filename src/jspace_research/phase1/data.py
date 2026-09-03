@@ -133,12 +133,20 @@ def hash_messages(messages: Sequence[dict[str, str]]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _disable_thinking_kwargs(tokenizer: Any) -> dict[str, bool]:
+    template = getattr(tokenizer, "chat_template", None) or ""
+    if "enable_thinking" in template:
+        return {"enable_thinking": False}
+    return {}
+
+
 def render_ids(tokenizer: Any, messages: Sequence[dict[str, str]]) -> Any:
     encoded = tokenizer.apply_chat_template(
         list(messages),
         tokenize=True,
         add_generation_prompt=True,
         return_tensors="pt",
+        **_disable_thinking_kwargs(tokenizer),
     )
     return encoded["input_ids"] if isinstance(encoded, Mapping) else encoded
 
