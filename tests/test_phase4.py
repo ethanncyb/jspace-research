@@ -216,6 +216,33 @@ def test_phase4_record_resumption_rejects_stale_identity(tmp_path) -> None:
         completed_records(path, {"phase4_config_sha256": "c" * 64})
 
 
+def test_phase4_record_resumption_keeps_identical_duplicate_case_ids(tmp_path) -> None:
+    path = tmp_path / "records.jsonl"
+    identity = {"phase4_config_sha256": "a" * 64}
+    record = {
+        **identity,
+        "case_id": "case-1",
+        "case_hash": "b" * 64,
+        "benchmark": "bipia",
+        "context_id": "email:test:00000",
+        "condition": "attack",
+        "generated_response": "response",
+        "mean_score": 1.0,
+        "mean_prediction": True,
+        "logistic_score": 2.0,
+        "logistic_prediction": True,
+    }
+    save_record(path, record)
+    save_record(path, record)
+    assert set(completed_records(path, identity)) == {"case-1"}
+    assert sum(1 for _ in path.read_text(encoding="utf-8").splitlines() if _.strip()) == 1
+    conflicting = {**record, "generated_response": "other"}
+    save_record(path, conflicting)
+    completed = completed_records(path, identity)
+    assert completed["case-1"]["generated_response"] == "response"
+    assert sum(1 for _ in path.read_text(encoding="utf-8").splitlines() if _.strip()) == 1
+
+
 def test_agentdojo_smoke_uses_first_sorted_native_cases() -> None:
     suite = SimpleNamespace(
         user_tasks={"user-2": object(), "user-1": object()},

@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from ..runtime import append_jsonl, read_resumable_jsonl, validate_identity_fields
+from ..runtime import append_jsonl, atomic_write_jsonl, read_resumable_jsonl, validate_identity_fields
 
 
 def verify_checkout(root: Path, expected_revision: str, name: str) -> None:
@@ -41,14 +41,34 @@ def require_generation_context(
         )
 
 
+def _record_signature(row: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        row.get("case_hash"),
+        row.get("generated_response"),
+        row.get("mean_score"),
+        row.get("mean_prediction"),
+        row.get("logistic_score"),
+        row.get("logistic_prediction"),
+    )
+
+
 def completed_records(path: Path, identity: dict[str, Any]) -> dict[str, dict[str, Any]]:
     rows = read_resumable_jsonl(path)
     completed: dict[str, dict[str, Any]] = {}
+    unique_rows: list[dict[str, Any]] = []
+    found_duplicate = False
     for row in rows:
         validate_identity_fields(path, row, identity)
         case_id = row.get("case_id")
-        if not isinstance(case_id, str) or case_id in completed:
-            raise RuntimeError(f"Duplicate or invalid case ID in {path}")
+        if not isinstance(case_id, str):
+            raise RuntimeError(f"Invalid case ID in {path}")
+        if case_id in completed:
+            if _record_signature(completed[case_id]) != _record_signature(row):
+                print(
+                    f"Keeping the first record for conflicting case ID {case_id} in {path}"
+                )
+            found_duplicate = True
+            continue
         if not isinstance(row.get("case_hash"), str) or not isinstance(
             row.get("generated_response"), str
         ):
@@ -84,6 +104,9 @@ def completed_records(path: Path, identity: dict[str, Any]) -> dict[str, dict[st
             if not isinstance(exposed, bool) or exposed == missing_detector:
                 raise RuntimeError(f"Inconsistent AgentDojo exposure state in {path}")
         completed[case_id] = row
+        unique_rows.append(row)
+    if found_duplicate:
+        atomic_write_jsonl(path, unique_rows)
     return completed
 
 

@@ -230,22 +230,21 @@ def generate(
             "logistic_prediction": None,
             "prompt_hash": None,
         }
-        save_record(
-            output_path,
-            {
-                **identity,
-                **case_basis,
-                "case_hash": case_hash,
-                "benchmark": "agentdojo",
-                "task": None,
-                "subgroup": suite_name,
-                **detector,
-                "injection_exposed": tracker.injection_exposed,
-                "generated_response": tracker.captured_completion or tracker.last_completion,
-                "native_valid": None,
-                "native_utility": bool(utility),
-                "native_attack_success": (
-                    bool(attack_success) if injection_task is not None else None
-                ),
-            },
-        )
+        record = {
+            **identity,
+            **case_basis,
+            "case_hash": case_hash,
+            "benchmark": "agentdojo",
+            "task": None,
+            "subgroup": suite_name,
+            **detector,
+            "injection_exposed": tracker.injection_exposed,
+            "generated_response": tracker.captured_completion or tracker.last_completion,
+            "native_valid": None,
+            "native_utility": bool(utility),
+            "native_attack_success": (
+                bool(attack_success) if injection_task is not None else None
+            ),
+        }
+        save_record(output_path, record)
+        completed[case_id] = record

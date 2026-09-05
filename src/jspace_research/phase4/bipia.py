@@ -123,17 +123,16 @@ def generate(
         )
         result = scorer.score(residual, scorer.dictionary)
         generation = model.tokenizer.decode(tokens, skip_special_tokens=True).strip()
-        save_record(
-            output_path,
-            {
-                **identity,
-                **{key: value for key, value in case.items() if key != "messages"},
-                "case_hash": content_hash(case),
-                **result,
-                "injection_exposed": case["condition"] == "attack",
-                "generated_response": generation,
-                "native_valid": None,
-                "native_utility": None,
-                "native_attack_success": None,
-            },
-        )
+        record = {
+            **identity,
+            **{key: value for key, value in case.items() if key != "messages"},
+            "case_hash": content_hash(case),
+            **result,
+            "injection_exposed": case["condition"] == "attack",
+            "generated_response": generation,
+            "native_valid": None,
+            "native_utility": None,
+            "native_attack_success": None,
+        }
+        save_record(output_path, record)
+        completed[case["case_id"]] = record

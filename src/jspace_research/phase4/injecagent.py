@@ -186,21 +186,20 @@ def generate(
             if case["subgroup"] == "direct_harm"
             else bool(second_eval and second_eval["eval"] == "succ")
         )
-        save_record(
-            output_path,
-            {
-                **identity,
-                **{key: value for key, value in case.items() if key != "item"},
-                "case_hash": case_hash,
-                "prompt_hash": hash_messages(messages),
-                **scorer.score(residual, scorer.dictionary),
-                "injection_exposed": True,
-                "generated_response": output,
-                "second_generated_response": second_output,
-                "native_valid": native_valid,
-                "native_utility": None,
-                "native_attack_success": native_success,
-                "native_step1_result": first["eval"],
-                "native_step2_result": second_eval["eval"] if second_eval else None,
-            },
-        )
+        record = {
+            **identity,
+            **{key: value for key, value in case.items() if key != "item"},
+            "case_hash": case_hash,
+            "prompt_hash": hash_messages(messages),
+            **scorer.score(residual, scorer.dictionary),
+            "injection_exposed": True,
+            "generated_response": output,
+            "second_generated_response": second_output,
+            "native_valid": native_valid,
+            "native_utility": None,
+            "native_attack_success": native_success,
+            "native_step1_result": first["eval"],
+            "native_step2_result": second_eval["eval"] if second_eval else None,
+        }
+        save_record(output_path, record)
+        completed[case["case_id"]] = record
