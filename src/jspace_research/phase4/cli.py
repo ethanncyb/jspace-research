@@ -19,6 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--injecagent-root", required=True, help="Pinned InjecAgent checkout")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--stage", choices=("generate", "analyze", "all"), default="all")
+    parser.add_argument("--k", type=int, help="K to select from a Phase 1 sweep (default: 25)")
     return parser
 
 
@@ -30,6 +31,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         load_config(
             args.config,
             phase1_selected_path=args.phase1,
+            k=args.k,
             phase3_dir=args.phase3,
             bipia_root=args.bipia_root,
             agentdojo_root=args.agentdojo_root,

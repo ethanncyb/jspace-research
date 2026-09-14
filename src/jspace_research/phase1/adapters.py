@@ -22,6 +22,7 @@ class JacobianLensAdapter:
     @classmethod
     def load(cls, config: Phase1Config) -> JacobianLensAdapter:
         from huggingface_hub import hf_hub_download
+
         from jlens import JacobianLens
 
         path = Path(

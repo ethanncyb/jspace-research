@@ -48,3 +48,12 @@ STAGE=generate ./scripts/phase2.sh
 STAGE=analyze ./scripts/phase2.sh
 JSPACE_PHYSICAL_GPU_INDEX=2 ./scripts/phase1.sh
 ```
+
+
+## K/W experiments
+
+Edit `sparsity_k_values`, `output_token_windows`, and `phase2.alphas` in the shared YAML. The Phase 1 launcher captures prompts once and selects one layer per K. The Phase 2 launcher automatically follows `selected_layers.json` and runs the Cartesian product of K and W, with all alphas inside each combination. A scalar legacy handoff is also supported.
+
+Results for individual combinations are in `phase2/k{K}/w{W}/`; combined results and plots are at `phase2/`. Quality judging runs for both clean and attack outputs and uses the same OpenRouter key as attack judging. Use a new run root when changing the sweep.
+
+Phase 3 and 4 remain single-K stages. Set `JSPACE_K=20` for both launchers to select K=20, with separate output directories/run settings for its detector artifacts. Without this variable, a sweep containing K=25 selects it; other sweeps require explicit selection.

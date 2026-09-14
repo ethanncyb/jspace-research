@@ -5,15 +5,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
 STAGE="${STAGE:-all}"
 jspace_bootstrap
+JSPACE_PHASE1_SELECTION="${JSPACE_PHASE1_DIR}/selected_layers.json"
+if [[ ! -f "${JSPACE_PHASE1_SELECTION}" ]]; then
+  JSPACE_PHASE1_SELECTION="${JSPACE_PHASE1_DIR}/selected_layer.json"
+fi
 PHASE4_BASE=(
   --config "${JSPACE_CONFIG_PATH}"
-  --phase1 "${JSPACE_PHASE1_DIR}/selected_layer.json"
+  --phase1 "${JSPACE_PHASE1_SELECTION}"
   --phase3 "${JSPACE_PHASE3_DIR}"
   --bipia-root "${JSPACE_BIPIA_ROOT}"
   --agentdojo-root "${JSPACE_AGENTDOJO_CHECKOUT}"
   --injecagent-root "${JSPACE_INJECAGENT_CHECKOUT}"
   --output-dir "${JSPACE_PHASE4_DIR}"
 )
+if [[ -n "${JSPACE_K:-}" ]]; then
+  PHASE4_BASE+=(--k "${JSPACE_K}")
+fi
 case "${STAGE}" in
   generate)
     jspace_check_gpu

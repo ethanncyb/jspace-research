@@ -60,6 +60,7 @@ class Phase1Config:
     decomposition_batch_size: int
     dictionary_chunk_size: int
     smoke_layer_count: int | None = None
+    k_values: tuple[int, ...] = ()
 
     def validate(self, *, require_data_files: bool = False) -> None:
         unknown = sorted(set(self.tasks) - set(SUPPORTED_TASKS))
@@ -79,8 +80,12 @@ class Phase1Config:
             raise ValueError("token_match_tolerance cannot be negative")
         if not 0 < self.sparsity_k <= self.screen_candidates:
             raise ValueError("Require 0 < sparsity_k <= screen_candidates")
-        if self.sparsity_k != 25 or self.screen_candidates != 512:
-            raise ValueError("Phase 1 requires fixed sparsity_k=25 and screen_candidates=512")
+        if self.screen_candidates != 512:
+            raise ValueError("Phase 1 requires screen_candidates=512")
+        if self.k_values:
+            positive_integers(
+                list(self.k_values), "sparsity_k_values", maximum=self.screen_candidates
+            )
         if self.decomposition_batch_size <= 0 or self.dictionary_chunk_size <= 0:
             raise ValueError("Batch and dictionary chunk sizes must be positive")
         if self.smoke_layer_count is not None and self.smoke_layer_count <= 0:
@@ -126,11 +131,39 @@ class Phase1Config:
         value = self.as_dict()
         value.pop("data")
         value.pop("output_dir")
+        value.pop("k_values")
         return value
 
     def identity_hash(self) -> str:
         payload = json.dumps(self.scientific_dict(), sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @property
+    def result_dir(self) -> Path:
+        return self.output_dir / f"k{self.sparsity_k}" if self.k_values else self.output_dir
+
+    def capture_identity_hash(self) -> str:
+        value = self.scientific_dict()
+        for key in (
+            "sparsity_k",
+            "screen_candidates",
+            "decomposition_batch_size",
+            "dictionary_chunk_size",
+        ):
+            value.pop(key)
+        return hashlib.sha256(
+            json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+
+
+def positive_integers(value: Any, name: str, *, maximum: int) -> tuple[int, ...]:
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"{name} must be a nonempty list of unique positive integers")
+    if any(type(item) is not int or not 0 < item <= maximum for item in value):
+        raise ValueError(f"{name} values must be integers between 1 and {maximum}")
+    if len(set(value)) != len(value):
+        raise ValueError(f"{name} values must be unique")
+    return tuple(sorted(value))
 
 
 def _is_file(path: Path | None) -> bool:
@@ -165,6 +198,18 @@ def load_config(
     if not isinstance(raw, dict):
         raise ValueError(f"Configuration must be a YAML mapping: {config_path}")
 
+    sparsity_keys = [key for key in ("sparsity_k_values", "K", "sparsity_k") if key in raw]
+    if len(sparsity_keys) > 1:
+        raise ValueError("Specify sparsity_k_values or a legacy sparsity key, not both")
+    sweep_key = next((key for key in ("sparsity_k_values", "K") if key in raw), None)
+    k_values = (
+        positive_integers(raw[sweep_key], "sparsity_k_values", maximum=512)
+        if sweep_key is not None
+        else ()
+    )
+    sparsity_k = (25 if 25 in k_values else k_values[0]) if k_values else raw.get("sparsity_k", 25)
+    if type(sparsity_k) is not int:
+        raise ValueError("sparsity_k must be an integer")
     data_raw = dict(raw["data"])
     if bipia_root is not None:
         data_raw["bipia_root"] = str(bipia_root)
@@ -189,7 +234,8 @@ def load_config(
         validation_pairs_per_task=int(raw["validation_pairs_per_task"]),
         max_input_tokens=int(raw["max_input_tokens"]),
         token_match_tolerance=int(raw["token_match_tolerance"]),
-        sparsity_k=int(raw["sparsity_k"]),
+        sparsity_k=sparsity_k,
+        k_values=k_values,
         screen_candidates=int(raw["screen_candidates"]),
         decomposition_batch_size=int(raw["decomposition_batch_size"]),
         dictionary_chunk_size=int(raw["dictionary_chunk_size"]),

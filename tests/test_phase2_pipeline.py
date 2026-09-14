@@ -17,7 +17,7 @@ from jspace_research.phase1.config import (
 )
 from jspace_research.phase2.config import FIXED_ALPHAS, FIXED_JUDGE_MODEL, Phase2Config
 from jspace_research.phase2.pipeline import analyze, generate
-from jspace_research.phase2.scoring import JUDGE_RUBRIC_SHA256, AttackJudgment
+from jspace_research.phase2.scoring import JUDGE_RUBRIC_SHA256, AttackJudgment, QualityJudgment
 
 
 def make_config(tmp_path: Path) -> Phase2Config:
@@ -108,8 +108,15 @@ class FakeModel:
     def __init__(self) -> None:
         self.calls: list[float | None] = []
 
+    def unembedding(self):
+        return torch.eye(3)
+
     def generate_from_prompt(self, input_ids: torch.Tensor, **kwargs: Any) -> torch.Tensor:
         self.calls.append(kwargs.get("alpha") if kwargs.get("layer") is not None else None)
+        if "intervention_stats" in kwargs:
+            kwargs["intervention_stats"].update(
+                processed_output_tokens=1, edited_output_tokens=int(kwargs["alpha"] != 0)
+            )
         return torch.tensor([10, 11])
 
 
@@ -132,6 +139,13 @@ def patch_generation_environment(monkeypatch: pytest.MonkeyPatch, model: FakeMod
 
     monkeypatch.setattr(pipeline, "load_phase1_handoff", lambda config: FakeHandoff())
     monkeypatch.setattr(pipeline, "load_tokenizer", lambda config: FakeTokenizer())
+    monkeypatch.setattr(
+        pipeline.JacobianLensAdapter,
+        "load",
+        lambda config: type("Lens", (), {"jacobian": lambda self, layer: torch.eye(3)})(),
+    )
+    monkeypatch.setattr(pipeline, "validate_model_lens", lambda model, lens: None)
+    monkeypatch.setattr(pipeline, "build_normalized_dictionary", lambda **kwargs: torch.eye(3))
     monkeypatch.setattr(
         pipeline.HuggingFaceModelAdapter,
         "load",
@@ -180,7 +194,9 @@ def test_synthetic_cpu_analysis_writes_required_outputs(
     generate(config)
 
     judge = FakeJudge()
-    results_path = analyze(config, judge=judge)
+    quality_judge = FakeQualityJudge()
+    results_path = analyze(config, judge=judge, quality_judge=quality_judge)
+    assert quality_judge.calls == 6
     assert judge.calls == 3
     assert results_path.is_file()
     for name in (
@@ -215,5 +231,109 @@ def test_synthetic_cpu_analysis_writes_required_outputs(
         "provider_models": ["gpt-4.1-mini-2025-04-14"],
     }
 
-    analyze(config, judge=judge)
+    analyze(config, judge=judge, quality_judge=quality_judge)
+    assert quality_judge.calls == 6
     assert judge.calls == 3
+
+
+class FakeQualityJudge:
+    def __init__(self):
+        self.calls = 0
+
+    def judge(self, messages, generation):
+        self.calls += 1
+        return QualityJudgment("NO", 0, "Coherent answer.")
+
+
+def test_cartesian_sweep_runs_six_combinations_and_resumes(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from jspace_research.phase2 import pipeline
+    from jspace_research.runtime import atomic_write_json, sha256_file
+
+    config = make_config(tmp_path)
+    selections = {}
+    for k in (20, 25, 30):
+        path = tmp_path / f"selected_layer_k{k}.json"
+        atomic_write_json(path, {"decomposition": {"sparsity_k": k}})
+        selections[str(k)] = {"path": path.name, "sha256": sha256_file(path)}
+    index = tmp_path / "selected_layers.json"
+    atomic_write_json(
+        index,
+        {
+            "schema_version": 1,
+            "phase": 1,
+            "kind": "k_sweep",
+            "frozen": True,
+            "selections": selections,
+        },
+    )
+    config = replace(
+        config,
+        phase1=replace(config.phase1, k_values=(20, 25, 30)),
+        windows=(1, 5),
+        phase1_selected_path=index,
+    )
+    children = pipeline.sweep_configs(config)
+    assert [(c.phase1.sparsity_k, c.output_window) for c in children] == [
+        (20, 1),
+        (20, 5),
+        (25, 1),
+        (25, 5),
+        (30, 1),
+        (30, 5),
+    ]
+    model = FakeModel()
+    patch_generation_environment(monkeypatch, model)
+    monkeypatch.setattr(pipeline, "OpenRouterAttackJudge", lambda model: FakeJudge())
+    monkeypatch.setattr(pipeline, "OpenRouterQualityJudge", lambda model: FakeQualityJudge())
+    pipeline.run(config, "all")
+    results = pd.read_parquet(config.output_dir / "phase2_results.parquet")
+    assert len(results) == 6 * 2 * 3
+    assert results.groupby(["K", "W"]).size().tolist() == [6] * 6
+    assert len(results[["K", "W", "example_id", "alpha"]].drop_duplicates()) == len(results)
+    assert results.baseline_generation.notna().all()
+    summary = pd.read_csv(config.output_dir / "phase2_summary.csv")
+    assert (
+        summary[(summary.metric == "asr") & (summary.scope == "overall")]
+        .groupby(["K", "W"])
+        .size()
+        .tolist()
+        == [3] * 6
+    )
+    assert (config.output_dir / "phase2_output_quality_vs_alpha.png").exists()
+    model.calls.clear()
+    pipeline.run(config, "generate")
+    assert model.calls == []
+    # A changed grid cannot append into an existing sweep.
+    with pytest.raises(RuntimeError, match="metadata mismatch"):
+        pipeline.run(replace(config, windows=(1, 10)), "generate")
+
+
+def test_quality_cache_resumes_after_failure_and_rejects_changed_rubric(tmp_path, monkeypatch):
+    from jspace_research.phase2 import pipeline
+
+    config = make_config(tmp_path)
+    model = FakeModel()
+    patch_generation_environment(monkeypatch, model)
+    generate(config)
+
+    class FailingQualityJudge(FakeQualityJudge):
+        def judge(self, messages, generation):
+            if self.calls == 2:
+                raise RuntimeError("API unavailable")
+            return super().judge(messages, generation)
+
+    judge = FakeJudge()
+    with pytest.raises(RuntimeError, match="API unavailable"):
+        analyze(config, judge=judge, quality_judge=FailingQualityJudge())
+    path = config.output_dir / "quality_judgments.jsonl"
+    assert len(path.read_text().splitlines()) == 2
+    with path.open("a") as handle:
+        handle.write('{"interrupted":')
+    quality = FakeQualityJudge()
+    analyze(config, judge=judge, quality_judge=quality)
+    assert quality.calls == 4
+    monkeypatch.setattr(pipeline, "QUALITY_RUBRIC_SHA256", "changed")
+    with pytest.raises(RuntimeError, match="mismatch"):
+        analyze(config, judge=judge, quality_judge=quality)

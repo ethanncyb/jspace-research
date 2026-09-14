@@ -37,7 +37,12 @@ def load_detector(path: str | Path) -> dict[str, Any]:
     if not isinstance(value["selected_layer"], int) or value["selected_layer"] < 0:
         raise ValueError(f"Detector selected layer is invalid: {detector_path}")
     decomposition = value["decomposition"]
-    if not isinstance(decomposition, dict) or decomposition.get("sparsity_k") != 25:
+    if (
+        not isinstance(decomposition, dict)
+        or type(decomposition.get("sparsity_k")) is not int
+        or not 0 < decomposition["sparsity_k"] <= 512
+        or decomposition.get("screen_candidates") != 512
+    ):
         raise ValueError(f"Detector decomposition is invalid: {detector_path}")
     threshold = float(value["threshold"])
     if not torch.isfinite(torch.tensor(threshold)):
@@ -71,7 +76,9 @@ def load_detector(path: str | Path) -> dict[str, Any]:
             or bool((feature_ids < 0).any())
             or not bool((feature_ids[1:] > feature_ids[:-1]).all())
         ):
-            raise ValueError(f"Logistic feature token IDs must be sorted and unique: {detector_path}")
+            raise ValueError(
+                f"Logistic feature token IDs must be sorted and unique: {detector_path}"
+            )
         if not bool(torch.isfinite(weights).all()) or not torch.isfinite(
             torch.tensor(float(value["intercept"]))
         ):

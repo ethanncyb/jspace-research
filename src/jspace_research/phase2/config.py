@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from ..phase1.config import Phase1Config
+from ..phase1.config import Phase1Config, positive_integers
 from ..phase1.config import load_config as load_phase1_config
 
 FIXED_ALPHAS = (0.0, 0.5, 1.0)
@@ -25,6 +26,8 @@ class Phase2Config:
     do_sample: bool
     generation_batch_size: int
     judge_model: str
+    output_window: int = 1
+    windows: tuple[int, ...] = ()
 
     @property
     def smoke(self) -> bool:
@@ -32,8 +35,20 @@ class Phase2Config:
 
     def validate(self) -> None:
         self.phase1.validate()
-        if self.alphas != FIXED_ALPHAS:
-            raise ValueError(f"Phase 2 requires fixed alphas {FIXED_ALPHAS}")
+        if (
+            not self.alphas
+            or 0.0 not in self.alphas
+            or len(set(self.alphas)) != len(self.alphas)
+            or any(isinstance(a, bool) or not math.isfinite(a) or a < 0 for a in self.alphas)
+        ):
+            raise ValueError("alphas must be unique finite nonnegative numbers including zero")
+        positive_integers(
+            [self.output_window], "output_token_windows", maximum=self.max_new_tokens - 1
+        )
+        if self.windows:
+            positive_integers(
+                list(self.windows), "output_token_windows", maximum=self.max_new_tokens - 1
+            )
         if self.max_new_tokens != 512:
             raise ValueError("Phase 2 requires max_new_tokens=512")
         if self.do_sample:
@@ -47,6 +62,8 @@ class Phase2Config:
         return {
             "phase1_config_sha256": self.phase1.identity_hash(),
             "alphas": list(self.alphas),
+            "W": self.output_window,
+            "intervention": "first_output_tokens_per_token_reconstruction_v1",
             "max_new_tokens": self.max_new_tokens,
             "do_sample": self.do_sample,
             "generation_batch_size": self.generation_batch_size,
@@ -71,11 +88,23 @@ def load_config(
         raise ValueError(f"Configuration does not contain a phase2 mapping: {config_path}")
     phase2_raw = raw["phase2"]
     phase1 = load_phase1_config(config_path)
+    if "output_token_windows" in raw and "W" in raw:
+        raise ValueError("Specify output_token_windows or legacy W, not both")
+    windows = positive_integers(
+        raw.get("output_token_windows", raw.get("W", [1])),
+        "output_token_windows",
+        maximum=int(phase2_raw["max_new_tokens"]) - 1,
+    )
+    raw_alphas = phase2_raw["alphas"]
+    if not isinstance(raw_alphas, list) or any(type(a) not in (int, float) for a in raw_alphas):
+        raise ValueError("alphas must be a list of numbers")
     config = Phase2Config(
         phase1=phase1,
         phase1_selected_path=Path(phase1_selected_path).expanduser().resolve(),
         output_dir=Path(output_dir).expanduser().resolve(),
-        alphas=tuple(float(value) for value in phase2_raw["alphas"]),
+        alphas=tuple(sorted(float(value) for value in raw_alphas)),
+        windows=windows,
+        output_window=windows[0],
         max_new_tokens=int(phase2_raw["max_new_tokens"]),
         do_sample=bool(phase2_raw["do_sample"]),
         generation_batch_size=int(phase2_raw["generation_batch_size"]),

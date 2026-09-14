@@ -15,7 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--phase1",
         required=True,
-        help="Frozen Phase 1 selected_layer.json",
+        help="Frozen Phase 1 selected_layers.json sweep index or single-K selected_layer.json",
     )
     parser.add_argument("--output-dir", required=True, help="Phase 2 output directory")
     parser.add_argument(

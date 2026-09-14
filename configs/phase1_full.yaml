@@ -26,7 +26,10 @@ train_pairs_per_task: 500
 validation_pairs_per_task: 250
 max_input_tokens: 4096
 token_match_tolerance: 1
-sparsity_k: 25
+# Maximum dictionary atoms used in each J-space reconstruction (Phases 1 and 2).
+sparsity_k_values: [20, 25, 30, 35, 40]
+# Number of initial output-token states to edit in Phase 2; prompt tokens stay untouched.
+output_token_windows: [1, 5, 10, 15]
 screen_candidates: 512
 decomposition_batch_size: 8
 dictionary_chunk_size: 4096

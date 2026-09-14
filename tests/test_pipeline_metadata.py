@@ -253,3 +253,120 @@ def test_frozen_manifest_load_does_not_require_source_dataset_paths(tmp_path: Pa
     _, loaded_rows, examples, _ = _load_prepared(config)
     assert loaded_rows == rows
     assert len(examples) == 4
+
+
+def test_phase1_sweep_shares_capture_and_writes_portable_k_handoffs(tmp_path, monkeypatch):
+    import shutil
+
+    from jspace_research.phase1 import pipeline
+    from jspace_research.phase1.artifacts import resolve_selection
+
+    config = replace(
+        make_config(tmp_path),
+        train_pairs_per_task=1,
+        validation_pairs_per_task=1,
+        k_values=(20, 25, 30),
+    )
+    captures = []
+
+    class Tokenizer:
+        def apply_chat_template(self, messages, **kwargs):
+            return torch.tensor([[2 if "attack" in messages[0]["content"] else 1]])
+
+    class Lens(IdentityLens):
+        hidden_width = 2
+        source_layers = (1, 5)
+
+        def jacobian(self, layer):
+            return torch.eye(2)
+
+    class Model:
+        hidden_width = 2
+        number_layers = 6
+        input_device = torch.device("cpu")
+
+        def capture_final_prompt_token(self, ids, layers):
+            captures.append(int(ids[0, 0]))
+            return torch.tensor([[float(ids[0, 0]), 0.1], [float(ids[0, 0]) * 0.5, 0.2]])
+
+        def unembedding(self):
+            return torch.eye(2).bfloat16()
+
+    def prepare_manifest(config, tokenizer):
+        path = config.output_dir / "pair_manifest.jsonl"
+        rows = minimal_manifest_rows()
+        write_jsonl_exclusive(path, rows)
+        return path, rows
+
+    monkeypatch.setattr(pipeline, "prepare_manifest", prepare_manifest)
+    monkeypatch.setattr(pipeline, "load_tokenizer", lambda config: Tokenizer())
+    monkeypatch.setattr(pipeline.JacobianLensAdapter, "load", lambda config: Lens())
+    monkeypatch.setattr(pipeline.HuggingFaceModelAdapter, "load", lambda config, tokenizer: Model())
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 0)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
+    original_dictionary = pipeline.build_normalized_dictionary
+    monkeypatch.setattr(
+        pipeline,
+        "build_normalized_dictionary",
+        lambda **kwargs: original_dictionary(**{**kwargs, "device": torch.device("cpu")}),
+    )
+    pipeline.run(config, "all")
+    assert len(captures) == 4  # one capture per example, not per K
+    index = config.output_dir / "selected_layers.json"
+    for k in config.k_values:
+        selected, actual_k = resolve_selection(index, k)
+        handoff = load_phase1_handoff(selected, replace(config, sparsity_k=k))
+        assert actual_k == k
+        assert handoff.sparse_shape == (4, k)
+        assert handoff.metadata["artifacts"]["activations"]["metadata"] == "cache/activations.json"
+        assert (config.output_dir / f"k{k}" / "layer_metrics.csv").exists()
+    assert (
+        len(
+            {
+                load_selected_layer(resolve_selection(index, k)[0])[0]["run_id"]
+                for k in config.k_values
+            }
+        )
+        == 3
+    )
+    # Moving the entire run retains shared references and K-specific integrity.
+    moved = tmp_path / "moved"
+    shutil.copytree(config.output_dir, moved)
+    handoff = load_phase1_handoff(
+        resolve_selection(moved / index.name, 20)[0],
+        replace(config, sparsity_k=20, output_dir=moved),
+    )
+    assert handoff.sparse_shape == (4, 20)
+    pipeline.run(config, "analyze")
+    assert len(captures) == 4
+
+
+def test_sweep_selection_defaults_and_integrity(tmp_path):
+    import pytest
+
+    from jspace_research.phase1.artifacts import resolve_selection
+
+    selections = {}
+    for k in (20, 25):
+        path = tmp_path / f"selected_layer_k{k}.json"
+        atomic_write_json(path, {"decomposition": {"sparsity_k": k}})
+        selections[str(k)] = {"path": path.name, "sha256": sha256_file(path)}
+    index = tmp_path / "selected_layers.json"
+    value = {
+        "schema_version": 1,
+        "phase": 1,
+        "kind": "k_sweep",
+        "frozen": True,
+        "selections": selections,
+    }
+    atomic_write_json(index, value)
+    assert resolve_selection(index)[1] == 25
+    assert resolve_selection(index, 20)[1] == 20
+    del selections["25"]
+    atomic_write_json(index, value)
+    with pytest.raises(ValueError, match="explicitly"):
+        resolve_selection(index)
+    (tmp_path / "selected_layer_k20.json").write_text("changed")
+    with pytest.raises(RuntimeError, match="hash mismatch"):
+        resolve_selection(index, 20)

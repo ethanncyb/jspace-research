@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gc
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -84,9 +85,7 @@ def _base_provenance(config: Phase1Config, manifest_digest: str) -> dict[str, An
         },
         "config_sha256": config.identity_hash(),
         "manifest_sha256": manifest_digest,
-        "packages": package_versions(
-            ("jspace-research", "jlens", "torch", "transformers")
-        ),
+        "packages": package_versions(("jspace-research", "jlens", "torch", "transformers")),
     }
 
 
@@ -101,7 +100,7 @@ def _write_or_validate_provenance(
     updates: dict[str, Any] | None = None,
 ) -> None:
     update_provenance(
-        config.output_dir / "provenance.json",
+        config.result_dir / "provenance.json",
         _base_provenance(config, manifest_digest),
         defaults={
             "selected_layer": None,
@@ -157,8 +156,8 @@ def capture(config: Phase1Config) -> Path:
     number_examples = len(examples)
     width = model.hidden_width
     cache_identity = {
-        "cache_schema_version": 2,
-        "config_sha256": config.identity_hash(),
+        "cache_schema_version": 3,
+        "capture_config_sha256": config.capture_identity_hash(),
         "manifest_sha256": manifest_digest,
         "number_examples": number_examples,
         "layers": run_layers,
@@ -183,9 +182,7 @@ def capture(config: Phase1Config) -> Path:
                 example_index = int(raw_index)
                 input_ids = render_ids(tokenizer, examples[example_index]["messages"])
                 if input_ids.shape[-1] > config.max_input_tokens:
-                    raise RuntimeError(
-                        f"Frozen example {example_index} exceeds max_input_tokens"
-                    )
+                    raise RuntimeError(f"Frozen example {example_index} exceeds max_input_tokens")
                 stack = model.capture_final_prompt_token(input_ids, run_layers)
                 activations[example_index] = tensor_to_bfloat16_bits(stack)
                 progress.update(1)
@@ -254,7 +251,7 @@ def _decompose_layer(
 ) -> np.memmap:
     number_examples = activations.shape[0]
     width = activations.shape[2]
-    paths = _decomposition_paths(config.output_dir, layer)
+    paths = _decomposition_paths(config.result_dir, layer)
     metadata = {
         **cache_identity,
         "cache_schema_version": 2,
@@ -335,7 +332,7 @@ def _analyze_layer(
         train_frame.task.tolist(),
     )
     artifact = {"layer": layer, **artifact}
-    artifact_dir = config.output_dir / "layer_artifacts"
+    artifact_dir = config.result_dir / "layer_artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     torch.save(artifact, artifact_dir / f"layer_{layer:03d}.pt")
     del train_representations
@@ -363,7 +360,7 @@ def _analyze_layer(
                 }
             )
     scores = pd.DataFrame(records)
-    score_dir = config.output_dir / "layer_scores"
+    score_dir = config.result_dir / "layer_scores"
     score_dir.mkdir(parents=True, exist_ok=True)
     scores.to_parquet(score_dir / f"layer_{layer:03d}.parquet", index=False)
     return scores, artifact
@@ -387,7 +384,7 @@ def _save_plots(
     axis.set_title("J-Space Prompt-Injection Detection by Layer")
     axis.legend()
     figure.tight_layout()
-    figure.savefig(config.output_dir / "layer_auprc.png", dpi=180)
+    figure.savefig(config.result_dir / "layer_auprc.png", dpi=180)
     plt.close(figure)
 
     selected = validation_scores[validation_scores.layer == selected_layer]
@@ -400,7 +397,7 @@ def _save_plots(
     axis.set_title(f"Validation Scores at Selected Layer {selected_layer}")
     axis.legend()
     figure.tight_layout()
-    figure.savefig(config.output_dir / "selected_layer_score_distribution.png", dpi=180)
+    figure.savefig(config.result_dir / "selected_layer_score_distribution.png", dpi=180)
     plt.close(figure)
 
 
@@ -416,14 +413,14 @@ def _build_selected_result(
     direction_path: Path,
 ) -> dict[str, Any]:
     selected_layer_position = run_layers.index(selected_layer)
-    selected_cache_paths = _decomposition_paths(config.output_dir, selected_layer)
+    selected_cache_paths = _decomposition_paths(config.result_dir, selected_layer)
 
     def relative(path: Path) -> str:
         return str(path.relative_to(config.output_dir))
 
     direction_sha256 = sha256_file(direction_path)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "phase": 1,
         "run_id": _run_id(config, manifest_digest),
         "frozen": True,
@@ -433,7 +430,8 @@ def _build_selected_result(
         "selection_value": selection_value,
         "macro_auroc": macro_auroc,
         "direction_norm": direction_norm,
-        "direction_artifact": direction_path.name,
+        "direction_artifact": relative(direction_path),
+        "capture_config_sha256": config.capture_identity_hash(),
         "resolved_config": config.scientific_dict(),
         "config_sha256": config.identity_hash(),
         "manifest_sha256": manifest_digest,
@@ -444,10 +442,10 @@ def _build_selected_result(
             "screen_candidates": config.screen_candidates,
         },
         "artifacts": {
-            "provenance": "provenance.json",
+            "provenance": relative(config.result_dir / "provenance.json"),
             "pair_manifest": "pair_manifest.jsonl",
             "direction": {
-                "path": direction_path.name,
+                "path": relative(direction_path),
                 "sha256": direction_sha256,
             },
             "activations": {
@@ -464,8 +462,8 @@ def _build_selected_result(
                 "coefficients": relative(selected_cache_paths["coefficients"]),
                 "completion": relative(selected_cache_paths["done"]),
             },
-            "metrics": "layer_metrics.csv",
-            "validation_scores": "validation_scores.parquet",
+            "metrics": relative(config.result_dir / "layer_metrics.csv"),
+            "validation_scores": relative(config.result_dir / "validation_scores.parquet"),
         },
     }
 
@@ -478,7 +476,12 @@ def analyze(config: Phase1Config) -> Path:
     cache_dir = config.output_dir / "cache"
     activation_metadata = read_json(cache_dir / "activations.json")
     if (
-        activation_metadata["config_sha256"] != config.identity_hash()
+        activation_metadata.get("capture_config_sha256", activation_metadata.get("config_sha256"))
+        != (
+            config.capture_identity_hash()
+            if "capture_config_sha256" in activation_metadata
+            else config.identity_hash()
+        )
         or activation_metadata["manifest_sha256"] != manifest_digest
     ):
         raise RuntimeError("Activation cache identity does not match this run")
@@ -534,15 +537,13 @@ def analyze(config: Phase1Config) -> Path:
         del decompositions
 
     validation_scores = pd.concat(score_frames, ignore_index=True)
-    atomic_write_parquet(
-        config.output_dir / "validation_scores.parquet", validation_scores
-    )
+    atomic_write_parquet(config.result_dir / "validation_scores.parquet", validation_scores)
     metrics = compute_layer_metrics(validation_scores, run_layers, config.tasks, TASK_DISPLAY)
-    atomic_write_csv(config.output_dir / "layer_metrics.csv", metrics)
+    atomic_write_csv(config.result_dir / "layer_metrics.csv", metrics)
     best = select_layer(metrics)
     selected_layer = int(best.layer)
     selected_artifact = artifacts[selected_layer]
-    selected_tensor_path = config.output_dir / "selected_layer_direction.pt"
+    selected_tensor_path = config.result_dir / "selected_layer_direction.pt"
     torch.save(
         {
             "layer": selected_layer,
@@ -564,7 +565,9 @@ def analyze(config: Phase1Config) -> Path:
         direction_path=selected_tensor_path,
     )
     direction_sha256 = selected_result["artifacts"]["direction"]["sha256"]
-    selected_path = config.output_dir / "selected_layer.json"
+    selected_path = config.output_dir / (
+        f"selected_layer_k{config.sparsity_k}.json" if config.k_values else "selected_layer.json"
+    )
     atomic_write_json(selected_path, selected_result)
     _save_plots(config, metrics, validation_scores, selected_layer)
     _write_or_validate_provenance(
@@ -581,15 +584,46 @@ def analyze(config: Phase1Config) -> Path:
 
 
 def run(config: Phase1Config, stage: str) -> None:
-    if stage == "prepare":
-        prepare(config)
-    elif stage == "capture":
-        capture(config)
-    elif stage == "analyze":
-        analyze(config)
-    elif stage == "all":
-        prepare(config)
-        capture(config)
-        analyze(config)
-    else:
+    if stage not in {"prepare", "capture", "analyze", "all"}:
         raise ValueError(f"Unknown Phase 1 stage: {stage}")
+    if config.k_values:
+        ensure_cache_metadata(
+            config.output_dir / "sweep_config.json",
+            {
+                "schema_version": 1,
+                "capture_config_sha256": config.capture_identity_hash(),
+                "K": list(config.k_values),
+                "config_hashes": {
+                    str(k): replace(config, sparsity_k=k).identity_hash() for k in config.k_values
+                },
+            },
+        )
+    if stage in {"prepare", "all"}:
+        prepare(config)
+    if stage in {"capture", "all"}:
+        capture(config)
+    if stage in {"analyze", "all"}:
+        if not config.k_values:
+            analyze(config)
+            return
+        selections = {}
+        metric_frames = []
+        for k in config.k_values:
+            child = replace(config, sparsity_k=k)
+            path = analyze(child)
+            selections[str(k)] = {"path": path.name, "sha256": sha256_file(path)}
+            metric_frames.append(pd.read_csv(child.result_dir / "layer_metrics.csv").assign(K=k))
+        atomic_write_csv(
+            config.output_dir / "layer_metrics.csv", pd.concat(metric_frames, ignore_index=True)
+        )
+        atomic_write_json(
+            config.output_dir / "selected_layers.json",
+            {
+                "schema_version": 1,
+                "phase": 1,
+                "kind": "k_sweep",
+                "frozen": True,
+                "capture_config_sha256": config.capture_identity_hash(),
+                "selections": selections,
+            },
+        )

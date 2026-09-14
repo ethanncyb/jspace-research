@@ -30,7 +30,7 @@ The repository pins:
 
 Gemma and the released lens may require accepting their licenses and authenticating with Hugging Face. BIPIA semantic attack scoring requires an `OPENROUTER_API_KEY`; it uses `openai/gpt-4.1-mini` through OpenRouter and stores no credential in artifacts. The smoke run uses the EmailQA files already in BIPIA. The full run additionally requires researcher-provided WebQA and Summarization `train.jsonl` files for Phase 1 and `test.jsonl` files under the corresponding BIPIA benchmark directories for Phase 4. In accordance with the experiment plan, the pipeline does not download or reconstruct those licensed source datasets.
 
-Always start with the end-to-end smoke run. It uses EmailQA, 12 training pairs, 6 validation pairs, six fitted layers, and the three Phase 2 conditions: intact (`0.0`), partial removal (`0.5`), and full removal (`1.0`). It also requires exact token equality between ordinary no-hook generation and the zero-strength hook. It verifies the pipeline but is not the final scientific experiment. The full configuration uses all five tasks and all fitted layers.
+Always start with the end-to-end smoke run. The checked-in configurations now sweep five K values and four W values (20 combinations). For a quick integration check, set `sparsity_k_values: [20, 25]` and `output_token_windows: [1, 5]` in a copy of the smoke YAML. It uses EmailQA, 12 training pairs, 6 validation pairs, six fitted layers, and the three Phase 2 conditions: intact (`0.0`), partial removal (`0.5`), and full removal (`1.0`). It also requires exact token equality between ordinary no-hook generation and the zero-strength hook. It verifies the pipeline but is not the final scientific experiment. The full configuration uses all five tasks and all fitted layers.
 
 ## Option A: Google Colab
 
@@ -128,24 +128,24 @@ jspace-phase1 \
 
 jspace-phase2 \
   --config configs/phase1_smoke.yaml \
-  --phase1 ./artifacts/smoke/phase1/selected_layer.json \
+  --phase1 ./artifacts/smoke/phase1/selected_layers.json \
   --output-dir ./artifacts/smoke/phase2 \
   --stage generate
 
 jspace-phase2 \
   --config configs/phase1_smoke.yaml \
-  --phase1 ./artifacts/smoke/phase1/selected_layer.json \
+  --phase1 ./artifacts/smoke/phase1/selected_layers.json \
   --output-dir ./artifacts/smoke/phase2 \
   --stage analyze
 
 jspace-phase3 \
   --config configs/phase1_smoke.yaml \
-  --phase1 ./artifacts/smoke/phase1/selected_layer.json \
+  --phase1 ./artifacts/smoke/phase1/selected_layers.json \
   --output-dir ./artifacts/smoke/phase3
 
 jspace-phase4 \
   --config configs/phase1_smoke.yaml \
-  --phase1 ./artifacts/smoke/phase1/selected_layer.json \
+  --phase1 ./artifacts/smoke/phase1/selected_layers.json \
   --phase3 ./artifacts/smoke/phase3 \
   --bipia-root /path/to/BIPIA/benchmark \
   --agentdojo-root /path/to/agentdojo \
@@ -169,24 +169,24 @@ jspace-phase1 \
 
 jspace-phase2 \
   --config configs/phase1_full.yaml \
-  --phase1 ./artifacts/full/phase1/selected_layer.json \
+  --phase1 ./artifacts/full/phase1/selected_layers.json \
   --output-dir ./artifacts/full/phase2 \
   --stage generate
 
 jspace-phase2 \
   --config configs/phase1_full.yaml \
-  --phase1 ./artifacts/full/phase1/selected_layer.json \
+  --phase1 ./artifacts/full/phase1/selected_layers.json \
   --output-dir ./artifacts/full/phase2 \
   --stage analyze
 
 jspace-phase3 \
   --config configs/phase1_full.yaml \
-  --phase1 ./artifacts/full/phase1/selected_layer.json \
+  --phase1 ./artifacts/full/phase1/selected_layers.json \
   --output-dir ./artifacts/full/phase3
 
 jspace-phase4 \
   --config configs/phase1_full.yaml \
-  --phase1 ./artifacts/full/phase1/selected_layer.json \
+  --phase1 ./artifacts/full/phase1/selected_layers.json \
   --phase3 ./artifacts/full/phase3 \
   --bipia-root /path/to/BIPIA/benchmark \
   --agentdojo-root /path/to/agentdojo \
@@ -217,12 +217,12 @@ jspace-phase1 --config configs/phase1_smoke.yaml --bipia-root /path/to/BIPIA/ben
 
 The activation and decomposition caches are resumable. Reuse the exact same output directory to resume the same run. Scientific identity excludes machine-local dataset and output paths, so a complete run directory can be moved between machines without changing its identity. The source datasets are required for `prepare`; after the manifest is frozen, `capture` and `analyze` read the manifest and do not require the original source files. If a scientific setting, manifest, model, lens, layer, or cache shape changes, the pipeline stops rather than silently reusing stale data; create a new output directory for a different run.
 
-Phase 2 reads the frozen Phase 1 result directly from the same run root:
+Phase 2 reads the frozen Phase 1 sweep directly from the same run root:
 
 ```bash
 jspace-phase2 \
   --config configs/phase1_full.yaml \
-  --phase1 artifacts/full/phase1/selected_layer.json \
+  --phase1 artifacts/full/phase1/selected_layers.json \
   --output-dir artifacts/full/phase2 \
   --stage generate
 ```
@@ -233,7 +233,7 @@ jspace-phase2 \
 export OPENROUTER_API_KEY='your-openrouter-api-key'
 jspace-phase2 \
   --config configs/phase1_full.yaml \
-  --phase1 artifacts/full/phase1/selected_layer.json \
+  --phase1 artifacts/full/phase1/selected_layers.json \
   --output-dir artifacts/full/phase2 \
   --stage analyze
 ```
@@ -245,7 +245,7 @@ Phase 3 independently reads the frozen Phase 1 handoff. It is one short CPU comm
 ```bash
 jspace-phase3 \
   --config configs/phase1_full.yaml \
-  --phase1 artifacts/full/phase1/selected_layer.json \
+  --phase1 artifacts/full/phase1/selected_layers.json \
   --output-dir artifacts/full/phase3
 ```
 
@@ -254,7 +254,7 @@ Phase 4 branches from the frozen Phase 1 and Phase 3 artifacts; it does not cons
 ```bash
 jspace-phase4 \
   --config configs/phase1_full.yaml \
-  --phase1 artifacts/full/phase1/selected_layer.json \
+  --phase1 artifacts/full/phase1/selected_layers.json \
   --phase3 artifacts/full/phase3 \
   --bipia-root /path/to/BIPIA/benchmark \
   --agentdojo-root /path/to/agentdojo \
@@ -264,7 +264,7 @@ jspace-phase4 \
 
 jspace-phase4 \
   --config configs/phase1_full.yaml \
-  --phase1 artifacts/full/phase1/selected_layer.json \
+  --phase1 artifacts/full/phase1/selected_layers.json \
   --phase3 artifacts/full/phase3 \
   --bipia-root /path/to/BIPIA/benchmark \
   --agentdojo-root /path/to/agentdojo \
@@ -277,27 +277,27 @@ Phase 4 appends one compact record per selected case and benchmark. Its BIPIA ev
 
 ## Outputs and phase boundaries
 
-At each fitted layer, the pipeline constructs normalized token directions from rows of `W_U @ J_l`. It reconstructs the final-prompt-token residual as a sparse nonnegative combination using a screened greedy approximation: 512 positive candidates, at most 25 selected atoms, and an iterative nonnegative support refit. This is an approximation, not an exact orthogonal projection and not Anthropic's exact gradient-pursuit implementation.
+At each fitted layer, the pipeline constructs normalized token directions from rows of `W_U @ J_l`. It reconstructs the final-prompt-token residual as a sparse nonnegative combination using a screened greedy approximation: 512 positive candidates, at most K selected atoms, and an iterative nonnegative support refit. This is an approximation, not an exact orthogonal projection and not Anthropic's exact gradient-pursuit implementation.
 
 The output directory contains:
 
 - `pair_manifest.jsonl`: frozen train/validation attack-control pairs;
-- `provenance.json`: lightweight fixed-input and runtime provenance;
+- `k{K}/provenance.json`: lightweight fixed-input and runtime provenance;
 - resumable activation and per-layer J-space reconstruction caches;
 - sparse support-ID and coefficient caches for downstream detector training;
 - per-layer direction and validation-score artifacts;
-- `layer_metrics.csv` and `validation_scores.parquet`;
-- `selected_layer.json` and `selected_layer_direction.pt`;
+- combined `layer_metrics.csv` and per-K `k{K}/layer_metrics.csv` / `validation_scores.parquet`;
+- `selected_layers.json`, `selected_layer_k{K}.json`, and `k{K}/selected_layer_direction.pt`;
 - the macro-AUPRC and selected-layer score-distribution plots.
 
-Keep the complete full-run directory for auditability and resumption. Phase 2 receives the path to `phase1/selected_layer.json`; no manual conversion or notebook-state transfer is required. That file records the frozen run identity, direction hash, selected-layer cache locations, decomposition settings, and relative artifact paths. Phase 2 validates those artifacts before use, and Phase 3 can reuse the saved sparse support IDs and coefficients without repeating J-space reconstruction.
+Keep the complete full-run directory for auditability and resumption. Phase 2 receives `phase1/selected_layers.json`, a sweep index linking K to a hashed `selected_layer_k{K}.json` handoff. Each handoff records its run identity, direction hash, selected-layer cache locations, decomposition settings, and paths relative to the Phase 1 root. Prompt captures are shared; decomposition and layer-selection outputs live under `phase1/k{K}/`. Phase 2 validates those artifacts before use, and Phase 3 can reuse the saved sparse support IDs and coefficients without repeating J-space reconstruction.
 
-Phase 2 reads only that frozen handoff. Its directory contains:
+Phase 2 reads the frozen sweep index and each K-specific handoff. Each combination writes its own artifacts under `phase2/k{K}/w{W}/`, and analysis also writes combined results, summaries, examples, and plots at the Phase 2 root. Its directory contains:
 
-- resumable append-only `generations.jsonl` and `judgments.jsonl` caches;
+- resumable append-only `generations.jsonl`, `judgments.jsonl`, and `quality_judgments.jsonl` caches;
 - `phase2_results.parquet` with baseline/current generations and per-example outcomes;
-- `phase2_summary.csv` with ASR, delta-ASR, per-task utility, retention, and refusals;
-- `phase2_asr_vs_alpha.png` and `phase2_clean_utility_vs_alpha.png`;
+- `phase2_summary.csv` with ASR, delta-ASR, per-task utility, retention, refusals, and output-quality metrics;
+- `phase2_asr_vs_alpha.png`, `phase2_clean_utility_vs_alpha.png`, and `phase2_output_quality_vs_alpha.png`;
 - `phase2_examples.csv` for deterministic endpoint inspection;
 - lightweight `provenance.json` linking the results to the Phase 1 run, judge rubric, model pins, and generation GPU.
 
@@ -313,7 +313,7 @@ Verify and load a copied handoff with:
 from jspace_research.phase1 import load_selected_layer
 
 selection, direction = load_selected_layer(
-    "artifacts/full/phase1/selected_layer.json"
+    "artifacts/full/phase1/selected_layer_k25.json"
 )
 print(selection["run_id"], selection["selected_layer"])
 ```
@@ -334,3 +334,31 @@ The automated tests do not require the 12B model or a GPU:
 pip install -e '.[test]'
 pytest
 ```
+
+
+## K × W sweeps and output quality
+
+The shared YAML controls both phases. `sparsity_k_values` lists the maximum number of dictionary atoms used in each J-space reconstruction. `output_token_windows` lists how many initial output-token states receive the Phase 2 intervention:
+
+```yaml
+sparsity_k_values: [20, 25, 30, 35, 40]
+output_token_windows: [1, 5, 10, 15]
+phase2:
+  alphas: [0.0, 0.5, 1.0]
+  max_new_tokens: 512
+  do_sample: false
+  generation_batch_size: 1
+  judge_model: openai/gpt-4.1-mini
+```
+
+`sparsity_k_values: [20, 25, 30]` and `output_token_windows: [1, 5]` run six K/W combinations, each at every configured alpha. Phase 1 captures prompts once and independently selects a layer for each K. K/W lists must contain unique positive integers, K ≤ 512, and W < 512. Alpha values must be unique, finite, nonnegative, and include zero; values above one allow over-removal experiments. Legacy `K` and `W` aliases remain supported, as does scalar `sparsity_k`. Do not specify multiple names for the same setting. Missing `output_token_windows` (and `W`) means `[1]`. Renaming YAML keys alone preserves run identities and existing caches.
+
+Phase 2 leaves the entire input prompt untouched. It reconstructs each of the first W processed output-token states at that K's selected layer and subtracts alpha times that token's reconstruction. This is an adaptive reconstruction of the current state, not subtraction of the cached prompt vector. The first generated token is unchanged: editing token 1 affects prediction of token 2. Early EOS may leave fewer than W processed output tokens; generation records contain actual processed and edited counts. Alpha zero performs no edits.
+
+Every attack and clean generation also receives a separate OpenRouter quality judgment in `quality_judgments.jsonl`: garbage YES/NO/UNKNOWN, severity 0 (coherent) through 3 (unusable), and an explanation. Garbage YES means severity 3; UNKNOWN has null severity. Incorrect but coherent answers, refusals, code, and concise responses do not automatically count as garbage. Garbage rates exclude UNKNOWN judgments and report their denominators and unknown counts separately. The quality plots show garbage rate and mean severity versus alpha, overall and by task; summaries also contain severity distributions. These measurements accompany ASR and clean utility and do not declare a universal safe intervention threshold.
+
+Phase 2 CLI outputs now live under `phase2/k20/w1/`, etc., with combined analysis at `phase2/`. Resume identical settings in the same directory; use a new directory after changing the grid or intervention semantics. Old final-prompt generation caches are incompatible with the new output-token experiment. Existing single-K Phase 1 handoffs remain readable through `--phase1 selected_layer.json`.
+
+Phase 3/4 accept the sweep index but continue to use one K. They default to K=25 when present; use `--k 20` to select another configured K and separate output directories for its detectors and evaluation. They require an explicit K when the sweep excludes 25. Phase 4 must use detectors trained at the same K. Shell launchers expose this as `JSPACE_K=20`; the notebook exposes `DOWNSTREAM_K`.
+
+Dynamic output reconstruction adds GPU work for each edited token. The generation runner reuses the model across combinations and keeps only the current selected-layer dictionary. CPU/API analysis loads neither the generation model nor the lens.

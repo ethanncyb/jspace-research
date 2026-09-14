@@ -5,9 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
 STAGE="${STAGE:-all}"
 jspace_bootstrap
+JSPACE_PHASE1_SELECTION="${JSPACE_PHASE1_DIR}/selected_layers.json"
+if [[ ! -f "${JSPACE_PHASE1_SELECTION}" ]]; then
+  JSPACE_PHASE1_SELECTION="${JSPACE_PHASE1_DIR}/selected_layer.json"
+fi
 PHASE2_BASE=(
   --config "${JSPACE_CONFIG_PATH}"
-  --phase1 "${JSPACE_PHASE1_DIR}/selected_layer.json"
+  --phase1 "${JSPACE_PHASE1_SELECTION}"
   --output-dir "${JSPACE_PHASE2_DIR}"
 )
 case "${STAGE}" in

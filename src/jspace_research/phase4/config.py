@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from ..phase1.artifacts import resolve_selection
 from ..phase1.config import Phase1Config
 from ..phase1.config import load_config as load_phase1_config
 
@@ -112,6 +113,7 @@ def load_config(
     agentdojo_root: str | Path,
     injecagent_root: str | Path,
     output_dir: str | Path,
+    k: int | None = None,
 ) -> Phase4Config:
     config_path = Path(path).expanduser().resolve()
     with config_path.open("r", encoding="utf-8") as handle:
@@ -120,9 +122,18 @@ def load_config(
         raise ValueError(f"Configuration does not contain a phase4 mapping: {config_path}")
     settings = raw["phase4"]
     phase2 = raw.get("phase2", {})
+    phase1 = load_phase1_config(config_path, bipia_root=bipia_root)
+    selected_path = Path(phase1_selected_path).expanduser().resolve()
+    if selected_path.exists():
+        selected_path, selected_k = resolve_selection(selected_path, k)
+    else:
+        selected_k = k if k is not None else phase1.sparsity_k
+    if selected_k not in (phase1.k_values or (phase1.sparsity_k,)):
+        raise ValueError(f"K={selected_k} is not in the supplied configuration")
+    phase1 = replace(phase1, sparsity_k=selected_k)
     config = Phase4Config(
-        phase1=load_phase1_config(config_path, bipia_root=bipia_root),
-        phase1_selected_path=Path(phase1_selected_path).expanduser().resolve(),
+        phase1=phase1,
+        phase1_selected_path=selected_path,
         phase3_dir=Path(phase3_dir).expanduser().resolve(),
         bipia_root=Path(bipia_root).expanduser().resolve(),
         agentdojo_root=Path(agentdojo_root).expanduser().resolve(),

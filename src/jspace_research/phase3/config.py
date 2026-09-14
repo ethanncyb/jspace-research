@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from ..phase1.artifacts import resolve_selection
 from ..phase1.config import Phase1Config
 from ..phase1.config import load_config as load_phase1_config
 
@@ -80,6 +81,7 @@ def load_config(
     *,
     phase1_selected_path: str | Path,
     output_dir: str | Path,
+    k: int | None = None,
 ) -> Phase3Config:
     config_path = Path(path).expanduser().resolve()
     with config_path.open("r", encoding="utf-8") as handle:
@@ -87,9 +89,18 @@ def load_config(
     if not isinstance(raw, dict) or not isinstance(raw.get("phase3"), dict):
         raise ValueError(f"Configuration does not contain a phase3 mapping: {config_path}")
     settings = raw["phase3"]
+    phase1 = load_phase1_config(config_path)
+    selected_path = Path(phase1_selected_path).expanduser().resolve()
+    if selected_path.exists():
+        selected_path, selected_k = resolve_selection(selected_path, k)
+    else:
+        selected_k = k if k is not None else phase1.sparsity_k
+    if selected_k not in (phase1.k_values or (phase1.sparsity_k,)):
+        raise ValueError(f"K={selected_k} is not in the supplied configuration")
+    phase1 = replace(phase1, sparsity_k=selected_k)
     config = Phase3Config(
-        phase1=load_phase1_config(config_path),
-        phase1_selected_path=Path(phase1_selected_path).expanduser().resolve(),
+        phase1=phase1,
+        phase1_selected_path=selected_path,
         output_dir=Path(output_dir).expanduser().resolve(),
         penalty=str(settings["penalty"]),
         regularization_c=float(settings["regularization_c"]),
