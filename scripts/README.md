@@ -57,3 +57,9 @@ Edit `sparsity_k_values`, `output_token_windows`, and `phase2.alphas` in the sha
 Results for individual combinations are in `phase2/k{K}/w{W}/`; combined results and plots are at `phase2/`. Quality judging runs for both clean and attack outputs and uses the same OpenRouter key as attack judging. Use a new run root when changing the sweep.
 
 Phase 3 and 4 remain single-K stages. Set `JSPACE_K=20` for both launchers to select K=20, with separate output directories/run settings for its detector artifacts. Without this variable, a sweep containing K=25 selects it; other sweeps require explicit selection.
+
+## Offline plotting and comparison
+
+After analysis, `phase2_plot_data.json` stores all plotted values and denominators, and `phase2_results.jsonl` stores per-output details. The new whole-run overview and per-task utility heatmaps sit at the Phase 2 root.
+
+Use `jspace-phase2-plot --runs <run-a>/phase2 <run-b>/phase2 --output-dir <plots>` to compare runs without a GPU or API key. Filter with `--sparsity-k-values 20 30`, `--output-token-windows 1 5`, and `--alphas 0 0.5 1`. Add `--labels "Run A" "Run B"` to name runs. `python -m jspace_research.phase2.plots` works with the same arguments without reinstalling the CLI entry point. See the root README for per-task utility curves and comparison semantics.

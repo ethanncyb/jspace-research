@@ -362,3 +362,51 @@ Phase 2 CLI outputs now live under `phase2/k20/w1/`, etc., with combined analysi
 Phase 3/4 accept the sweep index but continue to use one K. They default to K=25 when present; use `--k 20` to select another configured K and separate output directories for its detectors and evaluation. They require an explicit K when the sweep excludes 25. Phase 4 must use detectors trained at the same K. Shell launchers expose this as `JSPACE_K=20`; the notebook exposes `DOWNSTREAM_K`.
 
 Dynamic output reconstruction adds GPU work for each edited token. The generation runner reuses the model across combinations and keeps only the current selected-layer dictionary. CPU/API analysis loads neither the generation model nor the lens.
+
+## Export plotting data and redraw selected combinations
+
+Phase 2 analysis now writes two portable files at the sweep root and inside each combination directory:
+
+- `phase2_plot_data.json`: all summary values, zero-alpha baselines, deltas, utility retention, denominators, unknown counts, selected layers, configuration/provenance, and metric definitions. Dimensions use the descriptive keys `sparsity_k` and `output_token_window`. Undefined values are JSON `null`.
+- `phase2_results.jsonl`: one JSON object per scored output, including its combination, alpha, example ID, generated text, baseline text, task scores, attack outcome, quality label/severity/explanation, and intervention counts. The plotting JSON records this file's name, row count, and SHA-256.
+
+Keep both files to retain detailed results. The plotting JSON alone is sufficient for redrawing the existing metric curves and heatmaps. Existing generation/judgment JSONL caches and Parquet/CSV results remain available.
+
+Analysis also creates `phase2_run_overview.png`: rows are sparsity/window combinations, columns are alpha values, and three panels show attack success, clean-output garbage rate, and clean-output degradation severity. A second file, `phase2_run_overview_utility.png`, shows clean ROUGE-L recall separately for each task. Each cell is annotated; gray `N/A` cells denote missing measurements or undefined values, never zero. Garbage rates should be read alongside unknown rates and denominators in the JSON.
+
+After installing the updated package, redraw a subset entirely offline:
+
+```bash
+jspace-phase2-plot \
+  --runs artifacts/run-a/phase2 \
+  --output-dir artifacts/plots/selected \
+  --sparsity-k-values 20 30 \
+  --output-token-windows 1 5 \
+  --alphas 0.0 0.5 1.0
+```
+
+Without reinstalling, use `python -m jspace_research.phase2.plots` with the same arguments. `--runs` accepts directories or explicit `phase2_plot_data.json` files. Use a separate output directory for custom plots.
+
+Compare two completed runs using identical axes and color scales:
+
+```bash
+jspace-phase2-plot \
+  --runs artifacts/run-a/phase2 artifacts/run-b/phase2 \
+  --labels "Run A" "Run B" \
+  --output-dir artifacts/plots/comparison \
+  --sparsity-k-values 20 25 30 \
+  --output-token-windows 1 5
+```
+
+This produces `phase2_run_comparison.png`, `phase2_run_comparison_utility.png`, and `phase2_selected_curves.png`. Comparison heatmaps place each run on its own row, with matching combination/alpha cells and shared metric scales. Curves use one panel per combination and one line per run. Missing cells stay missing; runs are not pooled or interpolated into a common grid. Differences in model, lens, dataset manifest, selected layers, generation settings, or scoring rubrics are identified in the figure and saved in `phase2_plot_selection.json`, along with filters and the selected numeric summaries. Comparisons across different datasets are descriptive, not paired experiments.
+
+Select other curve metrics with `--metric` and `--condition`. Task utility requires a task, for example:
+
+```bash
+jspace-phase2-plot \
+  --runs artifacts/run-a/phase2 artifacts/run-b/phase2 \
+  --output-dir artifacts/plots/email-utility \
+  --metric rougeL_recall --condition control --task email
+```
+
+No GPU, model loading, Phase 1 caches, or OpenRouter calls are required to redraw exported data. Runs analyzed before this export feature need their analysis stage rerun once to create the JSON files; complete matching judgment caches are reused.

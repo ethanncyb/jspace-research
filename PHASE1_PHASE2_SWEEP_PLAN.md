@@ -68,3 +68,10 @@ Report garbage rate among determinate judgments, unknown rate, severity distribu
 - Test untouched prefill, exact W-token boundaries, per-token reconstruction, early EOS, alpha-zero equivalence, and hook cleanup.
 - Test quality rubrics and parsing with mocked responses, unknown denominators, baseline matching, cache resumption, and stale-cache rejection.
 - Run the full CPU suite, then validate a small K × W sweep on CUDA before a full experiment. Confirm combined row counts and that CPU/API analysis requires no model loading.
+
+
+## Plot export and comparison extension
+
+Phase 2 analysis exports all summary cells and metric definitions to `phase2_plot_data.json`, with run provenance and a hashed reference to per-output details in `phase2_results.jsonl`. These are written both per combination and for the complete sweep. Undefined values are null.
+
+The whole-run overview uses combination rows and alpha columns, with panels for attack success, clean garbage rate, and clean severity. A separate utility overview keeps tasks separate. The offline `jspace-phase2-plot` command filters combinations and alphas, draws selected metric curves, and compares multiple JSON exports using shared axes and color scales. It preserves missing cells, labels run-setting differences, and records the selected values and filters in `phase2_plot_selection.json`.

@@ -33,6 +33,7 @@ from ..runtime import (
 )
 from .artifacts import Phase1Handoff, load_phase1_handoff
 from .config import Phase2Config
+from .plots import export_plot_data, save_run_overview
 from .scoring import (
     JUDGE_GATEWAY,
     JUDGE_RUBRIC_SHA256,
@@ -566,6 +567,13 @@ def analyze(
     )
     _save_plots(config, summary)
     _save_quality_plots(config.output_dir, summary)
+    export_path = export_plot_data(
+        config.output_dir,
+        results,
+        summary,
+        [_base_provenance(config, handoff)],
+        label=f"K={config.phase1.sparsity_k}, W={config.output_window}",
+    )
     existing_analysis_packages = read_json(config.output_dir / "provenance.json").get(
         "analysis_packages"
     )
@@ -585,6 +593,11 @@ def analyze(
                 "examples": {
                     "path": examples_path.name,
                     "sha256": sha256_file(examples_path),
+                },
+                "plot_data": {"path": export_path.name, "sha256": sha256_file(export_path)},
+                "jsonl_results": {
+                    "path": "phase2_results.jsonl",
+                    "sha256": sha256_file(config.output_dir / "phase2_results.jsonl"),
                 },
                 "asr_plot": "phase2_asr_vs_alpha.png",
                 "utility_plot": "phase2_clean_utility_vs_alpha.png",
@@ -710,6 +723,14 @@ def _combine_results(config: Phase2Config, children: list[Phase2Config]) -> None
     atomic_write_csv(config.output_dir / "phase2_summary.csv", summary)
     atomic_write_csv(config.output_dir / "phase2_examples.csv", examples)
     _save_quality_plots(config.output_dir, summary)
+    export_path = export_plot_data(
+        config.output_dir,
+        results,
+        summary,
+        [read_json(c.output_dir / "provenance.json") for c in children],
+        label=config.output_dir.parent.name,
+    )
+    save_run_overview(read_json(export_path), config.output_dir)
     for metric, filename, condition in (
         ("asr", "phase2_asr_vs_alpha.png", "attack"),
         ("rougeL_recall", "phase2_clean_utility_vs_alpha.png", "control"),
