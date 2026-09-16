@@ -244,7 +244,10 @@ Use the same decomposition procedure in every phase:
 
 The implementation must describe this as the experiment's **screened nonnegative greedy approximation**, not as Anthropic's exact gradient-pursuit decomposition.
 
-Do not tune \(k\), candidate count, or decomposition method after Phase 1 begins.
+Do not tune \(k\), candidate count, or decomposition method within the primary
+Phase 1–4 pipeline. The post-hoc robustness study below may vary the
+decomposition only in separate artifacts and may not revise the frozen Phase 1
+handoff or the existing held-out results.
 
 ---
 
@@ -527,6 +530,60 @@ After Phase 1:
 \]
 
 No later phase may reselect the layer.
+
+---
+
+## Post-hoc Phase 1 robustness study
+
+This optional study tests whether the Phase 1 conclusion depends strongly on
+the reconstruction algorithm, sparsity level, or threshold-free layer metric.
+It is a robustness analysis, not a replacement Phase 1 run.
+
+Use only the frozen Phase 1 training and validation examples. Training examples
+learn each clean-to-attack direction and select one shared threshold per layer
+by task-macro balanced accuracy. Validation examples compare methods, sparsity
+values, and layers. Do not use BIPIA official test examples for any choice.
+
+First, reuse the complete existing \(k=25\) greedy decompositions at every
+cached layer. Select each threshold on training scores, apply it unchanged to
+validation, and compare the validation macro-balanced-accuracy layer with the
+original macro-AUPRC-selected layer. Threshold ties use the higher threshold;
+layer ties use the lower layer. Plot pooled and per-task validation densities
+for both layers on common axes.
+
+Second, run a bounded reconstruction pilot at
+\(\ell^*-2,\ldots,\ell^*+2\) where those layers are present. Use a deterministic
+seed-42 subset of at most 50 training and 50 validation pairs per task and
+compare:
+
+- the primary screened nonnegative greedy approximation;
+- a nonnegative gradient-pursuit approximation that searches the full
+  dictionary and updates the active support along its gradient with an exact
+  line-search step;
+- \(k\in\{10,25,50\}\).
+
+Report reconstruction error, cosine similarity, explained variance, support
+overlap at \(k=25\), per-task and macro AUPRC/AUROC, and validation balanced
+accuracy using training-selected thresholds. Call the second method a
+paper-aligned nonnegative gradient-pursuit approximation, not Anthropic's exact
+unpublished implementation.
+
+Write only to a sibling robustness directory. Never overwrite
+`selected_layer.json`, Phase 1 caches, or Phase 2–4 outputs. The interface is:
+
+```bash
+jspace-phase1-robustness \
+  --config <yaml> \
+  --phase1 <run-root>/phase1/selected_layer.json \
+  --output-dir <run-root>/phase1_robustness \
+  --stage metrics|reconstruction|all
+```
+
+The metric stage is CPU-only. The reconstruction stage requires CUDA but
+reuses cached activations and does not load Gemma or recapture any prompt.
+Because this analysis was specified after observing the primary results, treat
+it as post-hoc sensitivity evidence. A changed winner must be reported as
+sensitivity and does not automatically alter downstream conclusions.
 
 ---
 

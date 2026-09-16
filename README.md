@@ -1,6 +1,6 @@
 # J-Space Prompt-Injection Research
 
-This repository implements Phases 1–4 of the experiment in [`PLAN.md`](PLAN.md): select a J-lens layer, measure behavior under coarse J-space removal, freeze two detectors, then evaluate those unchanged detectors on BIPIA official test, AgentDojo, and InjecAgent.
+This repository implements Phases 1–4 of the experiment in [`PLAN.md`](PLAN.md): select a J-lens layer, measure behavior under coarse J-space removal, freeze two detectors, then evaluate those unchanged detectors on BIPIA official test, AgentDojo, and InjecAgent. It also includes an optional post-hoc Phase 1 robustness study that never changes the frozen pipeline.
 
 The implementation deliberately stops after held-out and cross-benchmark transfer. It does not add direction-specific interventions, recognition/compliance analysis, detector gating, or later-phase functionality.
 
@@ -291,6 +291,38 @@ The output directory contains:
 - the macro-AUPRC and selected-layer score-distribution plots.
 
 Keep the complete full-run directory for auditability and resumption. Phase 2 receives the path to `phase1/selected_layer.json`; no manual conversion or notebook-state transfer is required. That file records the frozen run identity, direction hash, selected-layer cache locations, decomposition settings, and relative artifact paths. Phase 2 validates those artifacts before use, and Phase 3 can reuse the saved sparse support IDs and coefficients without repeating J-space reconstruction.
+
+### Optional Phase 1 robustness study
+
+After Phase 1 is complete, the robustness command can reuse its cached
+activations and decompositions without changing any Phase 1–4 result. Keep its
+output in a sibling directory, never inside the frozen `phase1` directory:
+
+```bash
+# CPU-only: compare AUPRC selection with train-thresholded validation BA.
+jspace-phase1-robustness \
+  --config configs/phase1_full.yaml \
+  --phase1 artifacts/full/phase1/selected_layer.json \
+  --output-dir artifacts/full/phase1_robustness \
+  --stage metrics
+
+# CUDA: compare greedy and gradient pursuit for k=10, 25, and 50 near L*.
+jspace-phase1-robustness \
+  --config configs/phase1_full.yaml \
+  --phase1 artifacts/full/phase1/selected_layer.json \
+  --output-dir artifacts/full/phase1_robustness \
+  --stage reconstruction
+```
+
+The metric stage uses all cached layers. The reconstruction pilot uses the
+selected layer and its two neighboring layers on each side when available,
+with a deterministic maximum of 50 training and 50 validation pairs per task.
+Training data learns directions and thresholds; validation data compares the
+fixed alternatives. BIPIA official test data is never read. The outputs are
+`metric_layer_comparison.csv`, `reconstruction_robustness.csv`, two comparison
+plots, resumable per-condition caches, and lightweight `provenance.json`.
+These results are post-hoc sensitivity evidence and do not reselect the frozen
+layer or trigger Phase 2–4 reruns.
 
 Phase 2 reads only that frozen handoff. Its directory contains:
 

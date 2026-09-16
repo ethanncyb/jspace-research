@@ -9,8 +9,11 @@ from jspace_research.phase1.jspace import (
     compute_layer_metrics,
     direction_scores,
     learn_task_balanced_direction,
+    nonnegative_gradient_pursuit,
     screened_nonnegative_pursuit,
     select_layer,
+    select_task_macro_balanced_threshold,
+    threshold_metrics,
 )
 
 
@@ -44,6 +47,25 @@ def test_sparse_pursuit_excludes_nonpositive_screen_candidates() -> None:
         hidden, dictionary, sparsity_k=2, screen_candidates=2
     )
     assert token_ids[0].tolist() == [0, -1]
+
+
+def test_gradient_pursuit_is_nonnegative_and_respects_k() -> None:
+    dictionary = torch.eye(8)
+    hidden = torch.tensor([[0.0, 3.0, 0.0, 2.0, 0.0, 0.0, 1.0, 0.0]])
+    reconstruction, token_ids, coefficients = nonnegative_gradient_pursuit(
+        hidden, dictionary, sparsity_k=3
+    )
+    torch.testing.assert_close(reconstruction, hidden, atol=1e-5, rtol=1e-5)
+    assert int((token_ids[0] >= 0).sum()) <= 3
+    assert bool((coefficients >= 0).all())
+
+
+def test_gradient_pursuit_improves_over_one_atom() -> None:
+    dictionary = torch.tensor([[1.0, 0.0], [2**-0.5, 2**-0.5], [0.0, 1.0]])
+    hidden = torch.tensor([[1.0, 1.0]])
+    one, _, _ = nonnegative_gradient_pursuit(hidden, dictionary, sparsity_k=1)
+    two, _, _ = nonnegative_gradient_pursuit(hidden, dictionary, sparsity_k=2)
+    assert torch.linalg.vector_norm(hidden - two) <= torch.linalg.vector_norm(hidden - one)
 
 
 def test_task_balanced_direction_and_scores() -> None:
@@ -82,3 +104,14 @@ def test_metrics_and_layer_tie_breaking() -> None:
     selected = select_layer(metrics)
     assert selected.layer == 3
     assert selected.auprc == pytest.approx(1.0)
+
+
+def test_training_threshold_uses_task_macro_balanced_accuracy() -> None:
+    labels = np.array([0, 0, 1, 1, 0, 0, 1, 1])
+    scores = np.array([0.0, 0.1, 0.8, 0.9, 0.2, 0.3, 0.7, 1.0])
+    tasks = ["a"] * 4 + ["b"] * 4
+    threshold, value = select_task_macro_balanced_threshold(labels, scores, tasks)
+    assert threshold == pytest.approx(0.7)
+    assert value == pytest.approx(1.0)
+    metrics = threshold_metrics(labels, scores, threshold)
+    assert metrics["balanced_accuracy"] == pytest.approx(1.0)
