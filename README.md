@@ -294,35 +294,29 @@ Keep the complete full-run directory for auditability and resumption. Phase 2 re
 
 ### Optional Phase 1 robustness study
 
-After Phase 1 is complete, the robustness command can reuse its cached
-activations and decompositions without changing any Phase 1–4 result. Keep its
-output in a sibling directory, never inside the frozen `phase1` directory:
+After Phase 1 is complete, the optional robustness command compares the current
+screened-greedy reconstruction with a gradient-pursuit approximation at fixed
+`k=25`. It uses the selected layer and its two neighboring layers on each side
+(L24–L28 for the Gemma full run). Keep its output in a new sibling directory,
+never inside the frozen `phase1` directory:
 
 ```bash
-# CPU-only: compare AUPRC selection with train-thresholded validation BA.
 jspace-phase1-robustness \
   --config configs/phase1_full.yaml \
   --phase1 artifacts/full/phase1/selected_layer.json \
-  --output-dir artifacts/full/phase1_robustness \
-  --stage metrics
-
-# CUDA: compare greedy and gradient pursuit for k=10, 25, and 50 near L*.
-jspace-phase1-robustness \
-  --config configs/phase1_full.yaml \
-  --phase1 artifacts/full/phase1/selected_layer.json \
-  --output-dir artifacts/full/phase1_robustness \
-  --stage reconstruction
+  --output-dir artifacts/full/phase1_robustness_k25
 ```
 
-The metric stage uses all cached layers. The reconstruction pilot uses the
-selected layer and its two neighboring layers on each side when available,
-with a deterministic maximum of 50 training and 50 validation pairs per task.
-Training data learns directions and thresholds; validation data compares the
-fixed alternatives. BIPIA official test data is never read. The outputs are
-`metric_layer_comparison.csv`, `reconstruction_robustness.csv`, two comparison
-plots, resumable per-condition caches, and lightweight `provenance.json`.
-These results are post-hoc sensitivity evidence and do not reselect the frozen
-layer or trigger Phase 2–4 reruns.
+The CUDA study uses a deterministic maximum of 200 training and 100 validation
+pairs per task. Training data learns each direction and its balanced-accuracy
+threshold; validation data reports per-task and macro AUPRC, AUROC, balanced
+accuracy, TPR, and FPR. It also reports reconstruction quality and plots pooled
+clean/attack densities for every method and layer. BIPIA official test data is
+never read. The outputs are `reconstruction_robustness.csv`,
+`reconstruction_validation_scores.parquet`,
+`reconstruction_density_by_layer.png`, resumable per-condition caches, and
+lightweight `provenance.json`. The study does not select a winner, reselect the
+frozen layer, or trigger Phase 2–4 reruns.
 
 Phase 2 reads only that frozen handoff. Its directory contains:
 

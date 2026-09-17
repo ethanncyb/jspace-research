@@ -535,38 +535,30 @@ No later phase may reselect the layer.
 
 ## Post-hoc Phase 1 robustness study
 
-This optional study tests whether the Phase 1 conclusion depends strongly on
-the reconstruction algorithm, sparsity level, or threshold-free layer metric.
-It is a robustness analysis, not a replacement Phase 1 run.
+This optional study tests whether the Phase 1 separation result is robust to
+the reconstruction algorithm. It is a descriptive sensitivity analysis, not a
+replacement Phase 1 run, and it does not select a new layer.
 
-Use only the frozen Phase 1 training and validation examples. Training examples
-learn each clean-to-attack direction and select one shared threshold per layer
-by task-macro balanced accuracy. Validation examples compare methods, sparsity
-values, and layers. Do not use BIPIA official test examples for any choice.
-
-First, reuse the complete existing \(k=25\) greedy decompositions at every
-cached layer. Select each threshold on training scores, apply it unchanged to
-validation, and compare the validation macro-balanced-accuracy layer with the
-original macro-AUPRC-selected layer. Threshold ties use the higher threshold;
-layer ties use the lower layer. Plot pooled and per-task validation densities
-for both layers on common axes.
-
-Second, run a bounded reconstruction pilot at
-\(\ell^*-2,\ldots,\ell^*+2\) where those layers are present. Use a deterministic
-seed-42 subset of at most 50 training and 50 validation pairs per task and
-compare:
+Use only the frozen Phase 1 training and validation examples. At
+\(\ell^*-2,\ldots,\ell^*+2\), where those layers are present, compare:
 
 - the primary screened nonnegative greedy approximation;
 - a nonnegative gradient-pursuit approximation that searches the full
   dictionary and updates the active support along its gradient with an exact
   line-search step;
-- \(k\in\{10,25,50\}\).
+- fixed \(k=25\).
 
-Report reconstruction error, cosine similarity, explained variance, support
-overlap at \(k=25\), per-task and macro AUPRC/AUROC, and validation balanced
-accuracy using training-selected thresholds. Call the second method a
-paper-aligned nonnegative gradient-pursuit approximation, not Anthropic's exact
-unpublished implementation.
+Use seed 42 to sample at most 200 training and 100 validation pairs per task,
+using identical examples for every method and layer. Training examples learn
+each task-balanced clean-to-attack direction and select one shared threshold by
+task-macro balanced accuracy. Apply that threshold unchanged to validation.
+Report per-task and macro AUPRC, AUROC, balanced accuracy, TPR, and FPR, along
+with reconstruction error, cosine similarity, explained variance, and support
+overlap. Plot pooled validation clean/attack score densities for every method
+and layer on common axes. Do not rank conditions or declare a winner. Call the
+second method a paper-aligned nonnegative gradient-pursuit approximation, not
+Anthropic's exact unpublished implementation. BIPIA official test data is never
+used.
 
 Write only to a sibling robustness directory. Never overwrite
 `selected_layer.json`, Phase 1 caches, or Phase 2–4 outputs. The interface is:
@@ -575,15 +567,13 @@ Write only to a sibling robustness directory. Never overwrite
 jspace-phase1-robustness \
   --config <yaml> \
   --phase1 <run-root>/phase1/selected_layer.json \
-  --output-dir <run-root>/phase1_robustness \
-  --stage metrics|reconstruction|all
+  --output-dir <run-root>/phase1_robustness_k25
 ```
 
-The metric stage is CPU-only. The reconstruction stage requires CUDA but
-reuses cached activations and does not load Gemma or recapture any prompt.
-Because this analysis was specified after observing the primary results, treat
-it as post-hoc sensitivity evidence. A changed winner must be reported as
-sensitivity and does not automatically alter downstream conclusions.
+The comparison requires CUDA but reuses cached activations and does not load
+Gemma or recapture any prompt. Because this analysis was specified after
+observing the primary results, treat it as post-hoc sensitivity evidence. It
+does not alter the frozen layer or trigger Phase 2–4 reruns.
 
 ---
 

@@ -17,6 +17,7 @@ from ..runtime import (
     atomic_save_figure,
     atomic_torch_save,
     atomic_write_csv,
+    atomic_write_parquet,
     package_versions,
     read_json,
     sha256_file,
@@ -42,8 +43,9 @@ from .jspace import (
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-K_VALUES = (10, 25, 50)
-PILOT_PAIRS_PER_TASK_SPLIT = 50
+SPARSITY_K = 25
+TRAIN_PAIRS_PER_TASK = 200
+VALIDATION_PAIRS_PER_TASK = 100
 METHODS = ("screened_greedy", "gradient_pursuit")
 
 
@@ -54,15 +56,6 @@ def _relative_artifact(root: Path, value: str) -> Path:
     if not path.is_file():
         raise FileNotFoundError(path)
     return path
-
-
-def _decomposition_paths(root: Path, layer: int) -> dict[str, Path]:
-    stem = root / "cache" / "decompositions" / f"layer_{layer:03d}"
-    return {
-        "metadata": stem.with_suffix(".json"),
-        "reconstruction": stem.with_name(stem.name + "_bfloat16.dat"),
-        "done": stem.with_name(stem.name + "_done.npy"),
-    }
 
 
 def _read_memmap(path: Path, dtype: np.dtype[Any], shape: tuple[int, ...]) -> np.memmap:
@@ -109,113 +102,38 @@ def _load_source(
     return selected, root, examples, activation_metadata, activations
 
 
-def _load_layer_reconstruction(
-    root: Path,
-    selected: dict[str, Any],
-    layer: int,
-    number_examples: int,
-    width: int,
-) -> np.memmap:
-    paths = _decomposition_paths(root, layer)
-    metadata = read_json(paths["metadata"])
-    expected_lens_sha256 = selected["resolved_config"]["lens"]["sha256"]
-    if (
-        metadata.get("config_sha256") != selected["config_sha256"]
-        or metadata.get("manifest_sha256") != selected["manifest_sha256"]
-        or metadata.get("lens_sha256") != expected_lens_sha256
-        or int(metadata.get("sparsity_k", -1)) != 25
-        or int(metadata.get("screen_candidates", -1)) != 512
-        or int(metadata.get("layer", -1)) != layer
-        or metadata.get("reconstruction_shape") != [number_examples, width]
-    ):
-        raise RuntimeError(f"Phase 1 decomposition identity mismatch at layer {layer}")
-    done = load_done(paths["done"], number_examples)
-    if not bool(done.all()):
-        raise RuntimeError(f"Phase 1 decomposition is incomplete at layer {layer}")
-    return _read_memmap(
-        paths["reconstruction"], np.dtype(np.uint16), (number_examples, width)
-    )
-
-
-def _scores_for_layer(
-    root: Path,
-    layer: int,
-    examples: pd.DataFrame,
-    reconstruction: np.memmap,
-) -> pd.DataFrame:
-    artifact_path = root / "layer_artifacts" / f"layer_{layer:03d}.pt"
-    if not artifact_path.is_file():
-        raise FileNotFoundError(f"Missing Phase 1 direction artifact: {artifact_path}")
-    artifact = torch.load(artifact_path, map_location="cpu", weights_only=True)
-    required = {"layer", "mu_clean", "d_raw", "d_norm", "d_unit"}
-    if not isinstance(artifact, dict) or not required.issubset(artifact):
-        raise RuntimeError(f"Direction artifact is incomplete at layer {layer}")
-    if (
-        int(artifact.get("layer", -1)) != layer
-        or artifact["mu_clean"].shape != artifact["d_unit"].shape
-        or artifact["d_unit"].numel() != reconstruction.shape[1]
-    ):
-        raise RuntimeError(f"Direction artifact layer mismatch at layer {layer}")
-
-    records: list[dict[str, Any]] = []
-    all_indices = examples.index.to_numpy(dtype=np.int64)
-    for indices in batched(all_indices, 128):
-        representations = read_bfloat16_bits(np.asarray(reconstruction[indices]).copy())
-        scores = direction_scores(
-            representations, artifact["mu_clean"], artifact["d_unit"]
-        ).numpy()
-        for index, score in zip(indices.tolist(), scores.tolist(), strict=True):
-            row = examples.loc[index]
-            records.append(
-                {
-                    "layer": layer,
-                    "example_index": index,
-                    "split": row.split,
-                    "task": row.task,
-                    "condition": row.condition,
-                    "label": int(row.label),
-                    "score": float(score),
-                }
-            )
-    return pd.DataFrame(records)
-
-
 def _validation_rows(
     frame: pd.DataFrame,
     *,
     layer: int,
     threshold: float,
     tasks: tuple[str, ...],
-    method: str | None = None,
-    sparsity_k: int | None = None,
+    method: str,
 ) -> list[dict[str, Any]]:
     validation = frame[frame.split == "validation"]
     task_rows: list[dict[str, Any]] = []
     for task in tasks:
         subset = validation[validation.task == task]
-        metrics = threshold_metrics(subset.label, subset.score, threshold)
         task_rows.append(
             {
                 "layer": layer,
                 "method": method,
-                "sparsity_k": sparsity_k,
+                "sparsity_k": SPARSITY_K,
                 "scope": "task",
                 "task": task,
                 "task_display": TASK_DISPLAY[task],
                 "threshold": threshold,
                 "n": len(subset),
-                **metrics,
+                **threshold_metrics(subset.label, subset.score, threshold),
             }
         )
-    macro = {
-        key: float(np.mean([row[key] for row in task_rows]))
-        for key in ("auprc", "auroc", "balanced_accuracy", "tpr", "fpr")
-    }
+    metric_names = ("auprc", "auroc", "balanced_accuracy", "tpr", "fpr")
+    macro = {name: float(np.mean([row[name] for row in task_rows])) for name in metric_names}
     return task_rows + [
         {
             "layer": layer,
             "method": method,
-            "sparsity_k": sparsity_k,
+            "sparsity_k": SPARSITY_K,
             "scope": "macro",
             "task": None,
             "task_display": "Macro",
@@ -226,198 +144,38 @@ def _validation_rows(
     ]
 
 
-def _select_ba_layer(metrics: pd.DataFrame) -> int:
-    macro = metrics[metrics.scope == "macro"]
-    return int(
-        macro.sort_values(
-            ["balanced_accuracy", "layer"],
-            ascending=[False, True],
-            kind="mergesort",
-        ).iloc[0].layer
-    )
-
-
-def _plot_metric_comparison(
-    output_dir: Path,
-    metrics: pd.DataFrame,
-    auprc_layer: int,
-    ba_layer: int,
-) -> None:
-    macro = metrics[metrics.scope == "macro"].sort_values("layer")
-    figure, axis = plt.subplots(figsize=(10, 5))
-    axis.plot(macro.layer, macro.auprc, marker="o", label="Validation macro AUPRC")
-    axis.plot(
-        macro.layer,
-        macro.balanced_accuracy,
-        marker="o",
-        label="Validation macro balanced accuracy",
-    )
-    axis.axvline(auprc_layer, linestyle="--", label=f"AUPRC selection L{auprc_layer}")
-    axis.axvline(ba_layer, linestyle=":", label=f"BA comparison L{ba_layer}")
-    axis.set_ylim(0.0, 1.02)
-    axis.set_xlabel("J-lens layer")
-    axis.set_ylabel("Validation metric")
-    axis.set_title("Phase 1 Layer-Selection Robustness")
-    axis.legend()
-    figure.tight_layout()
-    atomic_save_figure(output_dir / "layer_metric_comparison.png", figure, dpi=180)
-    plt.close(figure)
-
-
-def _plot_density_comparison(
-    output_dir: Path,
-    scores: pd.DataFrame,
-    tasks: tuple[str, ...],
-    auprc_layer: int,
-    ba_layer: int,
-) -> None:
-    layers = list(dict.fromkeys((auprc_layer, ba_layer)))
-    validation = scores[(scores.split == "validation") & scores.layer.isin(layers)]
-    low = float(validation.score.min())
-    high = float(validation.score.max())
-    if low == high:
-        low, high = low - 0.5, high + 0.5
-    bins = np.linspace(low, high, 41)
-    scopes: list[tuple[str, str | None]] = [("All tasks", None)] + [
-        (TASK_DISPLAY[task], task) for task in tasks
-    ]
-    figure, axes = plt.subplots(
-        len(scopes), len(layers), figsize=(5.5 * len(layers), 3.2 * len(scopes)), squeeze=False
-    )
-    for row_index, (label, task) in enumerate(scopes):
-        for column_index, layer in enumerate(layers):
-            axis = axes[row_index, column_index]
-            subset = validation[validation.layer == layer]
-            if task is not None:
-                subset = subset[subset.task == task]
-            for condition in ("control", "attack"):
-                axis.hist(
-                    subset[subset.condition == condition].score,
-                    bins=bins,
-                    density=True,
-                    alpha=0.5,
-                    label=condition,
-                )
-            axis.set_xlim(low, high)
-            axis.set_title(f"{label}, L{layer}")
-            if row_index == len(scopes) - 1:
-                axis.set_xlabel("Clean-to-attack direction score")
-            if column_index == 0:
-                axis.set_ylabel("Density")
-            if row_index == 0:
-                axis.legend()
-    figure.tight_layout()
-    atomic_save_figure(
-        output_dir / "selected_layer_density_comparison.png", figure, dpi=180
-    )
-    plt.close(figure)
-
-
-def _base_provenance(
-    config: Phase1Config,
-    selected: dict[str, Any],
-    selected_path: Path,
-) -> dict[str, Any]:
-    return {
-        "schema_version": 1,
-        "study": "phase1_posthoc_robustness",
-        "source_phase1_run_id": selected["run_id"],
-        "source_selected_layer_sha256": sha256_file(selected_path),
-        "source_manifest_sha256": selected["manifest_sha256"],
-        "config_sha256": config.identity_hash(),
-        "seed": 42,
-        "test_split_used": False,
-        "k_values": list(K_VALUES),
-        "pilot_pairs_per_task_split": PILOT_PAIRS_PER_TASK_SPLIT,
-        "methods": list(METHODS),
-        "packages": package_versions(("jspace-research", "jlens", "torch")),
-    }
-
-
-def run_metric_robustness(
-    config: Phase1Config,
-    selected_path: Path,
-    output_dir: Path,
-) -> Path:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    selected, root, examples, activation_metadata, _ = _load_source(config, selected_path)
-    layers = [int(value) for value in activation_metadata["layers"]]
-    count = int(activation_metadata["number_examples"])
-    width = int(activation_metadata["d_model"])
-    score_frames: list[pd.DataFrame] = []
-    metric_rows: list[dict[str, Any]] = []
-    for layer in tqdm(layers, desc="Robustness metrics by layer"):
-        reconstruction = _load_layer_reconstruction(
-            root, selected, layer, count, width
-        )
-        scores = _scores_for_layer(root, layer, examples, reconstruction)
-        training = scores[scores.split == "train"]
-        threshold, training_ba = select_task_macro_balanced_threshold(
-            training.label, training.score, training.task.tolist()
-        )
-        rows = _validation_rows(
-            scores, layer=layer, threshold=threshold, tasks=config.tasks
-        )
-        for row in rows:
-            row["training_macro_balanced_accuracy"] = training_ba
-        metric_rows.extend(rows)
-        score_frames.append(scores)
-        del reconstruction
-
-    metrics = pd.DataFrame(metric_rows)
-    scores = pd.concat(score_frames, ignore_index=True)
-    ba_layer = _select_ba_layer(metrics)
-    auprc_layer = int(selected["selected_layer"])
-    metrics["selected_by_auprc"] = metrics.layer == auprc_layer
-    metrics["selected_by_balanced_accuracy"] = metrics.layer == ba_layer
-    atomic_write_csv(output_dir / "metric_layer_comparison.csv", metrics)
-    _plot_metric_comparison(output_dir, metrics, auprc_layer, ba_layer)
-    _plot_density_comparison(
-        output_dir, scores, config.tasks, auprc_layer, ba_layer
-    )
-    update_provenance(
-        output_dir / "provenance.json",
-        _base_provenance(config, selected, selected_path),
-        defaults={"metric_robustness_complete": False, "reconstruction_pilot_complete": False},
-        updates={
-            "metric_robustness_complete": True,
-            "auprc_selected_layer": auprc_layer,
-            "balanced_accuracy_comparison_layer": ba_layer,
-            "run_layers": layers,
-        },
-    )
-    print(f"Metric robustness complete: {output_dir / 'metric_layer_comparison.csv'}")
-    return output_dir / "metric_layer_comparison.csv"
-
-
-def _pilot_indices(examples: pd.DataFrame, tasks: tuple[str, ...]) -> np.ndarray:
+def _sample_indices(examples: pd.DataFrame, tasks: tuple[str, ...]) -> np.ndarray:
     rng = np.random.default_rng(42)
+    quotas = {
+        "train": TRAIN_PAIRS_PER_TASK,
+        "validation": VALIDATION_PAIRS_PER_TASK,
+    }
     selected_indices: list[int] = []
-    for split in ("train", "validation"):
+    for split, quota in quotas.items():
         for task in tasks:
             subset = examples[(examples.split == split) & (examples.task == task)]
             pair_ids = np.asarray(sorted(subset.pair_id.unique().tolist()), dtype=object)
-            count = min(PILOT_PAIRS_PER_TASK_SPLIT, len(pair_ids))
+            count = min(quota, len(pair_ids))
             chosen = set(rng.choice(pair_ids, size=count, replace=False).tolist())
             selected_indices.extend(subset[subset.pair_id.isin(chosen)].index.tolist())
     return np.asarray(sorted(selected_indices), dtype=np.int64)
 
 
-def _pilot_layers(selected_layer: int, run_layers: list[int]) -> list[int]:
-    layers = [layer for layer in range(selected_layer - 2, selected_layer + 3) if layer in run_layers]
+def _comparison_layers(selected_layer: int, run_layers: list[int]) -> list[int]:
+    layers = [
+        layer for layer in range(selected_layer - 2, selected_layer + 3) if layer in run_layers
+    ]
     if not layers:
         raise RuntimeError("The Phase 1 cache does not include the selected layer")
     return layers
 
 
-def _pilot_cache_paths(
-    output_dir: Path, method: str, layer: int, sparsity_k: int
-) -> tuple[Path, Path]:
+def _cache_paths(output_dir: Path, method: str, layer: int, sparsity_k: int) -> tuple[Path, Path]:
     stem = output_dir / "cache" / method / f"layer_{layer:03d}_k{sparsity_k:03d}"
     return stem.with_suffix(".json"), stem.with_suffix(".pt")
 
 
-def _load_or_compute_pilot(
+def _load_or_compute_reconstruction(
     *,
     output_dir: Path,
     method: str,
@@ -431,9 +189,9 @@ def _load_or_compute_pilot(
     config: Phase1Config,
     selected: dict[str, Any],
 ) -> dict[str, torch.Tensor]:
-    metadata_path, cache_path = _pilot_cache_paths(output_dir, method, layer, sparsity_k)
+    metadata_path, cache_path = _cache_paths(output_dir, method, layer, sparsity_k)
     identity = {
-        "cache_schema_version": 1,
+        "cache_schema_version": 2,
         "source_run_id": selected["run_id"],
         "source_manifest_sha256": selected["manifest_sha256"],
         "subset_sha256": subset_hash,
@@ -441,7 +199,7 @@ def _load_or_compute_pilot(
         "layer": layer,
         "layer_position": layer_position,
         "sparsity_k": sparsity_k,
-        "screen_candidates": config.screen_candidates if method == "screened_greedy" else None,
+        "screen_candidates": (config.screen_candidates if method == "screened_greedy" else None),
         "example_count": len(subset_indices),
         "width": int(activations.shape[2]),
     }
@@ -451,19 +209,19 @@ def _load_or_compute_pilot(
         if not cache_path.is_file():
             raise RuntimeError(f"Robustness cache is incomplete: {cache_path}")
         value = torch.load(cache_path, map_location="cpu", weights_only=True)
-        if not isinstance(value, dict) or value.get("example_indices").tolist() != subset_indices.tolist():
+        if (
+            not isinstance(value, dict)
+            or value.get("example_indices").tolist() != subset_indices.tolist()
+        ):
             raise RuntimeError(f"Robustness cache contents are invalid: {cache_path}")
         return value
 
     reconstructions: list[torch.Tensor] = []
     supports: list[torch.Tensor] = []
     coefficients: list[torch.Tensor] = []
-    description = f"{method} L{layer} k={sparsity_k}"
     batches = list(batched(subset_indices, config.decomposition_batch_size))
-    for indices in tqdm(batches, desc=description):
-        hidden = read_bfloat16_bits(
-            np.asarray(activations[indices, layer_position, :]).copy()
-        )
+    for indices in tqdm(batches, desc=f"{method} L{layer} k={sparsity_k}"):
+        hidden = read_bfloat16_bits(np.asarray(activations[indices, layer_position, :]).copy())
         if method == "screened_greedy":
             reconstructed, token_ids, weights = screened_nonnegative_pursuit(
                 hidden,
@@ -535,36 +293,98 @@ def _support_jaccard(
     return np.asarray(values, dtype=np.float64)
 
 
-def run_reconstruction_pilot(
+def _plot_density_grid(output_dir: Path, scores: pd.DataFrame, layers: list[int]) -> None:
+    validation = scores[scores.split == "validation"]
+    low = float(validation.score.min())
+    high = float(validation.score.max())
+    if low == high:
+        low, high = low - 0.5, high + 0.5
+    bins = np.linspace(low, high, 41)
+    method_titles = {
+        "screened_greedy": "Screened greedy",
+        "gradient_pursuit": "Gradient pursuit",
+    }
+    figure, axes = plt.subplots(
+        len(layers), len(METHODS), figsize=(12, 3.1 * len(layers)), squeeze=False
+    )
+    for row_index, layer in enumerate(layers):
+        for column_index, method in enumerate(METHODS):
+            axis = axes[row_index, column_index]
+            subset = validation[(validation.layer == layer) & (validation.method == method)]
+            for condition in ("control", "attack"):
+                axis.hist(
+                    subset[subset.condition == condition].score,
+                    bins=bins,
+                    density=True,
+                    alpha=0.5,
+                    label=condition,
+                )
+            axis.set_xlim(low, high)
+            axis.set_title(f"{method_titles[method]}, L{layer}")
+            if row_index == len(layers) - 1:
+                axis.set_xlabel("Clean-to-attack direction score")
+            if column_index == 0:
+                axis.set_ylabel("Density")
+            if row_index == 0:
+                axis.legend()
+    figure.suptitle("Phase 1 Reconstruction Robustness: All Tasks", y=1.0)
+    figure.tight_layout()
+    atomic_save_figure(output_dir / "reconstruction_density_by_layer.png", figure, dpi=180)
+    plt.close(figure)
+
+
+def _base_provenance(
+    config: Phase1Config,
+    selected: dict[str, Any],
+    selected_path: Path,
+) -> dict[str, Any]:
+    return {
+        "schema_version": 2,
+        "study": "phase1_posthoc_reconstruction_robustness",
+        "source_phase1_run_id": selected["run_id"],
+        "source_selected_layer_sha256": sha256_file(selected_path),
+        "source_manifest_sha256": selected["manifest_sha256"],
+        "config_sha256": config.identity_hash(),
+        "seed": 42,
+        "test_split_used": False,
+        "sparsity_k": SPARSITY_K,
+        "train_pairs_per_task": TRAIN_PAIRS_PER_TASK,
+        "validation_pairs_per_task": VALIDATION_PAIRS_PER_TASK,
+        "methods": list(METHODS),
+        "packages": package_versions(("jspace-research", "jlens", "torch")),
+    }
+
+
+def run_reconstruction_comparison(
     config: Phase1Config,
     selected_path: Path,
     output_dir: Path,
 ) -> Path:
     if not torch.cuda.is_available():
-        raise RuntimeError("The reconstruction robustness pilot requires a CUDA GPU")
+        raise RuntimeError("The reconstruction robustness study requires a CUDA GPU")
     output_dir.mkdir(parents=True, exist_ok=True)
-    selected, root, examples, activation_metadata, activations = _load_source(
-        config, selected_path
-    )
+    selected, root, examples, activation_metadata, activations = _load_source(config, selected_path)
     run_layers = [int(value) for value in activation_metadata["layers"]]
-    pilot_layers = _pilot_layers(int(selected["selected_layer"]), run_layers)
-    subset_indices = _pilot_indices(examples, config.tasks)
+    comparison_layers = _comparison_layers(int(selected["selected_layer"]), run_layers)
+    subset_indices = _sample_indices(examples, config.tasks)
     subset_hash = hashlib.sha256(
         json.dumps(subset_indices.tolist(), separators=(",", ":")).encode()
     ).hexdigest()
     subset = examples.loc[subset_indices].copy()
 
     lens = JacobianLensAdapter.load(config)
-    validate_lens_for_layers(lens, int(activation_metadata["d_model"]), pilot_layers)
-    unembedding_path = _relative_artifact(
-        root, selected["artifacts"]["activations"]["unembedding"]
+    validate_lens_for_layers(lens, int(activation_metadata["d_model"]), comparison_layers)
+    unembedding = torch.load(
+        _relative_artifact(root, selected["artifacts"]["activations"]["unembedding"]),
+        map_location="cpu",
+        weights_only=True,
     )
-    unembedding = torch.load(unembedding_path, map_location="cpu", weights_only=True)
     if unembedding.ndim != 2 or unembedding.shape[1] != int(activation_metadata["d_model"]):
         raise RuntimeError("Phase 1 unembedding width does not match the activation cache")
+
     device = torch.device("cuda:0")
-    cached: dict[tuple[str, int, int], dict[str, torch.Tensor]] = {}
-    for layer in pilot_layers:
+    cached: dict[tuple[str, int], dict[str, torch.Tensor]] = {}
+    for layer in comparison_layers:
         layer_position = run_layers.index(layer)
         dictionary = build_normalized_dictionary(
             jacobian=lens.jacobian(layer),
@@ -574,91 +394,107 @@ def run_reconstruction_pilot(
             chunk_size=config.dictionary_chunk_size,
         )
         for method in METHODS:
-            for sparsity_k in K_VALUES:
-                cached[(method, layer, sparsity_k)] = _load_or_compute_pilot(
-                    output_dir=output_dir,
-                    method=method,
-                    layer=layer,
-                    sparsity_k=sparsity_k,
-                    subset_indices=subset_indices,
-                    subset_hash=subset_hash,
-                    layer_position=layer_position,
-                    activations=activations,
-                    dictionary=dictionary,
-                    config=config,
-                    selected=selected,
-                )
+            cached[(method, layer)] = _load_or_compute_reconstruction(
+                output_dir=output_dir,
+                method=method,
+                layer=layer,
+                sparsity_k=SPARSITY_K,
+                subset_indices=subset_indices,
+                subset_hash=subset_hash,
+                layer_position=layer_position,
+                activations=activations,
+                dictionary=dictionary,
+                config=config,
+                selected=selected,
+            )
         del dictionary
         gc.collect()
         torch.cuda.empty_cache()
 
-    rows: list[dict[str, Any]] = []
-    for layer in pilot_layers:
+    metric_rows: list[dict[str, Any]] = []
+    score_frames: list[pd.DataFrame] = []
+    split_values = subset.split.to_numpy()
+    task_values = subset.task.to_numpy()
+    for layer in comparison_layers:
         layer_position = run_layers.index(layer)
         hidden = read_bfloat16_bits(
             np.asarray(activations[subset_indices, layer_position, :]).copy()
         )
         jaccard = _support_jaccard(
-            cached[("screened_greedy", layer, 25)]["support_ids"],
-            cached[("screened_greedy", layer, 25)]["coefficients"],
-            cached[("gradient_pursuit", layer, 25)]["support_ids"],
-            cached[("gradient_pursuit", layer, 25)]["coefficients"],
+            cached[("screened_greedy", layer)]["support_ids"],
+            cached[("screened_greedy", layer)]["coefficients"],
+            cached[("gradient_pursuit", layer)]["support_ids"],
+            cached[("gradient_pursuit", layer)]["coefficients"],
         )
         for method in METHODS:
-            for sparsity_k in K_VALUES:
-                value = cached[(method, layer, sparsity_k)]
-                reconstruction = value["reconstruction"].float()
-                quality = _reconstruction_quality(hidden, reconstruction)
-                direction = learn_task_balanced_direction(
-                    reconstruction[subset.split.to_numpy() == "train"],
-                    subset.loc[subset.split == "train", "label"].to_numpy(),
-                    subset.loc[subset.split == "train", "task"].tolist(),
+            reconstruction = cached[(method, layer)]["reconstruction"].float()
+            quality = _reconstruction_quality(hidden, reconstruction)
+            train_mask = split_values == "train"
+            direction = learn_task_balanced_direction(
+                reconstruction[train_mask],
+                subset.loc[train_mask, "label"].to_numpy(),
+                subset.loc[train_mask, "task"].tolist(),
+            )
+            scores = direction_scores(
+                reconstruction, direction["mu_clean"], direction["d_unit"]
+            ).numpy()
+            frame = subset[
+                ["example_index", "pair_id", "split", "task", "condition", "label"]
+            ].copy()
+            frame["layer"] = layer
+            frame["method"] = method
+            frame["sparsity_k"] = SPARSITY_K
+            frame["score"] = scores
+            training = frame[frame.split == "train"]
+            threshold, training_ba = select_task_macro_balanced_threshold(
+                training.label, training.score, training.task.tolist()
+            )
+            rows = _validation_rows(
+                frame,
+                layer=layer,
+                threshold=threshold,
+                tasks=config.tasks,
+                method=method,
+            )
+            for row in rows:
+                scope_mask = (
+                    task_values == row["task"]
+                    if row["scope"] == "task"
+                    else np.ones(len(subset), dtype=bool)
                 )
-                scores = direction_scores(
-                    reconstruction, direction["mu_clean"], direction["d_unit"]
-                ).numpy()
-                frame = subset[["split", "task", "label"]].copy()
-                frame["score"] = scores
-                training = frame[frame.split == "train"]
-                threshold, training_ba = select_task_macro_balanced_threshold(
-                    training.label, training.score, training.task.tolist()
-                )
-                result_rows = _validation_rows(
-                    frame.reset_index(drop=True),
-                    layer=layer,
-                    threshold=threshold,
-                    tasks=config.tasks,
-                    method=method,
-                    sparsity_k=sparsity_k,
-                )
-                for row in result_rows:
-                    if row["scope"] == "task":
-                        mask = subset.task.to_numpy() == row["task"]
-                    else:
-                        mask = np.ones(len(subset), dtype=bool)
-                    train_mask = mask & (subset.split.to_numpy() == "train")
-                    validation_mask = mask & (subset.split.to_numpy() == "validation")
-                    for key, values in quality.items():
-                        row[f"train_{key}"] = float(values[train_mask].mean())
-                        row[f"validation_{key}"] = float(values[validation_mask].mean())
-                    row["training_macro_balanced_accuracy"] = training_ba
-                    row["support_jaccard_k25"] = (
-                        float(jaccard[mask].mean()) if sparsity_k == 25 else np.nan
+                for name, values in quality.items():
+                    row[f"train_{name}"] = float(
+                        values[scope_mask & (split_values == "train")].mean()
                     )
-                rows.extend(result_rows)
+                    row[f"validation_{name}"] = float(
+                        values[scope_mask & (split_values == "validation")].mean()
+                    )
+                row["training_macro_balanced_accuracy"] = training_ba
+                row["greedy_gradient_support_jaccard"] = float(jaccard[scope_mask].mean())
+            metric_rows.extend(rows)
+            score_frames.append(frame)
 
-    result = pd.DataFrame(rows)
-    result_path = output_dir / "reconstruction_robustness.csv"
-    atomic_write_csv(result_path, result)
+    metrics = pd.DataFrame(metric_rows)
+    scores = pd.concat(score_frames, ignore_index=True)
+    metrics_path = output_dir / "reconstruction_robustness.csv"
+    scores_path = output_dir / "reconstruction_validation_scores.parquet"
+    atomic_write_csv(metrics_path, metrics)
+    atomic_write_parquet(scores_path, scores[scores.split == "validation"].reset_index(drop=True))
+    _plot_density_grid(output_dir, scores, comparison_layers)
+    split_pair_counts = {
+        split: int(subset[subset.split == split].pair_id.nunique())
+        for split in ("train", "validation")
+    }
     update_provenance(
         output_dir / "provenance.json",
         _base_provenance(config, selected, selected_path),
-        defaults={"metric_robustness_complete": False, "reconstruction_pilot_complete": False},
+        defaults={"comparison_complete": False},
         updates={
-            "reconstruction_pilot_complete": True,
-            "pilot_layers": pilot_layers,
-            "pilot_example_indices_sha256": subset_hash,
-            "pilot_example_count": len(subset_indices),
+            "comparison_complete": True,
+            "comparison_layers": comparison_layers,
+            "sample_pair_counts": split_pair_counts,
+            "sample_example_indices_sha256": subset_hash,
+            "sample_example_count": len(subset_indices),
             "gradient_pursuit": {
                 "dictionary_search": "full",
                 "selection": "largest_positive_residual_correlation",
@@ -667,23 +503,17 @@ def run_reconstruction_pilot(
             },
         },
     )
-    print(f"Reconstruction robustness complete: {result_path}")
-    return result_path
+    print(f"Reconstruction robustness complete: {metrics_path}")
+    return metrics_path
 
 
 def run(
     config: Phase1Config,
     selected_path: str | Path,
     output_dir: str | Path,
-    stage: str,
 ) -> None:
     selected = Path(selected_path).expanduser().resolve()
     output = Path(output_dir).expanduser().resolve()
     if output == selected.parent or selected.parent in output.parents:
         raise ValueError("Robustness output must not be inside the frozen Phase 1 directory")
-    if stage in ("metrics", "all"):
-        run_metric_robustness(config, selected, output)
-    if stage in ("reconstruction", "all"):
-        run_reconstruction_pilot(config, selected, output)
-    if stage not in ("metrics", "reconstruction", "all"):
-        raise ValueError(f"Unknown robustness stage: {stage}")
+    run_reconstruction_comparison(config, selected, output)
