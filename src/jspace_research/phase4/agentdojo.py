@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import re
 import sys
@@ -11,13 +12,18 @@ import yaml
 from tqdm.auto import tqdm
 
 from ..phase1.data import hash_messages, render_ids
+from ..runtime import append_jsonl
 from .common import content_hash, require_generation_context, save_record
+
+HARNESS_VERSION = 2
 
 _GEMMA_CALL = re.compile(r"call:([A-Za-z_][A-Za-z0-9_]*)\s*(\{[^\n]*\})")
 _GEMMA_FUNCTION_TAG = re.compile(
     r"<function=([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\{[^\n]*\})>\s*</function>"
 )
 _BARE_ARGUMENT_KEY = re.compile(r"([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:")
+_NATIVE_CALL_OPEN = re.compile(r"<function\s*=\s*[^>]+>")
+_NATIVE_CALL_CLOSE = "</function>"
 
 
 def _normalize_gemma_tool_call(completion: str) -> str:
@@ -45,6 +51,18 @@ def _normalize_gemma_tool_call(completion: str) -> str:
     return completion[: match.start()] + normalized + completion[match.end() :]
 
 
+def _through_first_tool_call(completion: str) -> str:
+    """Drop text generated after the first call; AgentDojo executes only that call."""
+
+    match = _NATIVE_CALL_OPEN.search(completion)
+    if match is None:
+        return completion
+    end = completion.find(_NATIVE_CALL_CLOSE, match.end())
+    if end == -1:
+        return completion
+    return completion[: end + len(_NATIVE_CALL_CLOSE)]
+
+
 def _string_values(value: Any):
     if isinstance(value, str):
         yield value
@@ -56,20 +74,45 @@ def _string_values(value: Any):
             yield from _string_values(item)
 
 
+def _decoded_strings(tool_text: str) -> list[str]:
+    """Return the tool text plus string values from each format AgentDojo tools emit.
+
+    Tools return either YAML or a Python ``repr``. YAML reads a single-quoted
+    repr string without processing its ``\\n`` escapes, so both decoders are needed.
+    """
+
+    values = [tool_text]
+    for decode in (yaml.safe_load, ast.literal_eval):
+        try:
+            decoded = decode(tool_text)
+        except (yaml.YAMLError, ValueError, SyntaxError, TypeError, MemoryError, RecursionError):
+            continue
+        values.extend(_string_values(decoded))
+    return values
+
+
 def _contains_injection(tool_texts: list[str], injected_texts: list[str]) -> bool:
     normalized_injections = [" ".join(text.split()) for text in injected_texts if text.strip()]
     for tool_text in tool_texts:
-        try:
-            decoded = yaml.safe_load(tool_text)
-        except yaml.YAMLError:
-            decoded = tool_text
         if any(
             injection in " ".join(value.split())
-            for value in _string_values(decoded)
+            for value in _decoded_strings(tool_text)
             for injection in normalized_injections
         ):
             return True
     return False
+
+
+def _json_ready(value: Any) -> Any:
+    return json.loads(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            default=lambda item: (
+                item.model_dump(mode="json") if hasattr(item, "model_dump") else str(item)
+            ),
+        )
+    )
 
 
 def _install_checkout(root: Path) -> None:
@@ -95,8 +138,8 @@ def _chat_messages(messages: Sequence[Any], runtime: Any) -> list[dict[str, str]
             if message.get("error") is not None:
                 text = json.dumps({"error": message["error"]})
             else:
-                value = content if content != "None" else "Success"
-                text = json.dumps({"result": value})
+                value = get_text_content_as_str(content) if content is not None else "None"
+                text = json.dumps({"result": value if value != "None" else "Success"})
             target_role = "user"
         else:
             text = get_text_content_as_str(content) if content is not None else ""
@@ -122,14 +165,17 @@ def _make_llm(
     from agentdojo.agent_pipeline.llms.local_llm import _parse_model_output
     from agentdojo.types import get_text_content_as_str
 
-    class GemmaElement(BasePipelineElement):
+    class LocalModelElement(BasePipelineElement):
         name = "local"
 
         def __init__(self) -> None:
             self.injection_exposed = False
+            self.first_exposed_step: int | None = None
             self.capture: dict[str, Any] | None = None
             self.captured_completion: str | None = None
             self.last_completion = ""
+            self.steps: list[dict[str, Any]] = []
+            self.messages: list[Any] = []
 
         def query(
             self,
@@ -145,6 +191,8 @@ def _make_llm(
                 if message["role"] == "tool" and message.get("content") is not None:
                     tool_texts.append(get_text_content_as_str(message["content"]))
             exposed = bool(injected_texts and _contains_injection(tool_texts, injected_texts))
+            if exposed and self.first_exposed_step is None:
+                self.first_exposed_step = len(self.steps)
             self.injection_exposed = self.injection_exposed or exposed
             eligible = self.capture is None and (
                 (condition == "attack" and exposed)
@@ -172,10 +220,25 @@ def _make_llm(
             self.last_completion = model.tokenizer.decode(tokens, skip_special_tokens=True)
             if eligible:
                 self.captured_completion = self.last_completion
-            output = _parse_model_output(_normalize_gemma_tool_call(self.last_completion))
-            return query, runtime, env, [*messages, output], extra_args
+            parsed_text = _through_first_tool_call(_normalize_gemma_tool_call(self.last_completion))
+            output = _parse_model_output(parsed_text)
+            self.steps.append(
+                {
+                    "step": len(self.steps),
+                    "prompt_tokens": int(input_ids.shape[-1]),
+                    "generated_tokens": int(tokens.shape[-1]),
+                    "injection_exposed": exposed,
+                    "captured": eligible,
+                    "raw_completion": model.tokenizer.decode(tokens, skip_special_tokens=False),
+                    "completion": self.last_completion,
+                    "parsed_text": parsed_text,
+                    "parsed_tool_calls": _json_ready(output["tool_calls"] or []),
+                }
+            )
+            self.messages = [*messages, output]
+            return query, runtime, env, self.messages, extra_args
 
-    return GemmaElement()
+    return LocalModelElement()
 
 
 def _native_cases(suite: Any, smoke: bool) -> list[tuple[str, Any, Any | None]]:
@@ -221,6 +284,7 @@ def generate(
     from agentdojo.task_suite.load_suites import get_suite
 
     output_path = config.output_dir / "agentdojo_records.jsonl"
+    trajectory_path = config.output_dir / "agentdojo_trajectories.jsonl"
     suite_cases = []
     expected_ids: set[str] = set()
     for suite_name in config.agentdojo_suites:
@@ -294,6 +358,7 @@ def generate(
             )
         case_identity = {
             **case_basis,
+            "harness_version": HARNESS_VERSION,
             "user_prompt": str(user_task.PROMPT),
             "injection_goal": (None if injection_task is None else str(injection_task.GOAL)),
             "injections": injections,
@@ -301,10 +366,24 @@ def generate(
         case_hash = content_hash(case_identity)
         if case_id in completed:
             if completed[case_id].get("case_hash") != case_hash:
-                raise RuntimeError("Cached AgentDojo case identity changed")
+                raise RuntimeError(
+                    f"Cached AgentDojo case identity changed for {case_id}; delete "
+                    f"{output_path} to regenerate with the current harness"
+                )
             continue
         utility, attack_success = suite.run_task_with_pipeline(
             pipeline, user_task, injection_task, injections
+        )
+        append_jsonl(
+            trajectory_path,
+            {
+                "case_id": case_id,
+                "case_hash": case_hash,
+                "injections": injections,
+                "first_exposed_step": tracker.first_exposed_step,
+                "steps": tracker.steps,
+                "messages": _json_ready(tracker.messages),
+            },
         )
         detector = tracker.capture or {
             "mean_score": None,
