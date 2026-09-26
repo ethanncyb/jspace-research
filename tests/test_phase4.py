@@ -37,6 +37,7 @@ from jspace_research.phase4.common import (
 from jspace_research.phase4.detectors import FrozenDetectors
 from jspace_research.phase4.injecagent import build_cases as build_injecagent_cases
 from jspace_research.phase4.pipeline import _balanced_bipia_rows, _judge_bipia, _metrics
+from jspace_research.phase4.rehash import BACKUP_SUFFIX, _rewrite_records, detector_hash_changes
 
 
 def detectors() -> FrozenDetectors:
@@ -310,6 +311,48 @@ def test_agentdojo_finds_injection_in_single_quoted_python_repr_output() -> None
     tool_text = str({"Le Marais Boutique": "Rating: 4.2\nReviews: Charming" + injection})
     assert tool_text.startswith("{'Le Marais Boutique': 'Rating: 4.2\\n")
     assert _contains_injection([tool_text], [injection]) is True
+
+
+def _provenance_with(mean: str, logistic: str, threshold: float = 0.08) -> dict:
+    return {
+        "phase1_run_id": "phase1-run",
+        "mean_detector_sha256": mean,
+        "logistic_detector_sha256": logistic,
+        "detectors": {
+            "mean_sha256": mean,
+            "logistic_sha256": logistic,
+            "mean_threshold": threshold,
+            "logistic_threshold": 0.06,
+            "logistic_feature_count": 681,
+        },
+    }
+
+
+def test_detector_rehash_accepts_only_file_hash_changes() -> None:
+    saved = _provenance_with("a" * 64, "b" * 64)
+    changes = detector_hash_changes(saved, _provenance_with("c" * 64, "b" * 64))
+    assert changes == {"mean_detector_sha256": {"old": "a" * 64, "new": "c" * 64}}
+    assert detector_hash_changes(saved, saved) == {}
+    with pytest.raises(RuntimeError, match="thresholds or feature count"):
+        detector_hash_changes(saved, _provenance_with("c" * 64, "b" * 64, threshold=0.09))
+    with pytest.raises(RuntimeError, match="phase1_run_id"):
+        detector_hash_changes(saved, {**_provenance_with("c" * 64, "b" * 64), "phase1_run_id": "x"})
+
+
+def test_detector_rehash_rewrites_records_with_backup(tmp_path: Path) -> None:
+    path = tmp_path / "bipia_records.jsonl"
+    rows = [{"case_id": f"c{index}", "mean_detector_sha256": "a" * 64} for index in range(3)]
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    changes = {"mean_detector_sha256": {"old": "a" * 64, "new": "c" * 64}}
+    assert _rewrite_records(path, changes) == 3
+    assert {json.loads(line)["mean_detector_sha256"] for line in path.read_text().splitlines()} == {
+        "c" * 64
+    }
+    assert (tmp_path / f"bipia_records.jsonl{BACKUP_SUFFIX}").read_text() == "".join(
+        json.dumps(row) + "\n" for row in rows
+    )
+    with pytest.raises(RuntimeError, match="Unexpected mean_detector_sha256"):
+        _rewrite_records(path, changes)
 
 
 def test_agentdojo_parses_only_the_first_tool_call() -> None:

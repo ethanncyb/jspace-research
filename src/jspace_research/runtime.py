@@ -74,10 +74,39 @@ def atomic_torch_save(path: str | Path, value: Any) -> None:
     ) as handle:
         temporary = Path(handle.name)
     try:
-        torch.save(value, temporary)
+        # A path argument makes torch name the archive after the random temporary
+        # file, so identical values would hash differently on every save.
+        with temporary.open("wb") as stream:
+            torch.save(value, stream)
         os.replace(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def same_saved_value(left: Any, right: Any) -> bool:
+    """Compare nested artifact values exactly, including tensor dtype and shape."""
+
+    import torch
+
+    if torch.is_tensor(left) or torch.is_tensor(right):
+        return (
+            torch.is_tensor(left)
+            and torch.is_tensor(right)
+            and left.dtype == right.dtype
+            and left.shape == right.shape
+            and torch.equal(left.cpu(), right.cpu())
+        )
+    if isinstance(left, dict) and isinstance(right, dict):
+        return left.keys() == right.keys() and all(
+            same_saved_value(left[key], right[key]) for key in left
+        )
+    if isinstance(left, list | tuple) and isinstance(right, list | tuple):
+        return (
+            type(left) is type(right)
+            and len(left) == len(right)
+            and all(same_saved_value(a, b) for a, b in zip(left, right, strict=True))
+        )
+    return type(left) is type(right) and left == right
 
 
 def atomic_save_figure(path: str | Path, figure: Any, **savefig_kwargs: Any) -> None:

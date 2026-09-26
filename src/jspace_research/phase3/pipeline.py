@@ -22,6 +22,7 @@ from ..runtime import (
     atomic_torch_save,
     atomic_write_csv,
     atomic_write_parquet,
+    same_saved_value,
     update_provenance,
 )
 from .artifacts import load_detector
@@ -29,6 +30,16 @@ from .config import Phase3Config
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+
+
+def _save_detector(path: Path, value: dict[str, Any]) -> None:
+    """Keep an identical frozen detector file so downstream file hashes stay valid."""
+
+    if path.exists():
+        existing = torch.load(path, map_location="cpu", weights_only=True)
+        if same_saved_value(existing, value):
+            return
+    atomic_torch_save(path, value)
 
 
 def _run_id(config: Phase3Config, handoff: Phase1Handoff) -> str:
@@ -367,7 +378,7 @@ def run(config: Phase3Config) -> Path:
         "decomposition": handoff.metadata["decomposition"],
     }
     mean_path = config.output_dir / "mean_detector.pt"
-    atomic_torch_save(
+    _save_detector(
         mean_path,
         {
             **common_artifact,
@@ -380,7 +391,7 @@ def run(config: Phase3Config) -> Path:
         },
     )
     logistic_path = config.output_dir / "logistic_detector.pt"
-    atomic_torch_save(
+    _save_detector(
         logistic_path,
         {
             **common_artifact,

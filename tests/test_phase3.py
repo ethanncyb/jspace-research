@@ -21,10 +21,40 @@ from jspace_research.phase1.jspace import tensor_to_bfloat16_bits
 from jspace_research.phase3.artifacts import load_detector
 from jspace_research.phase3.config import Phase3Config
 from jspace_research.phase3.pipeline import (
+    _save_detector,
     build_sparse_features,
     run,
     select_threshold,
 )
+from jspace_research.runtime import atomic_torch_save, same_saved_value, sha256_file
+
+
+def test_atomic_torch_save_is_byte_stable(tmp_path: Path) -> None:
+    value = {"weights": torch.arange(4.0), "threshold": 0.25}
+    path = tmp_path / "detector.pt"
+    atomic_torch_save(path, value)
+    first = sha256_file(path)
+    atomic_torch_save(path, value)
+    assert sha256_file(path) == first
+
+
+def test_save_detector_keeps_identical_file_and_replaces_changed(tmp_path: Path) -> None:
+    path = tmp_path / "mean_detector.pt"
+    value = {"d_unit": torch.ones(3), "threshold": 0.5, "settings": {"penalty": "l2"}}
+    torch.save(value, path)
+    original = sha256_file(path)
+    _save_detector(path, {**value, "d_unit": torch.ones(3)})
+    assert sha256_file(path) == original
+    _save_detector(path, {**value, "threshold": 0.6})
+    assert sha256_file(path) != original
+    assert torch.load(path, weights_only=True)["threshold"] == 0.6
+
+
+def test_same_saved_value_is_exact() -> None:
+    assert same_saved_value({"a": torch.zeros(2), "b": [1, "x"]}, {"a": torch.zeros(2), "b": [1, "x"]})
+    assert not same_saved_value(torch.zeros(2), torch.zeros(2, dtype=torch.float64))
+    assert not same_saved_value({"t": 0.5}, {"t": 0.5000001})
+    assert not same_saved_value({"a": 1}, {"a": 1, "b": 2})
 
 
 def make_config(tmp_path: Path) -> Phase3Config:
