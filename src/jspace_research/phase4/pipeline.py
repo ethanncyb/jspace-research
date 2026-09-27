@@ -412,6 +412,29 @@ def _metrics(predictions: pd.DataFrame, detectors: FrozenDetectors) -> pd.DataFr
                         threshold=thresholds[detector],
                     )
                 )
+            scores = np.concatenate(
+                [
+                    attacked[f"{detector}_score"].to_numpy(dtype=float),
+                    clean[f"{detector}_score"].to_numpy(dtype=float),
+                ]
+            )
+            labels = np.r_[np.ones(len(attacked)), np.zeros(len(clean))]
+            rows.append(
+                _detector_rows(
+                    benchmark="agentdojo",
+                    scope=scope,
+                    subgroup=subgroup,
+                    metric="auroc",
+                    detector=detector,
+                    value=(
+                        float(roc_auc_score(labels, scores))
+                        if len(attacked) and len(clean)
+                        else float("nan")
+                    ),
+                    n=len(scores),
+                    threshold=thresholds[detector],
+                )
+            )
         for metric, values in (
             ("clean_utility", subset[subset.condition == "control"].native_utility),
             ("utility_under_attack", subset[subset.condition == "attack"].native_utility),

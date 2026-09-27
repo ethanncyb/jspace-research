@@ -213,6 +213,12 @@ def test_phase4_uses_benchmark_specific_metrics() -> None:
     ].iloc[0]
     assert undefined_tpr.n == 0
     assert pd.isna(undefined_tpr.value)
+    dojo_auroc = metrics[
+        (metrics.benchmark == "agentdojo") & (metrics.metric == "auroc")
+    ].set_index(["subgroup", "detector"])
+    assert dojo_auroc.loc[("banking", "mean"), "value"] == 1.0
+    assert dojo_auroc.loc[("banking", "mean"), "n"] == 2
+    assert pd.isna(dojo_auroc.loc[("slack", "logistic"), "value"])
 
 
 def test_phase4_record_resumption_rejects_stale_identity(tmp_path) -> None:
