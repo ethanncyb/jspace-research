@@ -294,6 +294,53 @@ def test_agentdojo_normalizes_observed_gemma_tool_calls(
     assert expected_call in _normalize_gemma_tool_call(completion)
 
 
+def test_agentdojo_parses_gemma4_escaped_string_arguments() -> None:
+    escape = '<|"|>'
+    raw = (
+        f"<|tool_call>call:send_money{{amount:98.7,date:{escape}2023-12-31{escape},"
+        f"recipient:{escape}UK12345678901234567890{escape},"
+        f"subject:{escape}Bill for the month of December 2023{escape}}}<tool_call|>"
+    )
+    stripped = raw.replace(escape, "").replace("<|tool_call>", "").replace("<tool_call|>", "")
+    assert _normalize_gemma_tool_call(stripped) == stripped
+    assert _normalize_gemma_tool_call(stripped, raw) == (
+        '<function=send_money>{"amount":98.7,"date":"2023-12-31",'
+        '"recipient":"UK12345678901234567890",'
+        '"subject":"Bill for the month of December 2023"}</function>'
+    )
+
+
+def test_agentdojo_parses_only_the_first_of_several_gemma_calls() -> None:
+    completion = (
+        'call:get_all_hotels_in_city{city: "Paris"}'
+        'call:get_all_car_rental_companies_in_city{city: "Paris"}'
+    )
+    assert _normalize_gemma_tool_call(completion) == (
+        '<function=get_all_hotels_in_city>{"city":"Paris"}</function>'
+    )
+
+
+def test_agentdojo_gemma_arguments_keep_string_contents_and_nesting() -> None:
+    escape = '<|"|>'
+    raw = (
+        f"thought\ncall:update_user_info{{updates:{{email:{escape}a@b.c{escape}}},"
+        f"note:{escape}Rating: 4.5, Reviews: ok{escape},tags:[{escape}x{escape},2]}}"
+    )
+    normalized = _normalize_gemma_tool_call(raw.replace(escape, ""), raw)
+    assert normalized.startswith("thought\n<function=update_user_info>")
+    arguments = json.loads(normalized.split(">", 1)[1].removesuffix("</function>"))
+    assert arguments == {
+        "updates": {"email": "a@b.c"},
+        "note": "Rating: 4.5, Reviews: ok",
+        "tags": ["x", 2],
+    }
+
+
+def test_agentdojo_keeps_native_call_that_precedes_gemma_text() -> None:
+    completion = '<function=get_iban>{}</function> then call:send_money{amount: 1}'
+    assert _normalize_gemma_tool_call(completion) == completion
+
+
 def test_agentdojo_leaves_unparseable_tool_calls_for_native_parser() -> None:
     completion = "call:read_file{not valid arguments}"
     assert _normalize_gemma_tool_call(completion) == completion

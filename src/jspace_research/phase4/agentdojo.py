@@ -15,40 +15,101 @@ from ..phase1.data import hash_messages, render_ids
 from ..runtime import append_jsonl
 from .common import content_hash, require_generation_context, save_record
 
-HARNESS_VERSION = 2
+HARNESS_VERSION = 3
 
-_GEMMA_CALL = re.compile(r"call:([A-Za-z_][A-Za-z0-9_]*)\s*(\{[^\n]*\})")
-_GEMMA_FUNCTION_TAG = re.compile(
-    r"<function=([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\{[^\n]*\})>\s*</function>"
+_GEMMA_CALL_STARTS = (
+    re.compile(r"call:([A-Za-z_][A-Za-z0-9_]*)\s*\{"),
+    re.compile(r"<function=([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\{"),
 )
-_BARE_ARGUMENT_KEY = re.compile(r"([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:")
+_GEMMA_STRING_ESCAPE = '<|"|>'
+_JSON_STRING = re.compile(r'"(?:[^"\\]|\\.)*"', re.DOTALL)
+_BARE_KEY = re.compile(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*:")
 _NATIVE_CALL_OPEN = re.compile(r"<function\s*=\s*[^>]+>")
 _NATIVE_CALL_CLOSE = "</function>"
 
 
-def _normalize_gemma_tool_call(completion: str) -> str:
-    """Translate Gemma's observed tool-call spelling to AgentDojo's native form."""
+def _gemma_arguments(text: str, start: int) -> dict[str, Any] | None:
+    """Parse the one Gemma argument object that opens at ``text[start]``."""
 
-    match = _GEMMA_FUNCTION_TAG.search(completion) or _GEMMA_CALL.search(completion)
-    if match is None:
+    pieces: list[str] = []
+    depth = 0
+    expect_key = False
+    index = start
+    while index < len(text):
+        if text.startswith(_GEMMA_STRING_ESCAPE, index):
+            end = text.find(_GEMMA_STRING_ESCAPE, index + len(_GEMMA_STRING_ESCAPE))
+            if end == -1:
+                return None
+            pieces.append(json.dumps(text[index + len(_GEMMA_STRING_ESCAPE) : end]))
+            index = end + len(_GEMMA_STRING_ESCAPE)
+            expect_key = False
+            continue
+        if text[index] == '"':
+            string = _JSON_STRING.match(text, index)
+            if string is None:
+                return None
+            pieces.append(string.group())
+            index = string.end()
+            expect_key = False
+            continue
+        if expect_key and (key := _BARE_KEY.match(text, index)):
+            pieces.append(json.dumps(key.group(1)) + ":")
+            index = key.end()
+            expect_key = False
+            continue
+        char = text[index]
+        pieces.append(char)
+        index += 1
+        if char in "{[":
+            depth += 1
+        elif char in "}]":
+            depth -= 1
+        if char in "{,":
+            expect_key = True
+        elif not char.isspace():
+            expect_key = False
+        if depth == 0:
+            try:
+                value = json.loads("".join(pieces))
+            except json.JSONDecodeError:
+                return None
+            return value if isinstance(value, dict) else None
+    return None
+
+
+def _first_gemma_call(text: str) -> tuple[str, dict[str, Any]] | None:
+    matches = [match for pattern in _GEMMA_CALL_STARTS if (match := pattern.search(text))]
+    if not matches:
+        return None
+    match = min(matches, key=lambda item: item.start())
+    arguments = _gemma_arguments(text, match.end() - 1)
+    return None if arguments is None else (match.group(1), arguments)
+
+
+def _normalize_gemma_tool_call(completion: str, raw_completion: str | None = None) -> str:
+    """Translate Gemma's first tool call into AgentDojo's native form.
+
+    Gemma 4 wraps string arguments in the special token ``<|"|>``, which decoding with
+    ``skip_special_tokens`` removes, so the call is parsed from ``raw_completion`` first.
+    """
+
+    call = None
+    for source in (raw_completion, completion):
+        if source is not None and (call := _first_gemma_call(source)) is not None:
+            break
+    if call is None:
         return completion
-    function_name, raw_arguments = match.groups()
-    try:
-        arguments = json.loads(raw_arguments)
-    except json.JSONDecodeError:
-        quoted_keys = _BARE_ARGUMENT_KEY.sub(r'\1"\2":', raw_arguments)
-        try:
-            arguments = json.loads(quoted_keys)
-        except json.JSONDecodeError:
-            return completion
-    if not isinstance(arguments, dict):
+    name, arguments = call
+    location = re.search(rf"(?:call:|<function=){re.escape(name)}\b", completion)
+    native = _NATIVE_CALL_OPEN.search(completion)
+    if native is not None and (location is None or native.start() < location.start()):
         return completion
-    normalized = (
-        f"<function={function_name}>"
+    prefix = completion[: location.start()] if location is not None else ""
+    return (
+        f"{prefix}<function={name}>"
         f"{json.dumps(arguments, ensure_ascii=False, separators=(',', ':'))}"
         "</function>"
     )
-    return completion[: match.start()] + normalized + completion[match.end() :]
 
 
 def _through_first_tool_call(completion: str) -> str:
@@ -220,7 +281,10 @@ def _make_llm(
             self.last_completion = model.tokenizer.decode(tokens, skip_special_tokens=True)
             if eligible:
                 self.captured_completion = self.last_completion
-            parsed_text = _through_first_tool_call(_normalize_gemma_tool_call(self.last_completion))
+            raw_completion = model.tokenizer.decode(tokens, skip_special_tokens=False)
+            parsed_text = _through_first_tool_call(
+                _normalize_gemma_tool_call(self.last_completion, raw_completion)
+            )
             output = _parse_model_output(parsed_text)
             self.steps.append(
                 {
@@ -229,7 +293,7 @@ def _make_llm(
                     "generated_tokens": int(tokens.shape[-1]),
                     "injection_exposed": exposed,
                     "captured": eligible,
-                    "raw_completion": model.tokenizer.decode(tokens, skip_special_tokens=False),
+                    "raw_completion": raw_completion,
                     "completion": self.last_completion,
                     "parsed_text": parsed_text,
                     "parsed_tool_calls": _json_ready(output["tool_calls"] or []),
