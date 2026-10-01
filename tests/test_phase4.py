@@ -513,7 +513,10 @@ def test_end_to_end_notebook_runs_phase4_after_phase3() -> None:
 
     config_cell = next(text for text in cells if "RUN_MODE = 'smoke'" in text)
     install_cell = next(text for text in cells if "RESEARCH_REVISION" in text)
+    robustness_cell = next(text for text in cells if "robustness_command" in text)
     assert "RESEARCH_REVISION = 'codex/phase1-robustness'" in install_cell
+    assert "import pandas as pd" in robustness_cell
+    assert "from IPython.display import Image, display" in robustness_cell
     assert "DATA_ROOT = Path('/content/drive/MyDrive/jspace-research/data')" in config_cell
     assert "if RUN_MODE == 'full':" in config_cell
     assert "DATA_ROOT / 'webqa/train.jsonl'" in config_cell
