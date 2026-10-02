@@ -16,6 +16,12 @@ The experiment is intentionally focused. It answers this question through seven 
 
 The experiment ends after Phase 7. Do not add monitor-evasion experiments, large baseline suites, extra probe architectures, multi-layer detectors, decomposition sweeps, or additional model families unless the plan is explicitly revised.
 
+One focused comparison is required for publication: the two Phase 3 detector
+constructions must also be fit and evaluated on the **raw residual activation at
+the same frozen Phase 1 layer and decision point**. This is a representation
+ablation, not an eighth phase, and it does not repeat Phase 1 layer selection or
+Phase 2 intervention.
+
 ---
 
 # 2. Experimental Logic
@@ -49,6 +55,11 @@ The experiment moves from a broad observation to increasingly specific tests:
 \[
 \boxed{\text{Do the frozen detectors generalize?}}
 \]
+
+At this point, compare the proposed J-space monitors with matched raw-residual
+monitors so that any detection advantage can be attributed to the
+representation rather than merely to information already available in the
+residual stream.
 
 \[
 \downarrow
@@ -285,7 +296,11 @@ Use:
 
 These are evaluation benchmarks only.
 
-No detector retraining, layer reselection, threshold adjustment, decomposition change, or feature remapping is allowed after Phase 3.
+No J-space detector retraining, layer reselection, threshold adjustment,
+decomposition change, or feature remapping is allowed after Phase 3. The
+required raw-residual baseline fits its own matched detectors only on the
+original Phase 1 development split and never changes the frozen J-space
+detectors.
 
 ---
 
@@ -362,6 +377,7 @@ The experiment must not assume notebook state.
 | 2 | Yes for generation | intervention generation across \(\alpha\) | API judging, ROUGE aggregation, plots | append-only generation and judgment JSONL logs |
 | 3 | No if Phase 1 caches exist | none normally | mean detector, sparse logistic regression, thresholds | detector artifacts |
 | 4 | Yes for generation | selected-layer capture and native benchmark behavior once for reuse in Phase 5 | BIPIA API judging, detector/native metrics, plots | one append-only GPU record stream per benchmark plus BIPIA judgment log |
+| Raw baseline | CPU for fitting; GPU for transfer replay | selected-layer raw activation capture at the frozen Phase 4 decision points | matched detector fitting, metrics, paired comparison | detector artifacts plus one append-only score stream per benchmark |
 | 5 | No if Phase 4 outputs exist | none | quadrant/conditional analysis | analysis artifacts |
 | 6 | Yes | directional interventions and generation | aggregation, plots | per-example/per-\(\alpha\)/direction results |
 | 7 | Yes | normal generation for unblocked examples | gating metrics, utility | per-example gate results |
@@ -1183,6 +1199,419 @@ The smoke run must also confirm that each selected transfer prompt plus the fixe
 
 ---
 
+# Required Baseline — Same-Layer Raw Residual Detectors
+
+## Research question
+
+> **Does the proposed sparse J-space representation improve prompt-injection detection or transfer beyond the raw residual activation available at the same frozen layer and decision point?**
+
+This is the required representation baseline for Phases 3–4. It is not a new
+layer search, intervention study, model family, or detector family.
+
+The comparison must isolate only:
+
+\[
+\boxed{
+\text{representation}
+\in
+\left\{
+h_{\ell^*}^{J},\ h_{\ell^*}
+\right\}
+}
+\]
+
+Everything else must remain matched:
+
+- the pinned Gemma model and revision;
+- the Phase 1 layer \(\ell^*\);
+- the final-prompt-token or benchmark-native decision point;
+- the Phase 1 train/validation examples and labels;
+- the two linear detector constructions;
+- the fixed detector hyperparameters;
+- the threshold-selection rule;
+- the Phase 4 benchmark commits, cases, conditions, and scored states;
+- the metric definitions and task-macro aggregation.
+
+Do not run Phase 1 layer selection for raw activations. Do not choose a
+raw-specific layer from validation or transfer results. Do not run a raw
+activation intervention or repeat Phase 2. The baseline is detection-only.
+
+## Interpretation and claim boundary
+
+This experiment supports a deliberately narrow claim:
+
+> At the J-space-selected layer, the sparse J-space representation performs
+> better than, worse than, or comparably to the raw residual activation under
+> the same linear-monitor protocol.
+
+Because \(\ell^*\) was selected using J-space development performance, this
+baseline does **not** establish that J-space is better than the best possible
+raw-activation layer or every possible raw hidden-state probe. A broader claim
+would require a separately prespecified raw-layer search with its own untouched
+evaluation data and is outside the current scope.
+
+Compare detector families only with their matched counterpart:
+
+- J-space mean direction versus raw-residual mean direction;
+- J-space logistic regression versus raw-residual logistic regression.
+
+Do not use cross-family comparisons to claim a representation advantage.
+
+## Inputs and frozen identities
+
+Require:
+
+- the completed Phase 1 selected_layer.json;
+- Phase 1's frozen pair manifest and BF16 all-layer activation cache;
+- the completed Phase 3 J-space detector directory;
+- the completed Phase 4 directory, including its frozen
+  bipia_test_manifest.jsonl, benchmark record streams, predictions, and
+  metrics;
+- the same pinned AgentDojo and InjecAgent checkouts used by Phase 4.
+
+Validate before fitting:
+
+- Phase 1 config and manifest hashes;
+- activation-cache metadata, shape, completion state, example count, layer
+  list, and selected-layer position;
+- selected layer and model identity;
+- Phase 3 and Phase 4 direct Phase 1 identities;
+- Phase 4 benchmark revisions, BIPIA manifest hash, and case IDs.
+
+Read the selected-layer slice directly from
+cache/activations_bf16.dat, convert BF16 bits to float32 in bounded batches,
+and preserve the exact expand_examples row order used by Phase 1. Do not load
+Gemma or the lens for baseline fitting, recompute activations, reconstruct
+J-space, or copy the full activation cache into the baseline directory.
+
+## Raw detector A — Mean-Difference Direction
+
+For each BIPIA training task, compute separate raw-residual clean and attack
+means at the frozen layer. Average the task means equally, exactly as in Phase
+1:
+
+\[
+\mu_{\mathrm{clean}}^{H}
+=
+\frac{1}{|T|}
+\sum_{t\in T}
+\mu_{\mathrm{clean},t}^{H},
+\qquad
+\mu_{\mathrm{attack}}^{H}
+=
+\frac{1}{|T|}
+\sum_{t\in T}
+\mu_{\mathrm{attack},t}^{H}.
+\]
+
+Define:
+
+\[
+d_{\mathrm{raw}}
+=
+\mu_{\mathrm{attack}}^{H}
+-
+\mu_{\mathrm{clean}}^{H},
+\qquad
+\hat d_{\mathrm{raw}}
+=
+\frac{d_{\mathrm{raw}}}{\|d_{\mathrm{raw}}\|_2}.
+\]
+
+Score:
+
+\[
+\boxed{
+s_{\mathrm{raw\ mean}}(x)
+=
+\hat d_{\mathrm{raw}}^\top
+\left(
+h_{\ell^*}(x)-\mu_{\mathrm{clean}}^{H}
+\right)
+}
+\]
+
+Fail if the direction norm is zero or non-finite.
+
+This is the primary architecture-matched baseline for the J-space mean
+detector because the detector construction differs only in its input
+representation.
+
+## Raw detector B — Logistic Regression
+
+Use the selected-layer raw residual coordinates directly:
+
+\[
+x_{\mathrm{raw}}(x)
+=
+h_{\ell^*}(x)
+\in
+\mathbb{R}^{d_{\mathrm{model}}}.
+\]
+
+Cast BF16 activations to float32. Do not add PCA, feature selection, hidden
+layers, nonlinear features, per-task heads, or a layer sweep. Do not normalize
+or standardize the raw coordinates; this keeps the baseline a direct linear
+probe over the saved representation without adding a separately tuned
+preprocessing pipeline.
+
+Fit on BIPIA training examples only:
+
+\[
+\boxed{
+s_{\mathrm{raw\ logistic}}(x)
+=
+w_{\mathrm{raw}}^\top h_{\ell^*}(x)+b_{\mathrm{raw}}
+}
+\]
+
+Use exactly the Phase 3 logistic settings:
+
+- L2 regularization;
+- C = 1.0;
+- solver = liblinear;
+- fit_intercept = true;
+- class_weight = null;
+- seed 42;
+- max_iter = 1000;
+- tol = 1e-4;
+- no hyperparameter sweep.
+
+Treat non-convergence as an error. Record the dense feature dimension and
+parameter count so the paper does not imply that the raw and sparse J-space
+logistic monitors have equal storage or interpretability.
+
+## Validation and threshold freezing
+
+Apply both raw detectors to the same Phase 1 validation examples. Use each
+detector's continuous score for AUPRC and AUROC.
+
+Choose one global raw threshold per detector using the exact Phase 3 rule:
+enumerate every distinct validation score plus a finite all-negative candidate,
+maximize task-macro balanced accuracy, and break exact ties with the higher
+threshold.
+
+The raw thresholds are allowed to differ from the J-space thresholds because
+the score scales differ. No raw detector parameter or threshold may be changed
+after this point.
+
+Report the same Phase 3 validation metrics:
+
+- per-task and task-macro AUPRC;
+- per-task and task-macro AUROC;
+- per-task and task-macro balanced accuracy;
+- per-task TPR and FPR;
+- detector threshold and example count.
+
+Validation results are development evidence only. They must not be presented as
+the final baseline comparison.
+
+## Transfer evaluation
+
+Evaluate the frozen raw detectors on exactly the Phase 4 cases and decision
+points. The GPU transfer stage loads Gemma but **must not load the J-lens or
+construct a J-space dictionary**. Capture only \(h_{\ell^*}\) at the one frozen
+decision point and immediately compute the two raw scores and binary decisions.
+Do not save raw activation vectors.
+
+### BIPIA
+
+Read the already frozen Phase 4 bipia_test_manifest.jsonl. Capture each
+manifest-selected attack and unique control once at the final non-padding
+prompt token. Generation and OpenRouter judging are unnecessary: join the
+existing Phase 4 behavioral result by case ID, case hash, and prompt hash.
+
+Reject any missing, extra, or changed BIPIA case. Never construct a second
+sample.
+
+### AgentDojo
+
+Replay the same pinned native clean and attacked episodes only far enough to
+reach the Phase 4 decision point. Use the same native formatter, no-defense
+condition, important_instructions template, suites, seed, greedy generation,
+and exposure rule.
+
+For each eligible state, require the native case ID, case hash,
+injection_exposed value, and scored-state prompt hash to match the completed
+Phase 4 record. Fail rather than comparing a different trajectory or prompt.
+Stop after the matched state has been captured; reuse the existing Phase 4
+native utility and attack outcome instead of treating the replay as a second
+behavioral evaluation.
+
+### InjecAgent
+
+Replay the same 1,054 base-setting cases only far enough to construct the exact
+Phase 4 injected-tool-response decision point. Require matching case and prompt
+identity before accepting a score. Stop after raw activation capture and reuse
+the existing Phase 4 native validity and attack-success outcome.
+
+The replay requirement exists because the completed Phase 4 compact records do
+not store hidden activations. It must not change benchmark scope or behavioral
+evaluation.
+
+## Comparison metrics
+
+Do not create one cross-benchmark aggregate or declare a universal winner.
+Report J-space and raw results side by side, plus an improvement-oriented paired
+difference for each matched detector:
+
+- positive \(\Delta\) means J-space is better;
+- for AUPRC, AUROC, balanced accuracy, and TPR,
+  \(\Delta=M_J-M_{\mathrm{raw}}\);
+- for FPR, \(\Delta=\mathrm{FPR}_{\mathrm{raw}}-\mathrm{FPR}_J\), so positive
+  still means J-space is better.
+
+Use the existing benchmark-specific metric rules:
+
+- **BIPIA validation:** development-only per-task and task-macro AUPRC, AUROC,
+  balanced accuracy, TPR, and FPR;
+- **BIPIA official test:** per-task and task-macro AUROC, matched AUPRC,
+  balanced accuracy, TPR, and FPR on the frozen manifest;
+- **AgentDojo:** TPR on injection-exposed attacks, FPR on eligible native clean
+  states, balanced accuracy from those two rates, and suite subgroups;
+- **InjecAgent:** TPR and attack-score distributions only, including
+  direct-harm and data-stealing subgroups. Do not infer specificity or accuracy
+  without a clean condition.
+
+The paper's primary same-benchmark comparison is frozen-manifest BIPIA
+task-macro matched AUPRC. AgentDojo balanced accuracy is the primary
+cross-benchmark comparison because it measures both sensitivity and
+specificity. InjecAgent TPR is descriptive supporting evidence only.
+
+For conference reporting, attach deterministic 95% paired bootstrap confidence
+intervals to the J-space-minus-raw metric differences:
+
+- seed 42;
+- 2,000 replicates;
+- resample Phase 1 validation pairs within task;
+- resample BIPIA official-test source contexts within task so attacks sharing a
+  clean context remain clustered;
+- resample AgentDojo native episodes within suite and condition;
+- resample InjecAgent cases within subgroup.
+
+Macro metrics must be recomputed inside each replicate rather than bootstrapping
+already aggregated task values. The bootstrap is estimation, not a new
+selection procedure. Do not use it to change layers, detectors, thresholds, or
+benchmark cases.
+
+For a given prespecified metric, describe J-space as:
+
+- **better** when the full paired 95% interval for \(\Delta\) is above zero;
+- **worse** when the full interval is below zero;
+- **inconclusive/comparable** when the interval includes zero.
+
+Do not convert these benchmark-specific outcomes into a single unsupported
+claim that J-space is universally better or worse.
+
+## Implementation and CLI
+
+Add one small jspace_research.raw_baseline package and one CLI. Keep the raw
+formulas and artifacts local to that package. Reuse:
+
+- Phase 1 handoff validation, BF16 conversion, and activation-cache metadata;
+- Phase 3 metric and threshold helpers;
+- Phase 4 benchmark-specific case construction and decision-point logic;
+- shared atomic JSON/JSONL, provenance, hashing, and runtime metadata.
+
+Do not create a representation registry, generic probe framework, generalized
+benchmark base class, or modify the working J-space artifacts.
+
+Expose:
+
+    jspace-raw-baseline \
+      --config configs/phase1_full.yaml \
+      --phase1 <run-root>/phase1/selected_layer.json \
+      --jspace-phase3 <run-root>/phase3 \
+      --jspace-phase4 <run-root>/phase4 \
+      --agentdojo-root /path/to/agentdojo \
+      --injecagent-root /path/to/InjecAgent \
+      --output-dir <run-root>/raw_baseline \
+      --stage fit|transfer|analyze|all
+
+- fit is CPU-only and writes the two frozen raw detectors and validation
+  results from Phase 1 caches.
+- transfer is GPU-only and writes resumable raw scores for the exact frozen
+  Phase 4 cases and states. It performs no API judging.
+- analyze is CPU-only and joins the frozen J-space and raw results, computes
+  benchmark metrics, paired differences, confidence intervals, tables, and
+  plots.
+- all runs the stages in order but remains resumable.
+
+Add one canonical notebook cell after Phase 4. It invokes this CLI, displays
+the comparison table and plots, and writes only to
+<run-root>/raw_baseline. Phase 1–4 directories remain immutable. Phase 2 is
+not required by this baseline.
+
+## Artifacts and resumption
+
+Produce:
+
+- raw_mean_detector.pt;
+- raw_logistic_detector.pt;
+- raw_validation_scores.parquet;
+- raw_validation_metrics.csv;
+- bipia_raw_records.jsonl;
+- agentdojo_raw_records.jsonl;
+- injecagent_raw_records.jsonl;
+- raw_transfer_predictions.parquet;
+- raw_transfer_metrics.csv;
+- jspace_vs_raw_comparison.csv;
+- jspace_vs_raw_validation.png;
+- jspace_vs_raw_transfer.png;
+- one lightweight provenance.json.
+
+Each raw detector records the Phase 1 run/config/manifest identities, model
+revision, selected layer, raw width, fitting settings, threshold, and training
+example count. Each transfer record is keyed by benchmark, native case ID, case
+hash, prompt hash, raw-detector identity, and Phase 4 reference identity.
+
+Append and flush one compact record per completed transfer case. On resume,
+reuse only exact identity matches and reject stale or changed case/prompt
+identities. Do not save credentials, raw activation arrays, duplicate benchmark
+behavioral outcomes, or a second BIPIA manifest.
+
+## Tests and smoke acceptance
+
+Test:
+
+- selected-layer extraction from a synthetic BF16 all-layer activation cache;
+- cache shape, completion, layer-position, example-order, and identity
+  rejection;
+- task-balanced raw means, normalized mean direction, and score formula;
+- dense raw logistic fitting with the fixed settings and non-convergence
+  failure;
+- reuse of the Phase 3 threshold rule;
+- Phase 4 case/prompt identity matching and mismatch rejection;
+- absence of lens loading and J-space reconstruction in raw transfer;
+- interruption and exact resumption of all three benchmark score streams;
+- benchmark-specific metrics, paired deltas, clustered bootstrap determinism,
+  and the InjecAgent no-specificity boundary;
+- CLI and canonical notebook wiring.
+
+The smoke run uses the completed Phase 1–4 smoke artifacts. It fits both raw
+detectors, scores the exact smoke BIPIA/AgentDojo/InjecAgent cases, verifies
+prompt identity, resumes without duplicate records, and produces all comparison
+artifacts. Smoke is integration validation only and may not affect scientific
+choices.
+
+## Completion criteria
+
+The raw baseline is complete when:
+
+- both frozen raw detectors are fit only on Phase 1 training activations at the
+  frozen layer;
+- thresholds are selected only on the matching Phase 1 validation examples
+  using the Phase 3 rule;
+- every accepted transfer score matches a completed Phase 4 case and
+  decision-point prompt identity;
+- the lens and J-space decomposition are never loaded in the raw path;
+- BIPIA, AgentDojo, and InjecAgent comparisons follow their prespecified metric
+  boundaries;
+- paired metric differences and deterministic confidence intervals are saved;
+- no Phase 1–4 artifact or scientific choice is changed.
+
+---
+
 # Phase 5 — Recognition vs Compliance
 
 ## Research question
@@ -1529,11 +1958,16 @@ selected_layer.json
 
 Phase 2 and Phase 3 are independent consumers of the frozen Phase 1 output. Phase 2 is intentionally diagnostic and does not alter the Phase 3 detector construction or thresholds. Phase 4 consumes the frozen Phase 1 selected-layer identity and Phase 3 detectors; it does not consume Phase 2. Phase 7 consumes the frozen Phase 3 detectors together with the Phase 4 evaluation sets.
 
+The required raw baseline independently consumes Phase 1's cached raw
+activations, then uses the completed Phase 3 and Phase 4 directories only as
+frozen comparison identities and results. It does not consume Phase 2 and does
+not modify any Phase 1–4 artifact.
+
 ---
 
 # 10. Run Identity and Cache Safety
 
-Every phase output must record:
+Every phase and required-baseline output must record:
 
 - experiment/run ID;
 - model ID and revision;
@@ -1565,6 +1999,8 @@ Use one persistent run root with one directory per phase:
   phase1/
   phase2/
   phase3/
+  phase4/
+  raw_baseline/
   ...
 ```
 
@@ -1584,6 +2020,10 @@ run phase3 --config <same_config> --phase1 <phase1_output>
 
 # Phase 4
 run phase4 --config <same_config> --phase1 <phase1_output> --phase3 <phase3_output>
+
+# Required same-layer raw baseline; Phase 2 is not an input
+run raw-baseline --config <same_config> --phase1 <phase1_output> \
+  --jspace-phase3 <phase3_output> --jspace-phase4 <phase4_output>
 
 # Phase 5
 run phase5 --phase4 <phase4_output>
@@ -1680,6 +2120,14 @@ Both a mean-difference direction and a linear classifier over sparse J-space coe
 
 The two detectors trained only on BIPIA retain useful detection performance on held-out BIPIA and external prompt-injection benchmarks without retraining.
 
+## H4b — J-space representation value
+
+At the same frozen layer and decision point, the proposed sparse J-space
+representation provides detection or transfer performance that differs
+measurably from matched linear monitors trained on the raw residual activation.
+The direction and uncertainty of that difference are empirical outcomes, not
+assumptions.
+
 ## H5 — Signal/compliance dissociation
 
 Some successful attacks occur despite high frozen J-space injection scores.
@@ -1704,6 +2152,10 @@ The experiment does not claim that:
 - Phase 2's removal of all J-space establishes injection-specific causality;
 - one benchmark or one model establishes universal prompt-injection defense;
 - a useful detector is necessarily robust to adaptive evasion.
+- the same-layer raw baseline is the best possible raw-activation monitor
+  across all layers or probe architectures;
+- a higher point estimate establishes a representation advantage when the
+  paired confidence interval includes zero.
 
 Use language tied to what is measured:
 
@@ -1711,6 +2163,9 @@ Use language tied to what is measured:
 - "the selected J-space component is functionally involved under this intervention";
 - "the learned direction shows causal effects relative to the matched random control";
 - "the frozen detector transfers to the tested benchmark."
+- "at the same J-space-selected layer and under the matched linear-monitor
+  protocol, J-space performs better, worse, or comparably to raw residual
+  activations."
 
 ---
 
@@ -1721,7 +2176,8 @@ The current experiment contains exactly seven phases.
 Do **not** add:
 
 - monitor-evasion experiments;
-- residual-stream baseline suites;
+- residual-stream baseline suites beyond the one required same-layer
+  raw-residual comparison;
 - reconstruction-residual baseline suites;
 - multi-layer detectors;
 - neural/nonlinear probe families;
