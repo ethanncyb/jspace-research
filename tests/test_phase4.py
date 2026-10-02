@@ -18,7 +18,9 @@ from jspace_research.phase4.agentdojo import (
     _contains_injection,
     _native_cases,
     _normalize_gemma_tool_call,
+    _thinking_token_ids,
     _through_first_tool_call,
+    _without_thinking,
     validate_smoke_records,
 )
 from jspace_research.phase4.bipia import (
@@ -334,6 +336,60 @@ def test_agentdojo_gemma_arguments_keep_string_contents_and_nesting() -> None:
         "note": "Rating: 4.5, Reviews: ok",
         "tags": ["x", 2],
     }
+
+
+@pytest.mark.parametrize(
+    ("completion", "expected_arguments"),
+    [
+        (
+            '<function=get_users_in_channel{"channel": "general"}></function>',
+            {"channel": "general"},
+        ),
+        (
+            '<function=send_email>{"body": "Hi Emma,\\n    I would love for you to\\    come.",'
+            '"recipients": ["a@b.c"]}</function>',
+            {"body": "Hi Emma,\n    I would love for you to\\    come.", "recipients": ["a@b.c"]},
+        ),
+        (
+            'call:send_email{"body":"Files:\n- feedback.xlsx",recipients:["a@b.c"],subject:"Files"}',
+            {"body": "Files:\n- feedback.xlsx", "recipients": ["a@b.c"], "subject": "Files"},
+        ),
+    ],
+)
+def test_agentdojo_parses_lenient_gemma_call_variants(
+    completion: str, expected_arguments: dict
+) -> None:
+    normalized = _normalize_gemma_tool_call(completion)
+    assert normalized.startswith("<function=")
+    arguments = json.loads(normalized.split(">", 1)[1].removesuffix("</function>"))
+    assert arguments == expected_arguments
+
+
+class _ThinkingTokenizer:
+    vocabulary = {"<|channel>": 7, "<channel|>": 8}
+
+    def convert_tokens_to_ids(self, token: str) -> int:
+        return self.vocabulary.get(token, 0)
+
+    def convert_ids_to_tokens(self, token_id: int) -> str:
+        return {value: key for key, value in self.vocabulary.items()}.get(token_id, "<unk>")
+
+
+class _PlainTokenizer(_ThinkingTokenizer):
+    vocabulary = {}
+
+
+def test_agentdojo_drops_gemma_thinking_channel_tokens() -> None:
+    thinking_ids = _thinking_token_ids(_ThinkingTokenizer())
+    assert thinking_ids == (7, 8)
+    assert _without_thinking([7, 1, 2, 8, 7, 3, 8, 4, 5], thinking_ids) == [4, 5]
+    assert _without_thinking([4, 7, 1], thinking_ids) == [4]
+
+
+def test_agentdojo_keeps_tokens_without_a_thinking_channel() -> None:
+    thinking_ids = _thinking_token_ids(_PlainTokenizer())
+    assert thinking_ids is None
+    assert _without_thinking([7, 1, 8], thinking_ids) == [7, 1, 8]
 
 
 def test_agentdojo_keeps_native_call_that_precedes_gemma_text() -> None:

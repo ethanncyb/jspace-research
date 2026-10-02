@@ -15,17 +15,61 @@ from ..phase1.data import hash_messages, render_ids
 from ..runtime import append_jsonl
 from .common import content_hash, require_generation_context, save_record
 
-HARNESS_VERSION = 3
+HARNESS_VERSION = 4
 
 _GEMMA_CALL_STARTS = (
     re.compile(r"call:([A-Za-z_][A-Za-z0-9_]*)\s*\{"),
-    re.compile(r"<function=([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\{"),
+    re.compile(r"<function=([A-Za-z_][A-Za-z0-9_]*)\s*[=>]?\s*\{"),
 )
 _GEMMA_STRING_ESCAPE = '<|"|>'
+_THINKING_OPEN = "<|channel>"
+_THINKING_CLOSE = "<channel|>"
 _JSON_STRING = re.compile(r'"(?:[^"\\]|\\.)*"', re.DOTALL)
+_JSON_ESCAPE = re.compile(r"\\(.)", re.DOTALL)
 _BARE_KEY = re.compile(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*:")
 _NATIVE_CALL_OPEN = re.compile(r"<function\s*=\s*[^>]+>")
 _NATIVE_CALL_CLOSE = "</function>"
+
+
+def _repair_escapes(string: str) -> str:
+    """Keep a backslash literal when it does not start a JSON escape, as in ``\\ come``."""
+
+    return _JSON_ESCAPE.sub(
+        lambda match: match.group() if match.group(1) in '"\\/bfnrtu' else "\\" + match.group(),
+        string,
+    )
+
+
+def _thinking_token_ids(tokenizer: Any) -> tuple[int, int] | None:
+    ids = []
+    for token in (_THINKING_OPEN, _THINKING_CLOSE):
+        token_id = tokenizer.convert_tokens_to_ids(token)
+        if not isinstance(token_id, int) or tokenizer.convert_ids_to_tokens(token_id) != token:
+            return None
+        ids.append(token_id)
+    return ids[0], ids[1]
+
+
+def _without_thinking(token_ids: list[int], thinking_ids: tuple[int, int] | None) -> list[int]:
+    """Drop Gemma thinking-channel spans.
+
+    Decoding with ``skip_special_tokens`` removes only the channel markers, so the
+    channel name ``thought`` would otherwise leak into the assistant history.
+    """
+
+    if thinking_ids is None:
+        return token_ids
+    open_id, close_id = thinking_ids
+    kept: list[int] = []
+    inside = False
+    for token_id in token_ids:
+        if token_id == open_id:
+            inside = True
+        elif token_id == close_id:
+            inside = False
+        elif not inside:
+            kept.append(token_id)
+    return kept
 
 
 def _gemma_arguments(text: str, start: int) -> dict[str, Any] | None:
@@ -48,7 +92,7 @@ def _gemma_arguments(text: str, start: int) -> dict[str, Any] | None:
             string = _JSON_STRING.match(text, index)
             if string is None:
                 return None
-            pieces.append(string.group())
+            pieces.append(_repair_escapes(string.group()))
             index = string.end()
             expect_key = False
             continue
@@ -70,7 +114,7 @@ def _gemma_arguments(text: str, start: int) -> dict[str, Any] | None:
             expect_key = False
         if depth == 0:
             try:
-                value = json.loads("".join(pieces))
+                value = json.loads("".join(pieces), strict=False)
             except json.JSONDecodeError:
                 return None
             return value if isinstance(value, dict) else None
@@ -84,6 +128,17 @@ def _first_gemma_call(text: str) -> tuple[str, dict[str, Any]] | None:
     match = min(matches, key=lambda item: item.start())
     arguments = _gemma_arguments(text, match.end() - 1)
     return None if arguments is None else (match.group(1), arguments)
+
+
+def _native_call_parses(completion: str, native: re.Match[str]) -> bool:
+    """Mirror AgentDojo's ``_parse_model_output`` so its accepted calls stay untouched."""
+
+    end = completion.find(_NATIVE_CALL_CLOSE, native.end())
+    raw_json = completion[native.end() : end if end != -1 else len(completion)].strip()
+    try:
+        return isinstance(json.loads(raw_json), dict)
+    except json.JSONDecodeError:
+        return False
 
 
 def _normalize_gemma_tool_call(completion: str, raw_completion: str | None = None) -> str:
@@ -102,7 +157,11 @@ def _normalize_gemma_tool_call(completion: str, raw_completion: str | None = Non
     name, arguments = call
     location = re.search(rf"(?:call:|<function=){re.escape(name)}\b", completion)
     native = _NATIVE_CALL_OPEN.search(completion)
-    if native is not None and (location is None or native.start() < location.start()):
+    if native is not None and (
+        location is None
+        or native.start() < location.start()
+        or (native.start() == location.start() and _native_call_parses(completion, native))
+    ):
         return completion
     prefix = completion[: location.start()] if location is not None else ""
     return (
@@ -226,6 +285,8 @@ def _make_llm(
     from agentdojo.agent_pipeline.llms.local_llm import _parse_model_output
     from agentdojo.types import get_text_content_as_str
 
+    thinking_ids = _thinking_token_ids(model.tokenizer)
+
     class LocalModelElement(BasePipelineElement):
         name = "local"
 
@@ -278,12 +339,16 @@ def _make_llm(
                 tokens = model.generate_from_prompt(
                     input_ids, max_new_tokens=max_new_tokens
                 )
-            self.last_completion = model.tokenizer.decode(tokens, skip_special_tokens=True)
+            visible = _without_thinking(tokens.tolist(), thinking_ids)
+            self.last_completion = model.tokenizer.decode(visible, skip_special_tokens=True)
             if eligible:
                 self.captured_completion = self.last_completion
             raw_completion = model.tokenizer.decode(tokens, skip_special_tokens=False)
             parsed_text = _through_first_tool_call(
-                _normalize_gemma_tool_call(self.last_completion, raw_completion)
+                _normalize_gemma_tool_call(
+                    self.last_completion,
+                    model.tokenizer.decode(visible, skip_special_tokens=False),
+                )
             )
             output = _parse_model_output(parsed_text)
             self.steps.append(
@@ -443,6 +508,7 @@ def generate(
             {
                 "case_id": case_id,
                 "case_hash": case_hash,
+                "harness_version": HARNESS_VERSION,
                 "injections": injections,
                 "first_exposed_step": tracker.first_exposed_step,
                 "steps": tracker.steps,
