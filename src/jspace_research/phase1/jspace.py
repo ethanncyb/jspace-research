@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.metrics import average_precision_score, roc_auc_score
+from sklearn.metrics import average_precision_score, balanced_accuracy_score, roc_auc_score
 from tqdm.auto import tqdm
 
 
@@ -127,6 +127,89 @@ def screened_nonnegative_pursuit(
     return reconstructions.cpu(), token_ids_out, coefficients_out
 
 
+@torch.no_grad()
+def nonnegative_gradient_pursuit(
+    activations: torch.Tensor,
+    dictionary: torch.Tensor,
+    *,
+    sparsity_k: int,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Approximate activations with a nonnegative gradient-pursuit update.
+
+    Each iteration selects the unused atom with the largest positive residual
+    correlation, then updates every active coefficient along the gradient with
+    the exact line-search step, clipped to keep coefficients nonnegative.  The
+    implementation intentionally searches the full dictionary so it provides a
+    useful robustness comparison to the screened least-squares pursuit used by
+    the primary experiment.
+    """
+
+    if activations.ndim != 2 or dictionary.ndim != 2:
+        raise ValueError("activations and dictionary must both be rank-2 tensors")
+    if activations.shape[1] != dictionary.shape[1]:
+        raise ValueError("activation and dictionary widths must match")
+    if not 0 < sparsity_k <= dictionary.shape[0]:
+        raise ValueError("sparsity_k must be positive and no larger than the dictionary")
+
+    device = dictionary.device
+    hidden = activations.to(device=device, dtype=torch.float32)
+    batch_size = hidden.shape[0]
+    supports = torch.full(
+        (batch_size, sparsity_k), -1, dtype=torch.long, device=device
+    )
+    coefficients = torch.zeros(
+        (batch_size, sparsity_k), dtype=torch.float32, device=device
+    )
+    residual = hidden.clone()
+
+    for step in range(sparsity_k):
+        correlations = residual.to(dictionary.dtype) @ dictionary.T
+        if step:
+            correlations.scatter_(1, supports[:, :step].clamp_min(0), -torch.inf)
+        values, token_ids = correlations.max(dim=1)
+        active = values > 0
+        if not bool(active.any()):
+            break
+        supports[active, step] = token_ids[active]
+
+        active_supports = supports[:, : step + 1]
+        valid = active_supports >= 0
+        atoms = dictionary[active_supports.clamp_min(0)].float()
+        gradient = torch.einsum("bkd,bd->bk", atoms, residual)
+        gradient.masked_fill_(~valid, 0.0)
+        update_in_activation = torch.einsum("bkd,bk->bd", atoms, gradient)
+        numerator = torch.einsum("bd,bd->b", residual, update_in_activation)
+        denominator = torch.einsum(
+            "bd,bd->b", update_in_activation, update_in_activation
+        ).clamp_min(1e-12)
+        step_size = (numerator / denominator).clamp_min(0.0)
+
+        current = coefficients[:, : step + 1]
+        negative = gradient < 0
+        feasible = torch.where(
+            negative,
+            current / (-gradient).clamp_min(1e-12),
+            torch.full_like(gradient, torch.inf),
+        )
+        max_step = feasible.min(dim=1).values
+        step_size = torch.minimum(step_size, max_step)
+        step_size.masked_fill_(~active, 0.0)
+        coefficients[:, : step + 1] = (
+            current + step_size[:, None] * gradient
+        ).clamp_min(0.0)
+
+        reconstruction = torch.einsum(
+            "bkd,bk->bd", atoms, coefficients[:, : step + 1]
+        )
+        residual = hidden - reconstruction
+
+    final_atoms = dictionary[supports.clamp_min(0)].float()
+    valid = supports >= 0
+    final_coefficients = coefficients.masked_fill(~valid, 0.0)
+    reconstructions = torch.einsum("bkd,bk->bd", final_atoms, final_coefficients)
+    return reconstructions.cpu(), supports.cpu(), final_coefficients.cpu()
+
+
 def batched(indices: Sequence[int] | np.ndarray, batch_size: int) -> Iterable[np.ndarray]:
     values = np.asarray(indices, dtype=np.int64)
     for start in range(0, len(values), batch_size):
@@ -228,3 +311,71 @@ def select_layer(metrics: pd.DataFrame) -> pd.Series:
     if macro.empty:
         raise ValueError("No macro metrics are available for layer selection")
     return macro.sort_values(["auprc", "layer"], ascending=[False, True], kind="mergesort").iloc[0]
+
+
+def select_task_macro_balanced_threshold(
+    labels: Sequence[int] | np.ndarray,
+    scores: Sequence[float] | np.ndarray,
+    tasks: Sequence[str],
+) -> tuple[float, float]:
+    """Choose one threshold by training task-macro balanced accuracy.
+
+    Exact ties use the higher threshold. Scores equal to the threshold are
+    classified as attacks.
+    """
+
+    label_values = np.asarray(labels, dtype=np.int64)
+    score_values = np.asarray(scores, dtype=np.float64)
+    task_values = np.asarray(tasks, dtype=object)
+    if not (len(label_values) == len(score_values) == len(task_values)):
+        raise ValueError("labels, scores, and tasks must have equal length")
+    if not np.isfinite(score_values).all():
+        raise ValueError("scores must be finite")
+
+    task_names = sorted(set(task_values.tolist()))
+    if not task_names:
+        raise ValueError("At least one task is required")
+    for task in task_names:
+        if set(label_values[task_values == task].tolist()) != {0, 1}:
+            raise ValueError(f"Task {task} must contain both labels")
+
+    unique_scores = np.unique(score_values)[::-1]
+    thresholds = np.concatenate(
+        ([np.nextafter(unique_scores[0], np.inf)], unique_scores)
+    )
+    macro_values = np.zeros(len(thresholds), dtype=np.float64)
+    for task in task_names:
+        mask = task_values == task
+        task_labels = label_values[mask]
+        task_scores = score_values[mask]
+        positives = task_scores[task_labels == 1]
+        negatives = task_scores[task_labels == 0]
+        tpr = (positives[:, None] >= thresholds[None, :]).mean(axis=0)
+        tnr = (negatives[:, None] < thresholds[None, :]).mean(axis=0)
+        macro_values += 0.5 * (tpr + tnr)
+    macro_values /= len(task_names)
+    best_value = float(macro_values.max())
+    best_indices = np.flatnonzero(np.isclose(macro_values, best_value, rtol=0, atol=1e-12))
+    best_threshold = float(thresholds[best_indices[0]])
+    return best_threshold, best_value
+
+
+def threshold_metrics(
+    labels: Sequence[int] | np.ndarray,
+    scores: Sequence[float] | np.ndarray,
+    threshold: float,
+) -> dict[str, float]:
+    label_values = np.asarray(labels, dtype=np.int64)
+    score_values = np.asarray(scores, dtype=np.float64)
+    if set(label_values.tolist()) != {0, 1}:
+        raise ValueError("Threshold metrics require both labels")
+    predictions = (score_values >= threshold).astype(np.int64)
+    positives = label_values == 1
+    negatives = label_values == 0
+    return {
+        "auprc": float(average_precision_score(label_values, score_values)),
+        "auroc": float(roc_auc_score(label_values, score_values)),
+        "balanced_accuracy": float(balanced_accuracy_score(label_values, predictions)),
+        "tpr": float(predictions[positives].mean()),
+        "fpr": float(predictions[negatives].mean()),
+    }
