@@ -151,7 +151,15 @@ def generate(config: Phase4Config) -> Path:
         device=model.input_device,
         chunk_size=config.phase1.dictionary_chunk_size,
     )
-    detectors = detectors.with_dictionary(dictionary)
+    # Holding the dictionary in host memory frees its GPU share for long agent prompts;
+    # scoring copies the identical values back to the same device.
+    host_dictionary = dictionary.to("cpu")
+    if host_dictionary.device != dictionary.device:
+        host_dictionary = host_dictionary.pin_memory()
+    detectors = detectors.with_dictionary(host_dictionary, scoring_device=dictionary.device)
+    del dictionary
+    gc.collect()
+    torch.cuda.empty_cache()
 
     bipia.generate(config, model, detectors, cached["bipia"], identity)
     agentdojo.generate(config, model, detectors, cached["agentdojo"], identity)
@@ -176,7 +184,7 @@ def generate(config: Phase4Config) -> Path:
             "generation_complete": True,
         },
     )
-    del dictionary, detectors, lens, model, tokenizer, handoff
+    del host_dictionary, detectors, lens, model, tokenizer, handoff
     gc.collect()
     torch.cuda.empty_cache()
     print(f"Phase 4 generation complete: {config.output_dir}")

@@ -73,6 +73,13 @@ def test_frozen_scoring_does_not_expand_logistic_vocabulary() -> None:
     assert result["logistic_prediction"] is False
 
 
+def test_frozen_scoring_copies_host_dictionary_to_scoring_device() -> None:
+    frozen = detectors()
+    hosted = frozen.with_dictionary(frozen.dictionary, scoring_device=torch.device("cpu"))
+    residual = torch.tensor([0.0, 0.0, 1.0])
+    assert hosted.score(residual, hosted.dictionary) == frozen.score(residual, frozen.dictionary)
+
+
 def test_phase4_uses_native_model_context_without_truncation() -> None:
     require_generation_context(5000, 262144, 512, "AgentDojo")
     with pytest.raises(RuntimeError, match="pinned model context window"):
