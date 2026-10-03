@@ -10,7 +10,13 @@ from typing import Any
 from tqdm.auto import tqdm
 
 from ..phase1.data import hash_messages, render_ids
-from .common import content_hash, require_generation_context, save_record
+from .common import (
+    AGENT_DECODING_VERSION,
+    content_hash,
+    decode_completion,
+    require_generation_context,
+    save_record,
+)
 
 
 def _load_parser(root: Path) -> ModuleType:
@@ -134,7 +140,7 @@ def generate(
         total=len(cases), initial=len(completed), desc="Phase 4 InjecAgent generation"
     )
     for case in cases:
-        case_hash = content_hash(case)
+        case_hash = content_hash({**case, "decoding": AGENT_DECODING_VERSION})
         if case["case_id"] in completed:
             if completed[case["case_id"]].get("case_hash") != case_hash:
                 raise RuntimeError("Cached InjecAgent case identity changed")
@@ -150,7 +156,7 @@ def generate(
             max_new_tokens=config.max_new_tokens,
             layer=scorer.mean["selected_layer"],
         )
-        output = model.tokenizer.decode(tokens, skip_special_tokens=True)
+        output = decode_completion(model.tokenizer, tokens)
         first = _native_eval(parser, output, item, item["Attacker Tools"][0])
         second_output = None
         second_eval = None
@@ -177,7 +183,7 @@ def generate(
             second_tokens = model.generate_from_prompt(
                 second_ids, max_new_tokens=config.max_new_tokens
             )
-            second_output = model.tokenizer.decode(second_tokens, skip_special_tokens=True)
+            second_output = decode_completion(model.tokenizer, second_tokens)
             second_eval = _native_eval(
                 parser, second_output, item, item["Attacker Tools"][1]
             )

@@ -3,11 +3,71 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
 
 from ..runtime import append_jsonl, read_resumable_jsonl, validate_identity_fields
+
+# Part of every agent-benchmark case identity, so records generated before the
+# special-token decoding fix cannot be resumed into a run that uses it.
+AGENT_DECODING_VERSION = "gemma-special-tokens-v2"
+
+_THINKING_BLOCK = re.compile(r"<\|channel>.*?<channel\|>", re.DOTALL)
+_UNCLOSED_CHANNEL_LABEL = re.compile(r"<\|channel>[A-Za-z_]*\n?")
+
+
+def decode_with_markup(tokenizer: Any, tokens: Any) -> str:
+    """Decode a completion keeping Gemma's control tokens, minus thinking channels.
+
+    Gemma writes string arguments of native tool calls between `<|"|>` special
+    tokens, and opens a thinking channel with `<|channel>thought`. Decoding with
+    `skip_special_tokens=True` deletes the string delimiters, which makes tool
+    arguments unparseable, and leaves a bare "thought" label in the response.
+    A closed channel is reasoning, not response, so it is removed whole; an
+    unclosed one loses only its label, because its text is all the model wrote.
+    """
+
+    text: str = tokenizer.decode(tokens, skip_special_tokens=False)
+    text = _THINKING_BLOCK.sub("", text)
+    return _UNCLOSED_CHANNEL_LABEL.sub("", text)
+
+
+_SPECIAL_TOKEN_PATTERNS: dict[int, tuple[Any, re.Pattern[str] | None]] = {}
+
+
+def _special_token_pattern(tokenizer: Any) -> re.Pattern[str] | None:
+    cached: tuple[Any, re.Pattern[str] | None] | None = _SPECIAL_TOKEN_PATTERNS.get(id(tokenizer))
+    if cached is not None and cached[0] is tokenizer:
+        return cached[1]
+    pattern: re.Pattern[str] | None = _build_special_token_pattern(tokenizer)
+    _SPECIAL_TOKEN_PATTERNS[id(tokenizer)] = (tokenizer, pattern)
+    return pattern
+
+
+def _build_special_token_pattern(tokenizer: Any) -> re.Pattern[str] | None:
+    added: dict[int, Any] = getattr(tokenizer, "added_tokens_decoder", None) or {}
+    strings: set[str] = {
+        str(token.content) for token in added.values() if getattr(token, "special", False)
+    }
+    strings.update(str(token) for token in getattr(tokenizer, "all_special_tokens", []) or [])
+    strings.discard("")
+    if not strings:
+        return None
+    ordered: list[str] = sorted(strings, key=len, reverse=True)
+    return re.compile("|".join(re.escape(value) for value in ordered))
+
+
+def remove_special_tokens(tokenizer: Any, text: str) -> str:
+    pattern: re.Pattern[str] | None = _special_token_pattern(tokenizer)
+    return text if pattern is None else pattern.sub("", text)
+
+
+def decode_completion(tokenizer: Any, tokens: Any) -> str:
+    """Decode a completion as plain response text, without thinking or control tokens."""
+
+    return remove_special_tokens(tokenizer, decode_with_markup(tokenizer, tokens))
 
 
 def verify_checkout(root: Path, expected_revision: str, name: str) -> None:

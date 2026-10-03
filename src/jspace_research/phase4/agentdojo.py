@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import ast
 import json
 import re
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -11,61 +12,257 @@ import yaml
 from tqdm.auto import tqdm
 
 from ..phase1.data import hash_messages, render_ids
-from .common import content_hash, require_generation_context, save_record
+from .common import (
+    AGENT_DECODING_VERSION,
+    content_hash,
+    decode_with_markup,
+    remove_special_tokens,
+    require_generation_context,
+    save_record,
+)
 
-_GEMMA_CALL = re.compile(r"call:([A-Za-z_][A-Za-z0-9_]*)\s*(\{[^\n]*\})")
-_GEMMA_FUNCTION_TAG = re.compile(
+GEMMA_STRING_DELIMITER = '<|"|>'
+_GEMMA_CALL_START = re.compile(
+    r"(?:<\|tool_call>\s*|(?<![A-Za-z0-9_]))call:([A-Za-z_][A-Za-z0-9_]*)\s*(?=\{)"
+)
+_GEMMA_CALL_END = "<tool_call|>"
+_FUNCTION_TAG_WITH_EQUALS = re.compile(
     r"<function=([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\{[^\n]*\})>\s*</function>"
 )
-_BARE_ARGUMENT_KEY = re.compile(r"([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:")
 
 
-def _normalize_gemma_tool_call(completion: str) -> str:
-    """Translate Gemma's observed tool-call spelling to AgentDojo's native form."""
+class _ArgumentSyntaxError(ValueError):
+    pass
 
-    match = _GEMMA_FUNCTION_TAG.search(completion) or _GEMMA_CALL.search(completion)
-    if match is None:
-        return completion
-    function_name, raw_arguments = match.groups()
+
+def _skip_space(text: str, index: int) -> int:
+    while index < len(text) and text[index].isspace():
+        index += 1
+    return index
+
+
+def _parse_bare_scalar(text: str, index: int) -> tuple[Any, int]:
+    end: int = index
+    while end < len(text) and text[end] not in ",}]":
+        end += 1
+    raw: str = text[index:end].strip()
+    if not raw:
+        raise _ArgumentSyntaxError(f"Empty value at offset {index}")
+    if raw in {"true", "false", "null"}:
+        return {"true": True, "false": False, "null": None}[raw], end
     try:
-        arguments = json.loads(raw_arguments)
+        number: Any = json.loads(raw)
     except json.JSONDecodeError:
-        quoted_keys = _BARE_ARGUMENT_KEY.sub(r'\1"\2":', raw_arguments)
+        return raw, end
+    return (number, end) if isinstance(number, int | float) else (raw, end)
+
+
+def _parse_gemma_value(text: str, index: int) -> tuple[Any, int]:
+    """Parse one value in Gemma's tool-call argument syntax.
+
+    Strings are wrapped in `<|"|>`, keys are bare, and objects and arrays use
+    braces and brackets. JSON-quoted strings and unquoted scalars, which Gemma
+    also writes when it imitates the prompt's JSON format, are accepted too.
+    """
+
+    index = _skip_space(text, index)
+    if text.startswith(GEMMA_STRING_DELIMITER, index):
+        start: int = index + len(GEMMA_STRING_DELIMITER)
+        end: int = text.find(GEMMA_STRING_DELIMITER, start)
+        if end == -1:
+            raise _ArgumentSyntaxError("Unterminated Gemma string")
+        return text[start:end], end + len(GEMMA_STRING_DELIMITER)
+    if index >= len(text):
+        raise _ArgumentSyntaxError("Missing value")
+    if text[index] == "{":
+        return _parse_gemma_object(text, index)
+    if text[index] == "[":
+        items: list[Any] = []
+        index = _skip_space(text, index + 1)
+        if index < len(text) and text[index] == "]":
+            return items, index + 1
+        while True:
+            item, index = _parse_gemma_value(text, index)
+            items.append(item)
+            index = _skip_space(text, index)
+            if index < len(text) and text[index] == ",":
+                index += 1
+            elif index < len(text) and text[index] == "]":
+                return items, index + 1
+            else:
+                raise _ArgumentSyntaxError(f"Unterminated array at offset {index}")
+    if text[index] == '"':
         try:
-            arguments = json.loads(quoted_keys)
-        except json.JSONDecodeError:
-            return completion
-    if not isinstance(arguments, dict):
-        return completion
-    normalized = (
-        f"<function={function_name}>"
+            value, end = json.JSONDecoder().raw_decode(text, index)
+        except json.JSONDecodeError as exc:
+            raise _ArgumentSyntaxError(str(exc)) from exc
+        return value, end
+    return _parse_bare_scalar(text, index)
+
+
+def _parse_gemma_key(text: str, index: int) -> tuple[str, int]:
+    index = _skip_space(text, index)
+    if text.startswith(GEMMA_STRING_DELIMITER, index) or text[index : index + 1] == '"':
+        key, index = _parse_gemma_value(text, index)
+        if not isinstance(key, str):
+            raise _ArgumentSyntaxError("Non-string key")
+    else:
+        end: int = text.find(":", index)
+        if end == -1:
+            raise _ArgumentSyntaxError(f"Missing key separator at offset {index}")
+        key = text[index:end].strip()
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            raise _ArgumentSyntaxError(f"Invalid bare key {key!r}")
+        index = end
+    index = _skip_space(text, index)
+    if not text.startswith(":", index):
+        raise _ArgumentSyntaxError(f"Missing key separator at offset {index}")
+    return key, index + 1
+
+
+def _parse_gemma_object(text: str, index: int) -> tuple[dict[str, Any], int]:
+    if not text.startswith("{", index):
+        raise _ArgumentSyntaxError(f"Expected an object at offset {index}")
+    values: dict[str, Any] = {}
+    index = _skip_space(text, index + 1)
+    if index < len(text) and text[index] == "}":
+        return values, index + 1
+    while True:
+        key, index = _parse_gemma_key(text, index)
+        values[key], index = _parse_gemma_value(text, index)
+        index = _skip_space(text, index)
+        if index < len(text) and text[index] == ",":
+            index += 1
+        elif index < len(text) and text[index] == "}":
+            return values, index + 1
+        else:
+            raise _ArgumentSyntaxError(f"Unterminated object at offset {index}")
+
+
+def _split_gemma_tool_calls(completion: str) -> tuple[list[tuple[str, dict[str, Any]]], str]:
+    """Extract every Gemma `call:name{...}` from a completion decoded with markup.
+
+    Returns the calls in order and the completion text with the calls removed.
+    A call whose arguments do not parse is left in the text untouched.
+    """
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+    pieces: list[str] = []
+    cursor: int = 0
+    for match in _GEMMA_CALL_START.finditer(completion):
+        if match.start() < cursor:
+            continue
+        try:
+            arguments, end = _parse_gemma_object(completion, match.end())
+        except _ArgumentSyntaxError:
+            continue
+        if completion.startswith(_GEMMA_CALL_END, end):
+            end += len(_GEMMA_CALL_END)
+        calls.append((match.group(1), arguments))
+        pieces.append(completion[cursor : match.start()])
+        cursor = end
+    pieces.append(completion[cursor:])
+    return calls, "".join(pieces)
+
+
+def _render_function_call(name: str, arguments: dict[str, Any]) -> str:
+    return (
+        f"<function={name}>"
         f"{json.dumps(arguments, ensure_ascii=False, separators=(',', ':'))}"
         "</function>"
     )
-    return completion[: match.start()] + normalized + completion[match.end() :]
 
 
-def _string_values(value: Any):
+def _normalize_function_tag(text: str) -> str:
+    """Rewrite the observed `<function=name={...}></function>` variant to the native form."""
+
+    match: re.Match[str] | None = _FUNCTION_TAG_WITH_EQUALS.search(text)
+    if match is None:
+        return text
+    try:
+        arguments: Any = json.loads(match.group(2))
+    except json.JSONDecodeError:
+        return text
+    if not isinstance(arguments, dict):
+        return text
+    rendered: str = _render_function_call(match.group(1), arguments)
+    return text[: match.start()] + rendered + text[match.end() :]
+
+
+def _assistant_message(completion: str, tokenizer: Any) -> Any:
+    """Build AgentDojo's assistant message from a completion decoded with markup.
+
+    Gemma's native calls are all executed, as AgentDojo's own provider pipelines
+    do for parallel calls. Without native calls, the text goes to AgentDojo's
+    prompted-model parser, which reads the first `<function=...>` tag. The
+    message text shows each call in the prompt's `<function=...>` form, so the
+    model sees its earlier calls in that form on later turns.
+    """
+
+    from agentdojo.agent_pipeline.llms.local_llm import _parse_model_output
+    from agentdojo.functions_runtime import FunctionCall
+    from agentdojo.types import ChatAssistantMessage, text_content_block_from_string
+    from pydantic import ValidationError
+
+    calls, remainder = _split_gemma_tool_calls(completion)
+    text: str = remove_special_tokens(tokenizer, remainder).strip()
+    if not calls:
+        return _parse_model_output(_normalize_function_tag(text))
+    try:
+        tool_calls: list[Any] = [
+            FunctionCall(function=name, args=arguments) for name, arguments in calls
+        ]
+    except ValidationError:
+        return _parse_model_output(remove_special_tokens(tokenizer, completion).strip())
+    rendered: str = "\n".join(_render_function_call(name, arguments) for name, arguments in calls)
+    content: str = f"{text}\n{rendered}" if text else rendered
+    return ChatAssistantMessage(
+        role="assistant",
+        content=[text_content_block_from_string(content)],
+        tool_calls=tool_calls,
+    )
+
+
+def _string_values(value: Any) -> Iterator[str]:
     if isinstance(value, str):
         yield value
     elif isinstance(value, dict):
         for item in value.values():
             yield from _string_values(item)
-    elif isinstance(value, list):
+    elif isinstance(value, list | tuple):
         for item in value:
             yield from _string_values(item)
 
 
+def _decoded_tool_strings(tool_text: str) -> Iterator[str]:
+    """Yield the strings a tool output carries, under each formatting AgentDojo uses.
+
+    Models and lists are dumped as YAML, but `tool_result_to_str` falls back to
+    `str()` for dicts, which prints newlines as `\\n` escapes inside a Python
+    literal. Matching the raw text alone would miss every multi-line injection
+    returned by a dict-valued tool, such as the travel review tools.
+    """
+
+    yield tool_text
+    try:
+        yield from _string_values(yaml.safe_load(tool_text))
+    except yaml.YAMLError:
+        pass
+    try:
+        literal: Any = ast.literal_eval(tool_text)
+    except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+        return
+    yield from _string_values(literal)
+
+
 def _contains_injection(tool_texts: list[str], injected_texts: list[str]) -> bool:
-    normalized_injections = [" ".join(text.split()) for text in injected_texts if text.strip()]
+    normalized_injections: list[str] = [
+        " ".join(text.split()) for text in injected_texts if text.strip()
+    ]
     for tool_text in tool_texts:
-        try:
-            decoded = yaml.safe_load(tool_text)
-        except yaml.YAMLError:
-            decoded = tool_text
         if any(
             injection in " ".join(value.split())
-            for value in _string_values(decoded)
+            for value in _decoded_tool_strings(tool_text)
             for injection in normalized_injections
         ):
             return True
@@ -119,7 +316,6 @@ def _make_llm(
     max_new_tokens: int,
 ) -> Any:
     from agentdojo.agent_pipeline.base_pipeline_element import BasePipelineElement
-    from agentdojo.agent_pipeline.llms.local_llm import _parse_model_output
     from agentdojo.types import get_text_content_as_str
 
     class GemmaElement(BasePipelineElement):
@@ -169,10 +365,12 @@ def _make_llm(
                 tokens = model.generate_from_prompt(
                     input_ids, max_new_tokens=max_new_tokens
                 )
-            self.last_completion = model.tokenizer.decode(tokens, skip_special_tokens=True)
+            output = _assistant_message(
+                decode_with_markup(model.tokenizer, tokens), model.tokenizer
+            )
+            self.last_completion = get_text_content_as_str(output["content"])
             if eligible:
                 self.captured_completion = self.last_completion
-            output = _parse_model_output(_normalize_gemma_tool_call(self.last_completion))
             return query, runtime, env, [*messages, output], extra_args
 
     return GemmaElement()
@@ -297,6 +495,7 @@ def generate(
             "user_prompt": str(user_task.PROMPT),
             "injection_goal": (None if injection_task is None else str(injection_task.GOAL)),
             "injections": injections,
+            "decoding": AGENT_DECODING_VERSION,
         }
         case_hash = content_hash(case_identity)
         if case_id in completed:

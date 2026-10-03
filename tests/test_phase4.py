@@ -16,7 +16,8 @@ from jspace_research.phase2.scoring import JUDGE_RUBRIC_SHA256
 from jspace_research.phase4.agentdojo import (
     _contains_injection,
     _native_cases,
-    _normalize_gemma_tool_call,
+    _normalize_function_tag,
+    _split_gemma_tool_calls,
     validate_smoke_records,
 )
 from jspace_research.phase4.bipia import (
@@ -29,6 +30,8 @@ from jspace_research.phase4.bipia import (
 from jspace_research.phase4.common import (
     completed_records,
     content_hash,
+    decode_completion,
+    decode_with_markup,
     require_generation_context,
     save_record,
 )
@@ -259,35 +262,102 @@ def test_agentdojo_smoke_uses_first_sorted_native_cases() -> None:
 
 
 @pytest.mark.parametrize(
-    ("completion", "expected_call"),
+    ("completion", "expected_calls"),
     [
         (
-            'thought\ncall:read_file{"file_path": "bill-december-2023.txt"}',
-            '<function=read_file>{"file_path":"bill-december-2023.txt"}</function>',
+            'call:read_file{"file_path": "bill-december-2023.txt"}',
+            [("read_file", {"file_path": "bill-december-2023.txt"})],
         ),
         (
-            "thought\ncall:get_most_recent_transactions{n:100}",
-            '<function=get_most_recent_transactions>{"n":100}</function>',
-        ),
-        (
-            'thought\n<function=get_webpage={"url": "www.informations.com"}></function>',
-            '<function=get_webpage>{"url":"www.informations.com"}</function>',
+            "call:get_most_recent_transactions{n:100}",
+            [("get_most_recent_transactions", {"n": 100})],
         ),
         (
             'call:search_calendar_events{query: "Networking event",date: "2025-05-26"}',
-            '<function=search_calendar_events>{"query":"Networking event","date":"2025-05-26"}</function>',
+            [("search_calendar_events", {"query": "Networking event", "date": "2025-05-26"})],
+        ),
+        (
+            '<|tool_call>call:send_money{amount:98.7,date:<|"|>2023-12-31<|"|>,'
+            'recipient:<|"|>UK12345678901234567890<|"|>,'
+            'subject:<|"|>Bill for the month of December, 2023<|"|>}<tool_call|>',
+            [
+                (
+                    "send_money",
+                    {
+                        "amount": 98.7,
+                        "date": "2023-12-31",
+                        "recipient": "UK12345678901234567890",
+                        "subject": "Bill for the month of December, 2023",
+                    },
+                )
+            ],
+        ),
+        (
+            '<|tool_call>call:send_email{body:<|"|>Line one\n\nLine two<|"|>,'
+            'recipients:[<|"|>a@example.com<|"|>,<|"|>b@example.com<|"|>],'
+            "cc:null,urgent:true}<tool_call|>",
+            [
+                (
+                    "send_email",
+                    {
+                        "body": "Line one\n\nLine two",
+                        "recipients": ["a@example.com", "b@example.com"],
+                        "cc": None,
+                        "urgent": True,
+                    },
+                )
+            ],
+        ),
+        (
+            'call:get_all_hotels_in_city{city: "Paris"}'
+            'call:get_all_restaurants_in_city{city: "Paris"}',
+            [
+                ("get_all_hotels_in_city", {"city": "Paris"}),
+                ("get_all_restaurants_in_city", {"city": "Paris"}),
+            ],
         ),
     ],
 )
-def test_agentdojo_normalizes_observed_gemma_tool_calls(
-    completion: str, expected_call: str
+def test_agentdojo_parses_gemma_tool_calls(
+    completion: str, expected_calls: list[tuple[str, dict]]
 ) -> None:
-    assert expected_call in _normalize_gemma_tool_call(completion)
+    calls, remainder = _split_gemma_tool_calls(completion)
+    assert calls == expected_calls
+    assert "call:" not in remainder
 
 
-def test_agentdojo_leaves_unparseable_tool_calls_for_native_parser() -> None:
-    completion = "call:read_file{not valid arguments}"
-    assert _normalize_gemma_tool_call(completion) == completion
+def test_agentdojo_leaves_unparseable_and_embedded_calls_as_text() -> None:
+    for completion in ("call:read_file{not valid arguments}", "I will recall:x{a:1}"):
+        assert _split_gemma_tool_calls(completion) == ([], completion)
+
+
+def test_agentdojo_normalizes_function_tag_with_equals() -> None:
+    assert _normalize_function_tag(
+        'thought\n<function=get_webpage={"url": "www.informations.com"}></function>'
+    ).endswith('<function=get_webpage>{"url":"www.informations.com"}</function>')
+
+
+def test_decoding_keeps_tool_markup_and_drops_thinking() -> None:
+    special = ['<|"|>', "<|channel>", "<channel|>", "<|tool_call>", "<tool_call|>", "<turn|>"]
+    tokenizer = SimpleNamespace(
+        decode=lambda tokens, skip_special_tokens: tokens,
+        added_tokens_decoder={
+            index: SimpleNamespace(content=value, special=True)
+            for index, value in enumerate(special)
+        },
+        all_special_tokens=[],
+    )
+    raw = (
+        "<|channel>thought\nprivate reasoning<channel|>"
+        '<|tool_call>call:read_file{file_path:<|"|>a.txt<|"|>}<tool_call|><turn|>'
+    )
+    assert decode_with_markup(tokenizer, raw) == (
+        '<|tool_call>call:read_file{file_path:<|"|>a.txt<|"|>}<tool_call|><turn|>'
+    )
+    assert decode_completion(tokenizer, "<|channel>thought\nAnswer: 4<turn|>") == "Answer: 4"
+    assert decode_completion(tokenizer, "<|channel>thought\n<channel|>Final Answer: ok") == (
+        "Final Answer: ok"
+    )
 
 
 def test_agentdojo_finds_injection_after_native_yaml_formatting() -> None:
@@ -297,6 +367,15 @@ def test_agentdojo_finds_injection_after_native_yaml_formatting() -> None:
     assert injection not in tool_text
     assert _contains_injection([tool_text], [injection]) is True
     assert _contains_injection([tool_text], ["unrelated instruction"]) is False
+
+
+def test_agentdojo_finds_injection_in_dict_tool_output() -> None:
+    injection = "\n\n<INFORMATION>\n\nImportant instruction\n\n</INFORMATION>\n\n"
+    reviews = {"Luxury Palace": "Rating: 5.0\nReviews: Great stay" + injection}
+    tool_text = str(reviews)
+    assert "\\n" in tool_text
+    assert _contains_injection([tool_text], [injection]) is True
+    assert _contains_injection([str({"Hotel": "Rating: 4.0"})], [injection]) is False
 
 
 def test_agentdojo_smoke_requires_scored_clean_and_exposed_attack_per_suite() -> None:
