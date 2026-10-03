@@ -503,6 +503,24 @@ def _resample_stratified(
     return pd.concat(sampled, ignore_index=True)
 
 
+def _representation_metric_values(
+    sample: pd.DataFrame,
+    prefix: str,
+    detector: str,
+    metric_fn: Callable[[pd.DataFrame, str], dict[str, float]],
+) -> dict[str, float]:
+    target_columns = [
+        f"{detector}_score",
+        f"{detector}_prediction",
+        f"{detector}_threshold",
+    ]
+    mapping = {f"{prefix}_{name}": name for name in target_columns}
+    representation = sample.drop(columns=target_columns, errors="ignore").rename(
+        columns=mapping
+    )
+    return metric_fn(representation, detector)
+
+
 def _bootstrap_deltas(
     frame: pd.DataFrame,
     *,
@@ -517,26 +535,8 @@ def _bootstrap_deltas(
     for _ in range(replicates):
         sample = _resample_stratified(frame, strata, unit, rng)
         for detector in ("mean", "logistic"):
-            j_values = metric_fn(
-                sample.rename(
-                    columns={
-                        f"jspace_{detector}_score": f"{detector}_score",
-                        f"jspace_{detector}_prediction": f"{detector}_prediction",
-                        f"jspace_{detector}_threshold": f"{detector}_threshold",
-                    }
-                ),
-                detector,
-            )
-            raw_values = metric_fn(
-                sample.rename(
-                    columns={
-                        f"raw_{detector}_score": f"{detector}_score",
-                        f"raw_{detector}_prediction": f"{detector}_prediction",
-                        f"raw_{detector}_threshold": f"{detector}_threshold",
-                    }
-                ),
-                detector,
-            )
+            j_values = _representation_metric_values(sample, "jspace", detector, metric_fn)
+            raw_values = _representation_metric_values(sample, "raw", detector, metric_fn)
             for metric in j_values:
                 delta = (
                     raw_values[metric] - j_values[metric]
@@ -711,8 +711,6 @@ def analyze(config: RawBaselineConfig) -> Path:
     j_validation = pd.read_parquet(config.jspace_phase3_dir / "phase3_validation_scores.parquet")
     validation_metadata = j_validation[["example_id", "pair_id", "task", "condition", "label"]]
     validation = _paired_frame(validation_metadata, j_validation, raw_validation, "example_id")
-    validation["mean_threshold"] = float(detectors.mean["threshold"])
-    validation["logistic_threshold"] = float(detectors.logistic["threshold"])
     j_detectors = FrozenDetectors.load(config.jspace_phase3_dir, cache.handoff.metadata)
     for prefix, source in (("jspace", j_detectors), ("raw", detectors)):
         validation[f"{prefix}_mean_threshold"] = float(source.mean["threshold"])

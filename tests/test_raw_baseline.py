@@ -120,6 +120,10 @@ def _paired_validation() -> pd.DataFrame:
 
 def test_paired_bootstrap_is_deterministic_and_preserves_pairing() -> None:
     frame = _paired_validation()
+    # Analysis previously carried these generic columns alongside the
+    # representation-specific thresholds, producing duplicate names on rename.
+    frame["mean_threshold"] = 0.0
+    frame["logistic_threshold"] = 0.0
     first = _bootstrap_deltas(
         frame,
         strata=["task"],
