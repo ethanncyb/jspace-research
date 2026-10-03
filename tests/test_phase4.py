@@ -195,9 +195,7 @@ def test_phase4_uses_benchmark_specific_metrics() -> None:
         "fpr",
         "balanced_accuracy",
     }
-    assert {"overall", "task", "macro"}.issubset(
-        set(metrics[metrics.benchmark == "bipia"].scope)
-    )
+    assert {"overall", "task", "macro"}.issubset(set(metrics[metrics.benchmark == "bipia"].scope))
     assert "auprc" not in set(metrics[metrics.benchmark == "injecagent"].metric)
     assert {"valid_rate", "asr_valid", "asr_all"}.issubset(
         set(metrics[metrics.benchmark == "injecagent"].metric)
@@ -431,9 +429,7 @@ def test_bipia_manifest_is_deterministic_balanced_and_context_matched(tmp_path) 
     context_counts = Counter(row["context_id"] for row in attacks)
     assert max(context_counts.values()) - min(context_counts.values()) == 1
     assert len({row["prompt_hash"] for row in attacks}) == 250
-    assert {row["source_clean_case_id"] for row in attacks} == {
-        row["case_id"] for row in controls
-    }
+    assert {row["source_clean_case_id"] for row in attacks} == {row["case_id"] for row in controls}
 
 
 def test_bipia_manifest_freezing_rejects_changed_case(tmp_path) -> None:
@@ -503,10 +499,11 @@ def test_end_to_end_notebook_runs_phase4_after_phase3() -> None:
     cells = ["".join(cell.get("source", [])) for cell in notebook["cells"]]
     phase3_index = next(index for index, text in enumerate(cells) if "phase3_command" in text)
     phase4_index = next(index for index, text in enumerate(cells) if "phase4_base" in text)
+    raw_index = next(index for index, text in enumerate(cells) if "raw_baseline_command" in text)
     persistence_index = next(
         index for index, text in enumerate(cells) if "Confirm persistence" in text
     )
-    assert phase3_index < phase4_index < persistence_index
+    assert phase3_index < phase4_index < raw_index < persistence_index
     assert "import pandas as pd" in cells[phase4_index]
     assert "from IPython.display import Image, display" in cells[phase4_index]
     assert "selection = json.loads" in cells[persistence_index + 1]
@@ -514,7 +511,7 @@ def test_end_to_end_notebook_runs_phase4_after_phase3() -> None:
     config_cell = next(text for text in cells if "RUN_MODE = 'smoke'" in text)
     install_cell = next(text for text in cells if "RESEARCH_REVISION" in text)
     robustness_cell = next(text for text in cells if "robustness_command" in text)
-    assert "RESEARCH_REVISION = 'codex/phase1-robustness'" in install_cell
+    assert "RESEARCH_REVISION = 'codex/raw-activation-baseline'" in install_cell
     assert "import pandas as pd" in robustness_cell
     assert "from IPython.display import Image, display" in robustness_cell
     assert "DATA_ROOT = Path('/content/drive/MyDrive/jspace-research/data')" in config_cell

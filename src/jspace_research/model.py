@@ -125,6 +125,38 @@ class HuggingFaceModelAdapter:
             raise RuntimeError("The model adapter did not capture every requested layer")
         return torch.stack([recorder.activations[layer][0, -1, :].detach() for layer in requested])
 
+    def capture_final_prompt_token_raw(self, input_ids: torch.Tensor, layer: int) -> torch.Tensor:
+        """Capture one residual state without importing or using the J-lens."""
+
+        if input_ids.ndim != 2 or input_ids.shape[0] != 1:
+            raise ValueError("Raw capture expects one unpadded prompt at a time")
+        if not 0 <= layer < self.number_layers:
+            raise ValueError(f"Capture layer is out of range: {layer}")
+        input_ids = input_ids.to(self.input_device)
+        captured: torch.Tensor | None = None
+
+        def capture(module: Any, inputs: Any, output: Any) -> Any:
+            nonlocal captured
+            tensor = output if torch.is_tensor(output) else output[0]
+            if tensor.ndim != 3 or tensor.shape[0] != 1:
+                raise RuntimeError(
+                    "Selected residual block did not return a [1, sequence, hidden] tensor"
+                )
+            if tensor.shape[-1] != self.hidden_width:
+                raise RuntimeError("Selected residual block output width is incompatible")
+            captured = tensor[0, -1, :].detach().to("cpu", dtype=torch.float32)
+            return output
+
+        handle = self._model.layers[layer].register_forward_hook(capture)
+        try:
+            with torch.inference_mode():
+                self._model.forward(input_ids)
+        finally:
+            handle.remove()
+        if captured is None:
+            raise RuntimeError("The selected residual capture hook was never applied")
+        return captured
+
     def generate_from_prompt(
         self,
         input_ids: torch.Tensor,

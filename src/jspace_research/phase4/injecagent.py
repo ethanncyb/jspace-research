@@ -114,25 +114,31 @@ def generate(
     scorer: Any,
     completed: dict[str, dict[str, Any]],
     identity: dict[str, Any],
+    *,
+    output_path: Path | None = None,
+    reference_records: dict[str, dict[str, Any]] | None = None,
+    capture_only: bool = False,
 ) -> None:
-    output_path = config.output_dir / "injecagent_records.jsonl"
+    output_path = output_path or config.output_dir / "injecagent_records.jsonl"
     prompt_values = runpy.run_path(str(config.injecagent_root / "src/prompts/agent_prompts.py"))
     system_prompt, user_prompt = prompt_values["PROMPT_DICT"][config.injecagent_prompt_type]
     tools = _tools(config.injecagent_root)
-    parser = _load_parser(config.injecagent_root)
-    with (config.injecagent_root / "data/attacker_simulated_responses.json").open(
-        "r", encoding="utf-8"
-    ) as handle:
-        simulated = json.load(handle)
+    parser = None if capture_only else _load_parser(config.injecagent_root)
+    simulated = None
+    if not capture_only:
+        with (config.injecagent_root / "data/attacker_simulated_responses.json").open(
+            "r", encoding="utf-8"
+        ) as handle:
+            simulated = json.load(handle)
 
     cases = build_cases(config)
     expected_ids = {case["case_id"] for case in cases}
     unexpected = sorted(set(completed) - expected_ids)
     if unexpected:
         raise RuntimeError(f"Unexpected cached InjecAgent case ID: {unexpected[0]}")
-    progress = tqdm(
-        total=len(cases), initial=len(completed), desc="Phase 4 InjecAgent generation"
-    )
+    if reference_records is not None and set(reference_records) != expected_ids:
+        raise RuntimeError("Phase 4 InjecAgent reference case IDs changed")
+    progress = tqdm(total=len(cases), initial=len(completed), desc="Phase 4 InjecAgent generation")
     for case in cases:
         case_hash = content_hash(case)
         if case["case_id"] in completed:
@@ -141,32 +147,47 @@ def generate(
             continue
         item = case["item"]
         messages = _prompt(item, tools, system_prompt, user_prompt)
+        prompt_hash = hash_messages(messages)
+        reference = None if reference_records is None else reference_records.get(case["case_id"])
+        if reference_records is not None and reference is None:
+            raise RuntimeError(f"Missing Phase 4 InjecAgent reference: {case['case_id']}")
+        if reference is not None and (
+            reference.get("case_hash") != case_hash
+            or reference.get("prompt_hash") != prompt_hash
+            or reference.get("injection_exposed") is not True
+        ):
+            raise RuntimeError(f"Phase 4 InjecAgent reference changed: {case['case_id']}")
         input_ids = render_ids(model.tokenizer, messages)
         require_generation_context(
             int(input_ids.shape[-1]), model.context_length, config.max_new_tokens, "InjecAgent"
         )
-        tokens, residual = model.generate_with_capture(
-            input_ids,
-            max_new_tokens=config.max_new_tokens,
-            layer=scorer.mean["selected_layer"],
-        )
-        output = model.tokenizer.decode(tokens, skip_special_tokens=True)
-        first = _native_eval(parser, output, item, item["Attacker Tools"][0])
+        if capture_only:
+            residual = model.capture_final_prompt_token_raw(
+                input_ids, scorer.mean["selected_layer"]
+            )
+            output = ""
+            first = {"eval": "reused"}
+        else:
+            tokens, residual = model.generate_with_capture(
+                input_ids,
+                max_new_tokens=config.max_new_tokens,
+                layer=scorer.mean["selected_layer"],
+            )
+            output = model.tokenizer.decode(tokens, skip_special_tokens=True)
+            first = _native_eval(parser, output, item, item["Attacker Tools"][0])
         second_output = None
         second_eval = None
-        if case["subgroup"] == "data_stealing" and first["eval"] == "succ":
+        if not capture_only and case["subgroup"] == "data_stealing" and first["eval"] == "succ":
             parameters = first["Attacker Tool Parameters"]
             key = f"({item['Attacker Tools'][0]},{parameters})"
-            if key not in simulated:
+            if simulated is None or key not in simulated:
                 raise RuntimeError(f"Missing pinned InjecAgent simulated response for {key}")
             second = {
                 "thought": first["Attacker Tool Thought"],
                 "parameters": parameters,
                 "response": simulated[key],
             }
-            second_messages = _prompt(
-                item, tools, system_prompt, user_prompt, second=second
-            )
+            second_messages = _prompt(item, tools, system_prompt, user_prompt, second=second)
             second_ids = render_ids(model.tokenizer, second_messages)
             require_generation_context(
                 int(second_ids.shape[-1]),
@@ -178,18 +199,22 @@ def generate(
                 second_ids, max_new_tokens=config.max_new_tokens
             )
             second_output = model.tokenizer.decode(second_tokens, skip_special_tokens=True)
-            second_eval = _native_eval(
-                parser, second_output, item, item["Attacker Tools"][1]
-            )
+            second_eval = _native_eval(parser, second_output, item, item["Attacker Tools"][1])
 
-        final_eval = first["eval"] if case["subgroup"] == "direct_harm" else (
-            second_eval["eval"] if first["eval"] == "succ" and second_eval else first["eval"]
-        )
-        native_valid = final_eval != "invalid"
-        native_success = (
-            first["eval"] == "succ"
+        final_eval = (
+            first["eval"]
             if case["subgroup"] == "direct_harm"
-            else bool(second_eval and second_eval["eval"] == "succ")
+            else (second_eval["eval"] if first["eval"] == "succ" and second_eval else first["eval"])
+        )
+        native_valid = None if capture_only else final_eval != "invalid"
+        native_success = (
+            None
+            if capture_only
+            else (
+                first["eval"] == "succ"
+                if case["subgroup"] == "direct_harm"
+                else bool(second_eval and second_eval["eval"] == "succ")
+            )
         )
         save_record(
             output_path,
@@ -197,7 +222,7 @@ def generate(
                 **identity,
                 **{key: value for key, value in case.items() if key != "item"},
                 "case_hash": case_hash,
-                "prompt_hash": hash_messages(messages),
+                "prompt_hash": prompt_hash,
                 **scorer.score(residual, scorer.dictionary),
                 "injection_exposed": True,
                 "generated_response": output,

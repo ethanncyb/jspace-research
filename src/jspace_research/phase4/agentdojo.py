@@ -20,6 +20,10 @@ _GEMMA_FUNCTION_TAG = re.compile(
 _BARE_ARGUMENT_KEY = re.compile(r"([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:")
 
 
+class _CaptureComplete(BaseException):
+    """Stop a raw-baseline replay after the frozen decision state is captured."""
+
+
 def _normalize_gemma_tool_call(completion: str) -> str:
     """Translate Gemma's observed tool-call spelling to AgentDojo's native form."""
 
@@ -87,9 +91,7 @@ def _chat_messages(messages: Sequence[Any], runtime: Any) -> list[dict[str, str]
         role = message["role"]
         content = message.get("content")
         if role == "system":
-            text = _make_system_prompt(
-                get_text_content_as_str(content), runtime.functions.values()
-            )
+            text = _make_system_prompt(get_text_content_as_str(content), runtime.functions.values())
             target_role = "system"
         elif role == "tool":
             if message.get("error") is not None:
@@ -117,6 +119,8 @@ def _make_llm(
     *,
     context_length: int,
     max_new_tokens: int,
+    capture_only: bool = False,
+    expected_prompt_hash: str | None = None,
 ) -> Any:
     from agentdojo.agent_pipeline.base_pipeline_element import BasePipelineElement
     from agentdojo.agent_pipeline.llms.local_llm import _parse_model_output
@@ -147,28 +151,39 @@ def _make_llm(
             exposed = bool(injected_texts and _contains_injection(tool_texts, injected_texts))
             self.injection_exposed = self.injection_exposed or exposed
             eligible = self.capture is None and (
-                (condition == "attack" and exposed)
-                or (condition == "control" and bool(tool_texts))
+                (condition == "attack" and exposed) or (condition == "control" and bool(tool_texts))
             )
             chat = _chat_messages(messages, runtime)
             input_ids = render_ids(model.tokenizer, chat)
+            prompt_hash = hash_messages(chat)
             require_generation_context(
                 int(input_ids.shape[-1]), context_length, max_new_tokens, "AgentDojo"
             )
             if eligible:
-                tokens, residual = model.generate_with_capture(
-                    input_ids,
-                    max_new_tokens=max_new_tokens,
-                    layer=scorer.mean["selected_layer"],
-                )
+                if expected_prompt_hash is not None and prompt_hash != expected_prompt_hash:
+                    raise RuntimeError("AgentDojo replay reached a changed decision-state prompt")
+                if capture_only:
+                    residual = model.capture_final_prompt_token_raw(
+                        input_ids, scorer.mean["selected_layer"]
+                    )
+                    tokens = None
+                else:
+                    tokens, residual = model.generate_with_capture(
+                        input_ids,
+                        max_new_tokens=max_new_tokens,
+                        layer=scorer.mean["selected_layer"],
+                    )
                 self.capture = {
                     **scorer.score(residual, scorer.dictionary),
-                    "prompt_hash": hash_messages(chat),
+                    "prompt_hash": prompt_hash,
                 }
+                if capture_only:
+                    self.captured_completion = ""
+                    raise _CaptureComplete
             else:
-                tokens = model.generate_from_prompt(
-                    input_ids, max_new_tokens=max_new_tokens
-                )
+                tokens = model.generate_from_prompt(input_ids, max_new_tokens=max_new_tokens)
+            if tokens is None:
+                raise RuntimeError("AgentDojo capture did not return generation tokens")
             self.last_completion = model.tokenizer.decode(tokens, skip_special_tokens=True)
             if eligible:
                 self.captured_completion = self.last_completion
@@ -214,13 +229,17 @@ def generate(
     scorer: Any,
     completed: dict[str, dict[str, Any]],
     identity: dict[str, Any],
+    *,
+    output_path: Path | None = None,
+    reference_records: dict[str, dict[str, Any]] | None = None,
+    capture_only: bool = False,
 ) -> None:
     _install_checkout(config.agentdojo_root)
     from agentdojo.agent_pipeline import AgentPipeline, PipelineConfig
     from agentdojo.attacks import load_attack
     from agentdojo.task_suite.load_suites import get_suite
 
-    output_path = config.output_dir / "agentdojo_records.jsonl"
+    output_path = output_path or config.output_dir / "agentdojo_records.jsonl"
     suite_cases = []
     expected_ids: set[str] = set()
     for suite_name in config.agentdojo_suites:
@@ -244,6 +263,8 @@ def generate(
     unexpected = sorted(set(completed) - expected_ids)
     if unexpected:
         raise RuntimeError(f"Unexpected cached AgentDojo case ID: {unexpected[0]}")
+    if reference_records is not None and set(reference_records) != expected_ids:
+        raise RuntimeError("Phase 4 AgentDojo reference case IDs changed")
 
     progress = tqdm(
         total=len(suite_cases), initial=len(completed), desc="Phase 4 AgentDojo generation"
@@ -303,9 +324,74 @@ def generate(
             if completed[case_id].get("case_hash") != case_hash:
                 raise RuntimeError("Cached AgentDojo case identity changed")
             continue
-        utility, attack_success = suite.run_task_with_pipeline(
-            pipeline, user_task, injection_task, injections
-        )
+        reference = None if reference_records is None else reference_records.get(case_id)
+        if reference_records is not None and reference is None:
+            raise RuntimeError(f"Missing Phase 4 AgentDojo reference: {case_id}")
+        if reference is not None and reference.get("case_hash") != case_hash:
+            raise RuntimeError(f"Phase 4 AgentDojo case changed: {case_id}")
+        if capture_only and reference is not None and reference.get("prompt_hash") is None:
+            detector = {
+                "mean_score": None,
+                "mean_prediction": None,
+                "logistic_score": None,
+                "logistic_prediction": None,
+                "prompt_hash": None,
+            }
+            save_record(
+                output_path,
+                {
+                    **identity,
+                    **case_basis,
+                    "case_hash": case_hash,
+                    "benchmark": "agentdojo",
+                    "task": None,
+                    "subgroup": suite_name,
+                    **detector,
+                    "injection_exposed": bool(reference.get("injection_exposed")),
+                    "generated_response": "",
+                    "native_valid": None,
+                    "native_utility": None,
+                    "native_attack_success": None,
+                },
+            )
+            progress.update()
+            continue
+        if capture_only:
+            tracker = _make_llm(
+                model,
+                scorer,
+                condition,
+                list(injections.values()),
+                context_length=model.context_length,
+                max_new_tokens=config.max_new_tokens,
+                capture_only=True,
+                expected_prompt_hash=str(reference["prompt_hash"]),
+            )
+            pipeline = AgentPipeline.from_config(
+                PipelineConfig(
+                    llm=tracker,
+                    model_id=None,
+                    defense=None,
+                    tool_delimiter="tool",
+                    system_message_name=None,
+                    system_message=None,
+                    tool_output_format=None,
+                )
+            )
+            try:
+                suite.run_task_with_pipeline(pipeline, user_task, injection_task, injections)
+            except _CaptureComplete:
+                pass
+            if tracker.capture is None:
+                raise RuntimeError(f"AgentDojo replay did not reach the frozen state: {case_id}")
+            if tracker.injection_exposed != bool(reference.get("injection_exposed")):
+                raise RuntimeError(f"AgentDojo exposure state changed: {case_id}")
+            utility = None
+            attack_success = None
+        else:
+            utility, attack_success = suite.run_task_with_pipeline(
+                pipeline, user_task, injection_task, injections
+            )
         detector = tracker.capture or {
             "mean_score": None,
             "mean_prediction": None,
@@ -326,9 +412,11 @@ def generate(
                 "injection_exposed": tracker.injection_exposed,
                 "generated_response": tracker.captured_completion or tracker.last_completion,
                 "native_valid": None,
-                "native_utility": bool(utility),
+                "native_utility": None if capture_only else bool(utility),
                 "native_attack_success": (
-                    bool(attack_success) if injection_task is not None else None
+                    bool(attack_success)
+                    if not capture_only and injection_task is not None
+                    else None
                 ),
             },
         )

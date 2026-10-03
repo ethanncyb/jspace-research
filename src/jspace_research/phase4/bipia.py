@@ -4,6 +4,7 @@ import json
 import random
 from collections import Counter
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any
 
 from tqdm.auto import tqdm
@@ -98,9 +99,7 @@ def _build_task_cases(
         record = contexts[index % len(contexts)]
         variant = variants[index % len(variants)]
         attack_text = attacks[category][variant]
-        attacked_context = insertions[position](
-            record["context"], attack_text, random_state=seed
-        )
+        attacked_context = insertions[position](record["context"], attack_text, random_state=seed)
         cases.append(
             _case(
                 task,
@@ -232,15 +231,17 @@ def _validate_manifest(config: Any, rows: Sequence[dict[str, Any]]) -> list[dict
             raise RuntimeError(f"BIPIA category-position balance changed for task {task}")
         if not config.smoke:
             variant_counts = Counter(int(row["attack_variant_id"]) for row in selected)
-            if set(variant_counts) != set(TEST_VARIANTS) or max(variant_counts.values()) - min(
-                variant_counts.values()
-            ) > 1:
+            if (
+                set(variant_counts) != set(TEST_VARIANTS)
+                or max(variant_counts.values()) - min(variant_counts.values()) > 1
+            ):
                 raise RuntimeError(f"BIPIA test variant balance changed for task {task}")
         context_counts = Counter(row["context_id"] for row in selected)
         source_count = int(details.get("source_context_count", 0))
-        if len(context_counts) != min(quota, source_count) or max(
-            context_counts.values()
-        ) - min(context_counts.values()) > 1:
+        if (
+            len(context_counts) != min(quota, source_count)
+            or max(context_counts.values()) - min(context_counts.values()) > 1
+        ):
             raise RuntimeError(f"BIPIA source-context balance changed for task {task}")
 
     return sorted(cases, key=lambda row: row["case_id"])
@@ -269,16 +270,20 @@ def generate(
     scorer: Any,
     completed: dict[str, dict[str, Any]],
     identity: dict[str, Any],
+    *,
+    output_path: Path | None = None,
+    reference_records: dict[str, dict[str, Any]] | None = None,
+    capture_only: bool = False,
 ) -> None:
-    output_path = config.output_dir / "bipia_records.jsonl"
+    output_path = output_path or config.output_dir / "bipia_records.jsonl"
     cases = load_manifest(config)
     expected_ids = {case["case_id"] for case in cases}
     unexpected = sorted(set(completed) - expected_ids)
     if unexpected:
         raise RuntimeError(f"Unexpected cached BIPIA case ID: {unexpected[0]}")
-    progress = tqdm(
-        total=len(cases), initial=len(completed), desc="Phase 4 BIPIA generation"
-    )
+    if reference_records is not None and set(reference_records) != expected_ids:
+        raise RuntimeError("Phase 4 BIPIA reference case IDs changed")
+    progress = tqdm(total=len(cases), initial=len(completed), desc="Phase 4 BIPIA generation")
     for case in cases:
         if case["case_id"] in completed:
             if completed[case["case_id"]].get("case_hash") != content_hash(case):
@@ -288,13 +293,27 @@ def generate(
         require_generation_context(
             int(input_ids.shape[-1]), model.context_length, config.max_new_tokens, "BIPIA"
         )
-        tokens, residual = model.generate_with_capture(
-            input_ids,
-            max_new_tokens=config.max_new_tokens,
-            layer=scorer.mean["selected_layer"],
-        )
+        reference = None if reference_records is None else reference_records.get(case["case_id"])
+        if reference_records is not None and reference is None:
+            raise RuntimeError(f"Missing Phase 4 BIPIA reference: {case['case_id']}")
+        if reference is not None and (
+            reference.get("case_hash") != content_hash(case)
+            or reference.get("prompt_hash") != case["prompt_hash"]
+        ):
+            raise RuntimeError(f"Phase 4 BIPIA reference changed: {case['case_id']}")
+        if capture_only:
+            residual = model.capture_final_prompt_token_raw(
+                input_ids, scorer.mean["selected_layer"]
+            )
+            generation = ""
+        else:
+            tokens, residual = model.generate_with_capture(
+                input_ids,
+                max_new_tokens=config.max_new_tokens,
+                layer=scorer.mean["selected_layer"],
+            )
+            generation = model.tokenizer.decode(tokens, skip_special_tokens=True).strip()
         result = scorer.score(residual, scorer.dictionary)
-        generation = model.tokenizer.decode(tokens, skip_special_tokens=True).strip()
         save_record(
             output_path,
             {

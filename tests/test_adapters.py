@@ -109,6 +109,10 @@ class FakeLensModel:
         self.d_model = 3
         self.input_device = torch.device("cpu")
 
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        hidden = torch.zeros((1, input_ids.shape[-1], self.d_model))
+        return self.layers[0](hidden)[0]
+
 
 class FakeTokenizer:
     pad_token_id = 0
@@ -164,6 +168,13 @@ def test_generation_capture_records_only_the_prefill_final_token() -> None:
     torch.testing.assert_close(captured, torch.ones(3))
     assert hf_model.decode is not None
     torch.testing.assert_close(hf_model.decode[0, 0], torch.ones(3))
+
+
+def test_raw_capture_uses_a_native_hook_without_generation() -> None:
+    adapter, hf_model = make_generation_adapter()
+    captured = adapter.capture_final_prompt_token_raw(torch.tensor([[1, 2, 3]]), 0)
+    torch.testing.assert_close(captured, torch.ones(3))
+    assert hf_model.prefill is None and hf_model.decode is None
 
 
 def test_intervention_rejects_wrong_reconstruction_shape() -> None:

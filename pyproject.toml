@@ -40,6 +40,7 @@ jspace-phase1-robustness = "jspace_research.phase1.robustness_cli:main"
 jspace-phase2 = "jspace_research.phase2.cli:main"
 jspace-phase3 = "jspace_research.phase3.cli:main"
 jspace-phase4 = "jspace_research.phase4.cli:main"
+jspace-raw-baseline = "jspace_research.raw_baseline.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

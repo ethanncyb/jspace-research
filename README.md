@@ -1,6 +1,6 @@
 # J-Space Prompt-Injection Research
 
-This repository implements Phases 1–4 of the experiment in [`PLAN.md`](PLAN.md): select a J-lens layer, measure behavior under coarse J-space removal, freeze two detectors, then evaluate those unchanged detectors on BIPIA official test, AgentDojo, and InjecAgent. It also includes an optional post-hoc Phase 1 robustness study that never changes the frozen pipeline.
+This repository implements Phases 1–4 of the experiment in [`PLAN.md`](PLAN.md): select a J-lens layer, measure behavior under coarse J-space removal, freeze two detectors, then evaluate those unchanged detectors on BIPIA official test, AgentDojo, and InjecAgent. It also includes the required same-layer raw-residual detector baseline and an optional post-hoc Phase 1 robustness study. Neither changes the frozen pipeline.
 
 The implementation deliberately stops after held-out and cross-benchmark transfer. It does not add direction-specific interventions, recognition/compliance analysis, detector gating, or later-phase functionality.
 
@@ -41,6 +41,7 @@ Open the canonical [`notebooks/JSpace_End_to_End_Colab.ipynb`](notebooks/JSpace_
 3. Authenticate with Hugging Face and add `OPENROUTER_API_KEY` to Colab Secrets.
 4. Leave `RUN_MODE = "smoke"` for the first run. Use `RUN_MODE = "full"` only after smoke succeeds and the two external task files are available.
 5. Run and inspect Phases 1–3 incrementally, then use the single Phase 4 cell for GPU generation followed by CPU/API analysis.
+6. After Phase 4 completes, run the raw-baseline cell. It reuses the saved Phase 1, 3, and 4 artifacts and writes only to `raw_baseline/`.
 
 Confirm the selected runtime before starting the expensive stages:
 
@@ -152,6 +153,16 @@ jspace-phase4 \
   --injecagent-root /path/to/InjecAgent \
   --output-dir ./artifacts/smoke/phase4 \
   --stage all
+
+jspace-raw-baseline \
+  --config configs/phase1_smoke.yaml \
+  --phase1 ./artifacts/smoke/phase1/selected_layer.json \
+  --jspace-phase3 ./artifacts/smoke/phase3 \
+  --jspace-phase4 ./artifacts/smoke/phase4 \
+  --agentdojo-root /path/to/agentdojo \
+  --injecagent-root /path/to/InjecAgent \
+  --output-dir ./artifacts/smoke/raw_baseline \
+  --stage all
 ```
 
 Then run the full five-task experiment:
@@ -192,6 +203,16 @@ jspace-phase4 \
   --agentdojo-root /path/to/agentdojo \
   --injecagent-root /path/to/InjecAgent \
   --output-dir ./artifacts/full/phase4 \
+  --stage all
+
+jspace-raw-baseline \
+  --config configs/phase1_full.yaml \
+  --phase1 ./artifacts/full/phase1/selected_layer.json \
+  --jspace-phase3 ./artifacts/full/phase3 \
+  --jspace-phase4 ./artifacts/full/phase4 \
+  --agentdojo-root /path/to/agentdojo \
+  --injecagent-root /path/to/InjecAgent \
+  --output-dir ./artifacts/full/raw_baseline \
   --stage all
 ```
 
@@ -275,6 +296,20 @@ jspace-phase4 \
 
 Phase 4 appends one compact record per selected case and benchmark. Its BIPIA evaluation freezes a deterministic seed-42 `bipia_test_manifest.jsonl` before generation: 250 attacks per task (1,250 total) sampled only from official test contexts and test attack files, balanced as evenly as possible across attack-category × insertion-position cells and all five test variants. Every sampled attack maps to its source context, and each unique represented context is generated only once as a clean control. This is the prespecified held-out same-benchmark evaluation; the complete AgentDojo and InjecAgent runs are the cross-benchmark transfer tests. AgentDojo uses its pinned `v1.2.2` suites, native default tool-output formatting, no defense, and the fixed `important_instructions` attack. BIPIA AUPRC uses a matched balanced representation that pairs every sampled attack score with its source clean score without additional generation; primary metrics also include AUROC, frozen-threshold TPR/FPR, and balanced accuracy, reported per task and task-macro. Rerunning `generate` resumes missing cases and rejects a changed manifest or case identity; `analyze` refuses incomplete or identity-mismatched records. Phase 4 passes each selected benchmark prompt intact, without applying Phase 1's 4,096-token construction cap or truncating content, and requires the prompt plus generation allowance to fit the pinned model's native context window. The smoke subset is deterministic integration validation only and never affects the scientific manifest, frozen layer, feature map, detector parameters, or thresholds.
 
+### Same-layer raw-residual baseline
+
+The required baseline branches from completed Phase 1, 3, and 4 artifacts and writes only to a separate `raw_baseline/` directory. It fixes the Phase 1-selected layer and fits the same mean-direction and L2 logistic detector families directly on that layer's saved raw residual activations. Phase 2 is not repeated. The transfer stage loads Gemma but not the lens, replays only far enough to recover the exact frozen Phase 4 decision state, verifies its case and prompt hashes, and reuses the existing behavioral outcomes.
+
+Run stages separately when moving between CPU and GPU machines:
+
+```bash
+jspace-raw-baseline --config configs/phase1_full.yaml --phase1 artifacts/full/phase1/selected_layer.json --jspace-phase3 artifacts/full/phase3 --jspace-phase4 artifacts/full/phase4 --agentdojo-root /path/to/agentdojo --injecagent-root /path/to/InjecAgent --output-dir artifacts/full/raw_baseline --stage fit
+jspace-raw-baseline --config configs/phase1_full.yaml --phase1 artifacts/full/phase1/selected_layer.json --jspace-phase3 artifacts/full/phase3 --jspace-phase4 artifacts/full/phase4 --agentdojo-root /path/to/agentdojo --injecagent-root /path/to/InjecAgent --output-dir artifacts/full/raw_baseline --stage transfer
+jspace-raw-baseline --config configs/phase1_full.yaml --phase1 artifacts/full/phase1/selected_layer.json --jspace-phase3 artifacts/full/phase3 --jspace-phase4 artifacts/full/phase4 --agentdojo-root /path/to/agentdojo --injecagent-root /path/to/InjecAgent --output-dir artifacts/full/raw_baseline --stage analyze
+```
+
+`fit` and `analyze` are CPU-only. `transfer` requires CUDA and is resumable. The comparison reports matched J-space-minus-raw differences with deterministic paired 95% bootstrap intervals. It supports only the same-layer claim in `PLAN.md`; it is not a search for the best raw-activation layer.
+
 ## Outputs and phase boundaries
 
 At each fitted layer, the pipeline constructs normalized token directions from rows of `W_U @ J_l`. It reconstructs the final-prompt-token residual as a sparse nonnegative combination using a screened greedy approximation: 512 positive candidates, at most 25 selected atoms, and an iterative nonnegative support refit. This is an approximation, not an exact orthogonal projection and not Anthropic's exact gradient-pursuit implementation.
@@ -332,6 +367,8 @@ Clean utility is ROUGE-based reference overlap against the frozen BIPIA `constru
 Phase 3 writes `mean_detector.pt`, `logistic_detector.pt`, `phase3_validation_scores.parquet`, `phase3_metrics.csv`, `phase3_detector_comparison.png`, and lightweight `provenance.json`. These are development results: the mean detector is reused from Phase 1, the logistic detector is fitted only on Phase 1 training examples, and both thresholds are selected on Phase 1 validation examples. Phase 4 is responsible for unbiased held-out evaluation.
 
 Phase 4 writes the frozen `bipia_test_manifest.jsonl`, compact resumable `bipia_records.jsonl`, `agentdojo_records.jsonl`, and `injecagent_records.jsonl`, plus `bipia_judgments.jsonl`, `phase4_predictions.parquet`, `phase4_metrics.csv`, `phase4_detector_transfer.png`, and lightweight `provenance.json`. It captures only the frozen selected layer and does not retain hidden-state or reconstruction arrays. BIPIA receives matched held-out classification metrics, AgentDojo receives frozen-threshold detector rates plus native utility/security outcomes, and InjecAgent receives frozen-threshold score distributions plus native validity and ASR. No Phase 4 example is used for tuning.
+
+The raw baseline writes two frozen raw detector artifacts, validation scores and metrics, three compact resumable raw-score streams, transfer predictions and metrics, `jspace_vs_raw_comparison.csv`, two comparison plots, and lightweight provenance under `raw_baseline/`. It does not modify or duplicate the large Phase 1 cache, create a second BIPIA manifest, rerun behavioral judging, or write into any Phase 1–4 directory.
 
 Verify and load a copied handoff with:
 

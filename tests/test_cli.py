@@ -3,6 +3,7 @@ from jspace_research.phase1.robustness_cli import build_parser as build_robustne
 from jspace_research.phase2.cli import build_parser as build_phase2_parser
 from jspace_research.phase3.cli import build_parser as build_phase3_parser
 from jspace_research.phase4.cli import build_parser as build_phase4_parser
+from jspace_research.raw_baseline.cli import build_parser as build_raw_baseline_parser
 
 
 def test_cli_exposes_only_phase1_stages_and_path_overrides() -> None:
@@ -95,3 +96,28 @@ def test_phase4_cli_keeps_generation_and_analysis_separate() -> None:
     )
     assert args.stage == "analyze"
     assert args.phase3 == "/run/phase3"
+
+
+def test_raw_baseline_cli_keeps_fit_transfer_and_analysis_separate() -> None:
+    args = build_raw_baseline_parser().parse_args(
+        [
+            "--config",
+            "config.yaml",
+            "--phase1",
+            "/run/phase1/selected_layer.json",
+            "--jspace-phase3",
+            "/run/phase3",
+            "--jspace-phase4",
+            "/run/phase4",
+            "--agentdojo-root",
+            "/benchmarks/agentdojo",
+            "--injecagent-root",
+            "/benchmarks/InjecAgent",
+            "--output-dir",
+            "/run/raw_baseline",
+            "--stage",
+            "fit",
+        ]
+    )
+    assert args.stage == "fit"
+    assert args.jspace_phase4 == "/run/phase4"
