@@ -133,6 +133,7 @@ class HuggingFaceModelAdapter:
         layer: int | None = None,
         reconstructed_jspace: torch.Tensor | None = None,
         alpha: float = 0.0,
+        suppress_token_ids: Sequence[int] = (),
     ) -> torch.Tensor:
         """Greedily generate, optionally subtracting J-space once during prefill."""
 
@@ -195,6 +196,7 @@ class HuggingFaceModelAdapter:
                     max_new_tokens=max_new_tokens,
                     use_cache=True,
                     pad_token_id=pad_token_id,
+                    suppress_tokens=list(suppress_token_ids) or None,
                 )
         finally:
             if hook_handle is not None:
@@ -212,6 +214,7 @@ class HuggingFaceModelAdapter:
         *,
         max_new_tokens: int,
         layer: int,
+        suppress_token_ids: Sequence[int] = (),
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Greedily generate while capturing one selected-layer prefill state."""
 
@@ -252,6 +255,7 @@ class HuggingFaceModelAdapter:
                     max_new_tokens=max_new_tokens,
                     use_cache=True,
                     pad_token_id=pad_token_id,
+                    suppress_tokens=list(suppress_token_ids) or None,
                 )
         finally:
             hook_handle.remove()

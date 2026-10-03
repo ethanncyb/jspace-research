@@ -94,8 +94,10 @@ class FakeGenerationModel:
         self.block = block
         self.prefill: torch.Tensor | None = None
         self.decode: torch.Tensor | None = None
+        self.kwargs: dict[str, object] = {}
 
     def generate(self, *, input_ids: torch.Tensor, **kwargs: object) -> torch.Tensor:
+        self.kwargs = kwargs
         hidden = torch.zeros((1, input_ids.shape[-1], 3))
         self.prefill = self.block(hidden)[0].detach().clone()
         self.decode = self.block(torch.zeros((1, 1, 3)))[0].detach().clone()
@@ -164,6 +166,17 @@ def test_generation_capture_records_only_the_prefill_final_token() -> None:
     torch.testing.assert_close(captured, torch.ones(3))
     assert hf_model.decode is not None
     torch.testing.assert_close(hf_model.decode[0, 0], torch.ones(3))
+
+
+def test_generation_passes_suppressed_tokens_only_when_given() -> None:
+    adapter, hf_model = make_generation_adapter()
+    prompt = torch.tensor([[1, 2, 3]])
+    adapter.generate_from_prompt(prompt, max_new_tokens=1)
+    assert hf_model.kwargs["suppress_tokens"] is None
+    adapter.generate_from_prompt(prompt, max_new_tokens=1, suppress_token_ids=(7,))
+    assert hf_model.kwargs["suppress_tokens"] == [7]
+    adapter.generate_with_capture(prompt, max_new_tokens=1, layer=0, suppress_token_ids=(7,))
+    assert hf_model.kwargs["suppress_tokens"] == [7]
 
 
 def test_intervention_rejects_wrong_reconstruction_shape() -> None:

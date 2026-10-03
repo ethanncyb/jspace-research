@@ -15,7 +15,7 @@ from ..phase1.data import hash_messages, render_ids
 from ..runtime import append_jsonl
 from .common import content_hash, require_generation_context, save_record
 
-HARNESS_VERSION = 4
+HARNESS_VERSION = 5
 
 _GEMMA_CALL_STARTS = (
     re.compile(r"call:([A-Za-z_][A-Za-z0-9_]*)\s*\{"),
@@ -286,6 +286,9 @@ def _make_llm(
     from agentdojo.types import get_text_content_as_str
 
     thinking_ids = _thinking_token_ids(model.tokenizer)
+    # The chat template already opens and closes the empty thinking channel; greedy decoding
+    # otherwise reopens it until the token budget runs out.
+    suppressed = () if thinking_ids is None else (thinking_ids[0],)
 
     class LocalModelElement(BasePipelineElement):
         name = "local"
@@ -330,6 +333,7 @@ def _make_llm(
                     input_ids,
                     max_new_tokens=max_new_tokens,
                     layer=scorer.mean["selected_layer"],
+                    suppress_token_ids=suppressed,
                 )
                 self.capture = {
                     **scorer.score(residual, scorer.dictionary),
@@ -337,7 +341,7 @@ def _make_llm(
                 }
             else:
                 tokens = model.generate_from_prompt(
-                    input_ids, max_new_tokens=max_new_tokens
+                    input_ids, max_new_tokens=max_new_tokens, suppress_token_ids=suppressed
                 )
             visible = _without_thinking(tokens.tolist(), thinking_ids)
             self.last_completion = model.tokenizer.decode(visible, skip_special_tokens=True)
