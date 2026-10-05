@@ -36,6 +36,7 @@ from jspace_research.phase4.common import (
     save_record,
 )
 from jspace_research.phase4.detectors import FrozenDetectors
+from jspace_research.phase4.injecagent import _extract_code_block
 from jspace_research.phase4.injecagent import build_cases as build_injecagent_cases
 from jspace_research.phase4.pipeline import _balanced_bipia_rows, _judge_bipia, _metrics
 
@@ -602,3 +603,9 @@ def test_end_to_end_notebook_runs_phase4_after_phase3() -> None:
     assert "DATA_ROOT / 'summarization/train.jsonl'" in config_cell
     assert "shutil.copy2(webqa_test" in config_cell
     assert "shutil.copy2(summarization_test" in config_cell
+
+
+def test_injecagent_extracts_simulated_response_like_upstream() -> None:
+    assert _extract_code_block('Here:\n```json\n{"a": 1}\n```\nmore ```{"b": 2}```') == '{"a": 1}'
+    assert _extract_code_block("```\n[1, 2]\n```") == "[1, 2]"
+    assert _extract_code_block("no fenced block") is None

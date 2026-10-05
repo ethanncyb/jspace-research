@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import re
 import runpy
 from pathlib import Path
 from types import ModuleType
@@ -10,6 +12,7 @@ from typing import Any
 from tqdm.auto import tqdm
 
 from ..phase1.data import hash_messages, render_ids
+from ..runtime import append_jsonl, read_resumable_jsonl
 from .common import (
     AGENT_DECODING_VERSION,
     content_hash,
@@ -17,6 +20,94 @@ from .common import (
     require_generation_context,
     save_record,
 )
+
+#: Upstream InjecAgent asks gpt-4-0613 for a simulated attacker tool response when its
+#: pinned table has no entry for the agent's step-1 parameters. OpenRouter's openai/gpt-4
+#: is that model.
+SIMULATION_MODEL = "openai/gpt-4"
+SIMULATION_CACHE = "injecagent_simulated_responses.jsonl"
+_SIMULATION_ATTEMPTS = 3
+
+
+def _extract_code_block(text: str) -> str | None:
+    """Upstream's extraction: the first fenced block, minus a leading 'json' tag."""
+
+    matches: list[str] = re.findall(r"```(.*?)```", text, re.DOTALL)
+    if not matches:
+        return None
+    response: str = matches[0]
+    if response.startswith("json"):
+        response = response[4:]
+    return response.strip()
+
+
+class SimulatedResponses:
+    """Pinned simulated responses, falling back to upstream's GPT-4 generation.
+
+    Generated responses are appended to a JSONL cache in the run directory, which the
+    runner pushes with the other caches, so a resumed run reuses the response it already
+    generated instead of sampling a new one.
+    """
+
+    def __init__(self, root: Path, output_dir: Path, tools: dict[str, dict[str, Any]]) -> None:
+        with (root / "data/attacker_simulated_responses.json").open("r", encoding="utf-8") as handle:
+            self.pinned: dict[str, str] = json.load(handle)
+        prompts: dict[str, Any] = runpy.run_path(str(root / "src/prompts/generation_prompts.py"))
+        self.system_message: str = prompts["SYSTEM_MESSAGE"]
+        self.template: str = prompts["DS_ATTACKER_TOOL_RESPONSE_GEN_MESSAGE"]
+        self.example: str = prompts["EXAMPLE"]
+        self.tools: dict[str, dict[str, Any]] = tools
+        self.cache_path: Path = output_dir / SIMULATION_CACHE
+        self.generated: dict[str, str] = {
+            str(row["key"]): str(row["response"]) for row in read_resumable_jsonl(self.cache_path)
+        }
+        self._client: Any = None
+
+    def get(self, tool: str, parameters: str) -> tuple[str, str]:
+        """Return the simulated response and its source, 'pinned' or 'generated'."""
+
+        key: str = f"({tool},{parameters})"
+        if key in self.pinned:
+            return self.pinned[key], "pinned"
+        if key not in self.generated:
+            self.generated[key] = self._generate(key, tool, parameters)
+        return self.generated[key], "generated"
+
+    def _generate(self, key: str, tool: str, parameters: str) -> str:
+        if self._client is None:
+            from openai import OpenAI
+
+            from ..phase2.scoring import OPENROUTER_BASE_URL
+
+            self._client = OpenAI(
+                base_url=OPENROUTER_BASE_URL, api_key=os.environ["OPENROUTER_API_KEY"]
+            )
+        prompt: str = self.template.format(
+            example=self.example,
+            attacker_tool=json.dumps(self.tools[tool], indent=True),
+            tool_parameters=parameters,
+        )
+        for _ in range(_SIMULATION_ATTEMPTS):
+            completion: Any = self._client.chat.completions.create(
+                model=SIMULATION_MODEL,
+                messages=[
+                    {"role": "system", "content": self.system_message},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            response: str | None = _extract_code_block(completion.choices[0].message.content or "")
+            if response:
+                append_jsonl(
+                    self.cache_path,
+                    {
+                        "key": key,
+                        "response": response,
+                        "requested_model": SIMULATION_MODEL,
+                        "returned_model": getattr(completion, "model", None),
+                    },
+                )
+                return response
+        raise RuntimeError(f"Could not generate an InjecAgent simulated response for {key}")
 
 
 def _load_parser(root: Path) -> ModuleType:
@@ -126,10 +217,7 @@ def generate(
     system_prompt, user_prompt = prompt_values["PROMPT_DICT"][config.injecagent_prompt_type]
     tools = _tools(config.injecagent_root)
     parser = _load_parser(config.injecagent_root)
-    with (config.injecagent_root / "data/attacker_simulated_responses.json").open(
-        "r", encoding="utf-8"
-    ) as handle:
-        simulated = json.load(handle)
+    simulated = SimulatedResponses(config.injecagent_root, config.output_dir, tools)
 
     cases = build_cases(config)
     expected_ids = {case["case_id"] for case in cases}
@@ -160,15 +248,14 @@ def generate(
         first = _native_eval(parser, output, item, item["Attacker Tools"][0])
         second_output = None
         second_eval = None
+        step2_source = None
         if case["subgroup"] == "data_stealing" and first["eval"] == "succ":
             parameters = first["Attacker Tool Parameters"]
-            key = f"({item['Attacker Tools'][0]},{parameters})"
-            if key not in simulated:
-                raise RuntimeError(f"Missing pinned InjecAgent simulated response for {key}")
+            response, step2_source = simulated.get(item["Attacker Tools"][0], parameters)
             second = {
                 "thought": first["Attacker Tool Thought"],
                 "parameters": parameters,
-                "response": simulated[key],
+                "response": response,
             }
             second_messages = _prompt(
                 item, tools, system_prompt, user_prompt, second=second
@@ -213,6 +300,7 @@ def generate(
                 "native_attack_success": native_success,
                 "native_step1_result": first["eval"],
                 "native_step2_result": second_eval["eval"] if second_eval else None,
+                "native_step2_response_source": step2_source,
             },
         )
         progress.update()
