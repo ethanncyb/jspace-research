@@ -41,6 +41,14 @@ def _extract_code_block(text: str) -> str | None:
     return response.strip()
 
 
+class SimulationUnavailable(RuntimeError):
+    """A simulated response is needed but cannot be generated right now.
+
+    The case is deferred rather than failing the run: every other case still
+    completes, and a later resume generates only the deferred ones.
+    """
+
+
 class SimulatedResponses:
     """Pinned simulated responses, falling back to upstream's GPT-4 generation.
 
@@ -75,26 +83,32 @@ class SimulatedResponses:
 
     def _generate(self, key: str, tool: str, parameters: str) -> str:
         if self._client is None:
-            from openai import OpenAI
+            try:
+                from openai import OpenAI
 
-            from ..phase2.scoring import OPENROUTER_BASE_URL
+                from ..phase2.scoring import OPENROUTER_BASE_URL
 
-            self._client = OpenAI(
-                base_url=OPENROUTER_BASE_URL, api_key=os.environ["OPENROUTER_API_KEY"]
-            )
+                self._client = OpenAI(
+                    base_url=OPENROUTER_BASE_URL, api_key=os.environ["OPENROUTER_API_KEY"]
+                )
+            except (ImportError, KeyError) as exc:
+                raise SimulationUnavailable(f"No simulation client: {exc!r}") from exc
         prompt: str = self.template.format(
             example=self.example,
             attacker_tool=json.dumps(self.tools[tool], indent=True),
             tool_parameters=parameters,
         )
         for _ in range(_SIMULATION_ATTEMPTS):
-            completion: Any = self._client.chat.completions.create(
-                model=SIMULATION_MODEL,
-                messages=[
-                    {"role": "system", "content": self.system_message},
-                    {"role": "user", "content": prompt},
-                ],
-            )
+            try:
+                completion: Any = self._client.chat.completions.create(
+                    model=SIMULATION_MODEL,
+                    messages=[
+                        {"role": "system", "content": self.system_message},
+                        {"role": "user", "content": prompt},
+                    ],
+                )
+            except Exception as exc:  # noqa: BLE001 - any API failure defers the case
+                raise SimulationUnavailable(f"Simulation request failed: {exc!r}") from exc
             response: str | None = _extract_code_block(completion.choices[0].message.content or "")
             if response:
                 append_jsonl(
@@ -107,7 +121,7 @@ class SimulatedResponses:
                     },
                 )
                 return response
-        raise RuntimeError(f"Could not generate an InjecAgent simulated response for {key}")
+        raise SimulationUnavailable(f"No fenced response after {_SIMULATION_ATTEMPTS} attempts")
 
 
 def _load_parser(root: Path) -> ModuleType:
@@ -219,6 +233,7 @@ def generate(
     parser = _load_parser(config.injecagent_root)
     simulated = SimulatedResponses(config.injecagent_root, config.output_dir, tools)
 
+    deferred: list[str] = []
     cases = build_cases(config)
     expected_ids = {case["case_id"] for case in cases}
     unexpected = sorted(set(completed) - expected_ids)
@@ -251,7 +266,13 @@ def generate(
         step2_source = None
         if case["subgroup"] == "data_stealing" and first["eval"] == "succ":
             parameters = first["Attacker Tool Parameters"]
-            response, step2_source = simulated.get(item["Attacker Tools"][0], parameters)
+            try:
+                response, step2_source = simulated.get(item["Attacker Tools"][0], parameters)
+            except SimulationUnavailable as exc:
+                print(f"Deferring {case['case_id']}: {exc}", flush=True)
+                deferred.append(case["case_id"])
+                progress.update()
+                continue
             second = {
                 "thought": first["Attacker Tool Thought"],
                 "parameters": parameters,
@@ -305,3 +326,8 @@ def generate(
         )
         progress.update()
     progress.close()
+    if deferred:
+        raise RuntimeError(
+            f"{len(deferred)} InjecAgent case(s) deferred until a simulated response can be "
+            f"generated; rerun generate to complete them: {deferred}"
+        )
