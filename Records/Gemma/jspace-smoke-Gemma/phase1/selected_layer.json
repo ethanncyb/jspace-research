@@ -1,0 +1,76 @@
+{
+  "artifacts": {
+    "activations": {
+      "completion": "cache/activations_done.npy",
+      "layer_position": 3,
+      "metadata": "cache/activations.json",
+      "residuals": "cache/activations_bf16.dat",
+      "unembedding": "cache/unembedding_weight_bf16.pt"
+    },
+    "direction": {
+      "path": "selected_layer_direction.pt",
+      "sha256": "3960ec6c1d56611f04acf8f865a3111bd5dacfe3bae98284b5557a96f58a5675"
+    },
+    "metrics": "layer_metrics.csv",
+    "pair_manifest": "pair_manifest.jsonl",
+    "provenance": "provenance.json",
+    "selected_layer_decomposition": {
+      "coefficients": "cache/decompositions/layer_028_coefficients_f32.dat",
+      "completion": "cache/decompositions/layer_028_done.npy",
+      "metadata": "cache/decompositions/layer_028.json",
+      "reconstruction": "cache/decompositions/layer_028_bfloat16.dat",
+      "support_ids": "cache/decompositions/layer_028_support_ids_i32.dat"
+    },
+    "validation_scores": "validation_scores.parquet"
+  },
+  "config_sha256": "77ab57c019b94d5bf13fa0f843df029743d70456fc28372b27f20c6c8e52bc83",
+  "decomposition": {
+    "dictionary_l2_normalized": true,
+    "method": "screened_nonnegative_greedy_approximation",
+    "screen_candidates": 512,
+    "sparsity_k": 25
+  },
+  "direction_artifact": "selected_layer_direction.pt",
+  "direction_norm": 0.0630544126033783,
+  "frozen": true,
+  "macro_auroc": 1.0,
+  "manifest_sha256": "8ea2f51f41e1260363d0a16f7fc3c487735a1d87a61e11e96a100808fd1fca1b",
+  "phase": 1,
+  "resolved_config": {
+    "decomposition_batch_size": 8,
+    "dependencies": {
+      "bipia_revision": "a004b69ec0dd446e0afd461d98cb5e96e120a5d0",
+      "jacobian_lens_revision": "581d398613e5602a5af361e1c34d3a92ea82ba8e"
+    },
+    "dictionary_chunk_size": 4096,
+    "lens": {
+      "filename": "gemma-4-12b-it/lens.pt",
+      "repository": "solarkyle/jspace-lenses",
+      "revision": "1d95a2fc8a5c5a26c75a8c01c145173353e5fb65",
+      "sha256": "214ba70486c648d97cccb3c88d05cfb17adf9467c93b5d1f268fc4902e360048"
+    },
+    "max_input_tokens": 4096,
+    "model": {
+      "id": "google/gemma-4-12B-it",
+      "precision": "bfloat16",
+      "quantization": "none",
+      "revision": "5926caa4ec0cac5cbfadaf4077420520de1d5205"
+    },
+    "screen_candidates": 512,
+    "seed": 42,
+    "smoke_layer_count": 6,
+    "sparsity_k": 25,
+    "tasks": [
+      "email"
+    ],
+    "token_match_tolerance": 1,
+    "train_pairs_per_task": 12,
+    "validation_pairs_per_task": 6
+  },
+  "run_id": "phase1-77ab57c019b9-8ea2f51f41e1",
+  "schema_version": 1,
+  "selected_layer": 28,
+  "selected_layer_position": 3,
+  "selection_metric": "macro_task_auprc",
+  "selection_value": 1.0
+}

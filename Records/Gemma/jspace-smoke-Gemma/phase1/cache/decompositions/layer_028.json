@@ -1,0 +1,21 @@
+{
+  "cache_schema_version": 2,
+  "coefficient_dtype": "float32",
+  "config_sha256": "77ab57c019b94d5bf13fa0f843df029743d70456fc28372b27f20c6c8e52bc83",
+  "layer": 28,
+  "layer_position": 3,
+  "lens_sha256": "214ba70486c648d97cccb3c88d05cfb17adf9467c93b5d1f268fc4902e360048",
+  "manifest_sha256": "8ea2f51f41e1260363d0a16f7fc3c487735a1d87a61e11e96a100808fd1fca1b",
+  "reconstruction_dtype": "bfloat16",
+  "reconstruction_shape": [
+    36,
+    3840
+  ],
+  "screen_candidates": 512,
+  "sparse_shape": [
+    36,
+    25
+  ],
+  "sparsity_k": 25,
+  "support_id_dtype": "int32"
+}

@@ -1,0 +1,17 @@
+detector,scope,task,task_display,metric,value,threshold,n
+mean,task,email,EmailQA,auprc,1.0,0.036726467311382294,12
+mean,task,email,EmailQA,auroc,1.0,0.036726467311382294,12
+mean,task,email,EmailQA,balanced_accuracy,1.0,0.036726467311382294,12
+mean,task,email,EmailQA,tpr,1.0,0.036726467311382294,12
+mean,task,email,EmailQA,fpr,0.0,0.036726467311382294,12
+mean,macro,,Macro,auprc,1.0,0.036726467311382294,12
+mean,macro,,Macro,auroc,1.0,0.036726467311382294,12
+mean,macro,,Macro,balanced_accuracy,1.0,0.036726467311382294,12
+logistic,task,email,EmailQA,auprc,1.0,0.007986835917689936,12
+logistic,task,email,EmailQA,auroc,1.0,0.007986835917689936,12
+logistic,task,email,EmailQA,balanced_accuracy,1.0,0.007986835917689936,12
+logistic,task,email,EmailQA,tpr,1.0,0.007986835917689936,12
+logistic,task,email,EmailQA,fpr,0.0,0.007986835917689936,12
+logistic,macro,,Macro,auprc,1.0,0.007986835917689936,12
+logistic,macro,,Macro,auroc,1.0,0.007986835917689936,12
+logistic,macro,,Macro,balanced_accuracy,1.0,0.007986835917689936,12

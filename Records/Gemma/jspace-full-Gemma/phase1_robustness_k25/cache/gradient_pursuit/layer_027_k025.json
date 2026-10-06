@@ -1,0 +1,13 @@
+{
+  "cache_schema_version": 2,
+  "example_count": 3000,
+  "layer": 27,
+  "layer_position": 27,
+  "method": "gradient_pursuit",
+  "screen_candidates": null,
+  "source_manifest_sha256": "83fa769b0fb26b48c781a620168d9c5c5fb1e22c437b368c0f8bbcec43bcf8e2",
+  "source_run_id": "phase1-861e8ebf8f0d-83fa769b0fb2",
+  "sparsity_k": 25,
+  "subset_sha256": "a0d26ca921f158dcf6012cc31a8fab5f95c4d7ca5ee148aa2045e866fe04bb75",
+  "width": 3840
+}

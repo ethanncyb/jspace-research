@@ -1,0 +1,58 @@
+{
+  "decomposition": {
+    "dictionary_l2_normalized": true,
+    "method": "screened_nonnegative_greedy_approximation",
+    "screen_candidates": 512,
+    "sparsity_k": 25
+  },
+  "dependencies": {
+    "bipia_revision": "a004b69ec0dd446e0afd461d98cb5e96e120a5d0",
+    "jacobian_lens_revision": "581d398613e5602a5af361e1c34d3a92ea82ba8e"
+  },
+  "device": "cpu",
+  "dtypes": {
+    "logistic_parameters": "float64",
+    "reconstruction": "bfloat16",
+    "sparse_coefficients": "float32"
+  },
+  "frozen": true,
+  "jspace_research_git_commit": "cbdd1ca0a6a7b4113d57f48b44633d5dff326304",
+  "lens": {
+    "filename": "gemma-4-12b-it/lens.pt",
+    "repository": "solarkyle/jspace-lenses",
+    "revision": "1d95a2fc8a5c5a26c75a8c01c145173353e5fb65",
+    "sha256": "214ba70486c648d97cccb3c88d05cfb17adf9467c93b5d1f268fc4902e360048"
+  },
+  "manifest_sha256": "83fa769b0fb26b48c781a620168d9c5c5fb1e22c437b368c0f8bbcec43bcf8e2",
+  "model": {
+    "id": "google/gemma-4-12B-it",
+    "precision": "bfloat16",
+    "quantization": "none",
+    "revision": "5926caa4ec0cac5cbfadaf4077420520de1d5205"
+  },
+  "phase": 3,
+  "phase1_config_sha256": "861e8ebf8f0d3740710a2c1e1c999e13a721283fedf45ebb36725e5165059a5a",
+  "phase1_run_id": "phase1-861e8ebf8f0d-83fa769b0fb2",
+  "phase3_config_sha256": "a38616cc63f1e84b86f1d955617efe7bc65ac44583169c649ed2da4448c95583",
+  "resolved_config": {
+    "logistic": {
+      "C": 1.0,
+      "class_weight": null,
+      "feature_scaling": false,
+      "fit_intercept": true,
+      "max_iter": 1000,
+      "penalty": "l2",
+      "random_state": 42,
+      "solver": "liblinear",
+      "tol": 0.0001
+    },
+    "phase1_config_sha256": "861e8ebf8f0d3740710a2c1e1c999e13a721283fedf45ebb36725e5165059a5a",
+    "prediction_rule": "score_greater_than_or_equal_to_threshold",
+    "threshold_metric": "macro_balanced_accuracy",
+    "threshold_tie_break": "higher_threshold"
+  },
+  "run_id": "phase3-a38616cc63f1-83fa769b0fb2",
+  "schema_version": 1,
+  "seed": 42,
+  "selected_layer": 26
+}

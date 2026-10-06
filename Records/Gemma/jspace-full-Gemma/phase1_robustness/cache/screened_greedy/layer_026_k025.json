@@ -1,0 +1,13 @@
+{
+  "cache_schema_version": 1,
+  "example_count": 1000,
+  "layer": 26,
+  "layer_position": 26,
+  "method": "screened_greedy",
+  "screen_candidates": 512,
+  "source_manifest_sha256": "83fa769b0fb26b48c781a620168d9c5c5fb1e22c437b368c0f8bbcec43bcf8e2",
+  "source_run_id": "phase1-861e8ebf8f0d-83fa769b0fb2",
+  "sparsity_k": 25,
+  "subset_sha256": "977941992ef232ada98e71bd7ca7a5a117f756cfc33b14ca00d50aee18cf6c2d",
+  "width": 3840
+}

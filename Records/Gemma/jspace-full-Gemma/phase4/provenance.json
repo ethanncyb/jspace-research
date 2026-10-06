@@ -1,0 +1,159 @@
+{
+  "analysis_packages": {
+    "agentdojo": "0.1.35",
+    "jlens": "0.1.0",
+    "jspace-research": "0.1.0",
+    "nltk": "3.9.1",
+    "openai": "2.54.0",
+    "pandas": "2.2.3",
+    "scikit-learn": "1.6.1",
+    "torch": "2.11.0+cu128",
+    "transformers": "5.16.1"
+  },
+  "artifacts": {
+    "bipia_test_manifest": {
+      "path": "bipia_test_manifest.jsonl",
+      "sha256": "a5bf62558e0b1cbf3afe0f3fde471b506f9a9702c3e39657a5b6344751cebc8a"
+    },
+    "metrics": {
+      "path": "phase4_metrics.csv",
+      "sha256": "197d7cb964bba889b994c4834edc58212a10aa0057d6ee2db6973277e680c32f"
+    },
+    "plot": {
+      "path": "phase4_detector_transfer.png",
+      "sha256": "1fce9046bf5e7bf0e1b65d2607bccc02d66829e57efe3cf41105191a64d1eb83"
+    },
+    "predictions": {
+      "path": "phase4_predictions.parquet",
+      "sha256": "3a89e3003b13b963b8e5a3470b0f992eb979a0a02119f30a10bd6f842ab5c174"
+    }
+  },
+  "bipia_test_manifest_sha256": "a5bf62558e0b1cbf3afe0f3fde471b506f9a9702c3e39657a5b6344751cebc8a",
+  "complete": true,
+  "decomposition": {
+    "dictionary_l2_normalized": true,
+    "method": "screened_nonnegative_greedy_approximation",
+    "screen_candidates": 512,
+    "sparsity_k": 25
+  },
+  "detectors": {
+    "logistic_feature_count": 186,
+    "logistic_sha256": "a3dc8df5620c0a6146c4fd2768274c2608f1ecc1ad794ad78189572bfa3deaec",
+    "logistic_threshold": -0.39530569468264765,
+    "mean_sha256": "ceedf02d23c8e946df0e8641b0c5a0e1424d2c1c9e5ca7f31aaf4d217d21594d",
+    "mean_threshold": 0.0480055958032608
+  },
+  "generation_complete": true,
+  "generation_gpu": {
+    "device_count": 1,
+    "devices": [
+      {
+        "index": 0,
+        "name": "NVIDIA A100-SXM4-40GB",
+        "total_memory_bytes": 42405855232
+      }
+    ],
+    "model_input_device": "cuda:0"
+  },
+  "generation_packages": {
+    "agentdojo": "0.1.35",
+    "jlens": "0.1.0",
+    "jspace-research": "0.1.0",
+    "nltk": "3.9.1",
+    "openai": "2.54.0",
+    "pandas": "2.2.3",
+    "scikit-learn": "1.6.1",
+    "torch": "2.11.0+cu128",
+    "transformers": "5.16.1"
+  },
+  "generation_record_counts": {
+    "agentdojo": 1046,
+    "bipia": 1650,
+    "injecagent": 1054
+  },
+  "jspace_research_git_commit": "2cc7fc075e83cac49a614341e18ba7205737818f",
+  "jspace_research_git_commits": [
+    "cbdd1ca0a6a7b4113d57f48b44633d5dff326304",
+    "2cc7fc075e83cac49a614341e18ba7205737818f"
+  ],
+  "judge": {
+    "gateway": "openrouter",
+    "requested_model": "openai/gpt-4.1-mini",
+    "rubric_sha256": "3bb5de1b8801fac645bffe80b5a76cdd6c24aa784a7454e313250764c008d3c1"
+  },
+  "judge_routing": {
+    "provider_models": [
+      "openai/gpt-4.1-mini-2025-04-14"
+    ],
+    "providers": [
+      "OpenAI"
+    ],
+    "returned_models": [
+      "openai/gpt-4.1-mini"
+    ]
+  },
+  "lens": {
+    "filename": "gemma-4-12b-it/lens.pt",
+    "repository": "solarkyle/jspace-lenses",
+    "revision": "1d95a2fc8a5c5a26c75a8c01c145173353e5fb65",
+    "sha256": "214ba70486c648d97cccb3c88d05cfb17adf9467c93b5d1f268fc4902e360048"
+  },
+  "logistic_detector_sha256": "a3dc8df5620c0a6146c4fd2768274c2608f1ecc1ad794ad78189572bfa3deaec",
+  "mean_detector_sha256": "ceedf02d23c8e946df0e8641b0c5a0e1424d2c1c9e5ca7f31aaf4d217d21594d",
+  "model": {
+    "id": "google/gemma-4-12B-it",
+    "precision": "bfloat16",
+    "quantization": "none",
+    "revision": "5926caa4ec0cac5cbfadaf4077420520de1d5205"
+  },
+  "phase": 4,
+  "phase1_run_id": "phase1-861e8ebf8f0d-83fa769b0fb2",
+  "phase3_config_sha256": "a38616cc63f1e84b86f1d955617efe7bc65ac44583169c649ed2da4448c95583",
+  "phase4_config_sha256": "b9029ca3e5bb6a2ac76096a41808ad8cc3add2942e68e7309961c3fc6ddbd895",
+  "resolved_config": {
+    "benchmarks": {
+      "agentdojo_attack": "important_instructions",
+      "agentdojo_defense": null,
+      "agentdojo_revision": "089ed468cf3ed0322acc66b0211f26d9d90dbf60",
+      "agentdojo_suites": [
+        "banking",
+        "slack",
+        "travel",
+        "workspace"
+      ],
+      "agentdojo_tool_output_format": "native_default_yaml",
+      "agentdojo_version": "v1.2.2",
+      "bipia_metric_weighting": "context_matched_class_balance",
+      "bipia_revision": "a004b69ec0dd446e0afd461d98cb5e96e120a5d0",
+      "bipia_sampling": {
+        "attacks_per_task": 250,
+        "clean_controls": "one_per_unique_source_context",
+        "positions": [
+          "start",
+          "middle",
+          "end"
+        ],
+        "seed": 42,
+        "stratification": "attack_category_x_insertion_position",
+        "test_variants": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "bipia_split": "official_test",
+      "injecagent_prompt_type": "InjecAgent",
+      "injecagent_revision": "f19c9f2c79a41046eb13c03c51a24c567a8ffa07",
+      "injecagent_setting": "base"
+    },
+    "judge_model": "openai/gpt-4.1-mini",
+    "max_new_tokens": 512,
+    "phase1_config_sha256": "861e8ebf8f0d3740710a2c1e1c999e13a721283fedf45ebb36725e5165059a5a",
+    "smoke": false
+  },
+  "run_id": "phase4-b9029ca3e5bb-phase1-861e8ebf8f0d-83fa769b0fb2",
+  "schema_version": 1,
+  "selected_layer": 26
+}

@@ -11,3 +11,5 @@ outputs/
 artifacts/
 *.dat
 *.npy
+# GitHub rejects files over 100 MB. This cache is about 1.9 GB and stays local.
+Records/Gemma/jspace-full-Gemma/phase1/cache/unembedding_weight_bf16.pt
