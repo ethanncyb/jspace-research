@@ -11,6 +11,7 @@ from tqdm.auto import tqdm
 
 from ..phase1.data import hash_messages, render_ids
 from .common import content_hash, require_generation_context, save_record
+from .simulator import resolve_response
 
 
 def _load_parser(root: Path) -> ModuleType:
@@ -154,15 +155,18 @@ def generate(
         first = _native_eval(parser, output, item, item["Attacker Tools"][0])
         second_output = None
         second_eval = None
+        simulator_response = None
+        simulator_source = None
         if case["subgroup"] == "data_stealing" and first["eval"] == "succ":
             parameters = first["Attacker Tool Parameters"]
-            key = f"({item['Attacker Tools'][0]},{parameters})"
-            if key not in simulated:
-                raise RuntimeError(f"Missing pinned InjecAgent simulated response for {key}")
+            simulator_response, simulator_source = resolve_response(
+                config.injecagent_root, config.output_dir, simulated, tools,
+                item["Attacker Tools"][0], parameters,
+            )
             second = {
                 "thought": first["Attacker Tool Thought"],
                 "parameters": parameters,
-                "response": simulated[key],
+                "response": simulator_response,
             }
             second_messages = _prompt(
                 item, tools, system_prompt, user_prompt, second=second
@@ -202,6 +206,8 @@ def generate(
                 "injection_exposed": True,
                 "generated_response": output,
                 "second_generated_response": second_output,
+                "simulator_response_source": simulator_source,
+                "simulator_response_sha256": content_hash(simulator_response) if simulator_response is not None else None,
                 "native_valid": native_valid,
                 "native_utility": None,
                 "native_attack_success": native_success,

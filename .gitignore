@@ -14,3 +14,9 @@ artifacts/
 
 scripts/config/run.yaml
 scripts/config/env.yaml
+
+.uv-cache/
+.hf-cache/
+BIPIA/
+
+.env.local

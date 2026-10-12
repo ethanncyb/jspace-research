@@ -16,8 +16,8 @@ dependencies:
 
 data:
   bipia_root: BIPIA/benchmark
-  webqa_train_path: null
-  summarization_train_path: null
+  webqa_train_path: BIPIA/benchmark/qa/train.jsonl
+  summarization_train_path: BIPIA/benchmark/abstract/train.jsonl
 
 output_dir: artifacts/jspace-qwen35_9b-smoke/phase1
 seed: 42
@@ -27,9 +27,9 @@ validation_pairs_per_task: 6
 max_input_tokens: 4096
 token_match_tolerance: 1
 # Maximum dictionary atoms used in each J-space reconstruction (Phases 1 and 2).
-sparsity_k_values: [20, 25, 30, 35, 40]
+sparsity_k_values: [20, 25, 30]
 # Number of initial output-token states to edit in Phase 2; prompt tokens stay untouched.
-output_token_windows: [1, 5, 10, 15]
+output_token_windows: [1, 10, 20]
 screen_candidates: 512
 decomposition_batch_size: 8
 dictionary_chunk_size: 4096

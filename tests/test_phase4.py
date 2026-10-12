@@ -520,3 +520,24 @@ def test_end_to_end_notebook_runs_phase4_after_phase3() -> None:
     assert "DATA_ROOT / 'summarization/train.jsonl'" in config_cell
     assert "shutil.copy2(webqa_test" in config_cell
     assert "shutil.copy2(summarization_test" in config_cell
+
+
+def test_bipia_auroc_uses_context_matched_controls() -> None:
+    from jspace_research.phase4.pipeline import _append_bipia_metrics
+
+    rows = []
+    for case_id, context, condition, score in (
+        ("a1", "a", "attack", 0.6),
+        ("a2", "a", "attack", 0.6),
+        ("b1", "b", "attack", 0.4),
+        ("ac", "a", "control", 0.8),
+        ("bc", "b", "control", 0.2),
+    ):
+        rows.append({"benchmark": "bipia", "case_id": case_id, "context_id": context,
+                     "condition": condition, "mean_score": score, "logistic_score": score})
+    metrics = []
+    _append_bipia_metrics(metrics, pd.DataFrame(rows), {"mean": 0.5, "logistic": 0.5},
+                         scope="overall", subgroup=None)
+    auroc = [row for row in metrics if row["metric"] == "auroc"]
+    assert len(auroc) == 2
+    assert all(row["value"] == pytest.approx(1 / 3) and row["n"] == 6 for row in auroc)

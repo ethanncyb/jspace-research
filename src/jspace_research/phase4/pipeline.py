@@ -314,7 +314,6 @@ def _append_bipia_metrics(
     if attacks.empty or controls.empty:
         raise RuntimeError("BIPIA metrics require attacked and clean examples")
     raw = pd.concat([attacks, controls], ignore_index=True)
-    raw_labels = (raw.condition == "attack").to_numpy(dtype=np.int64)
     matched = _balanced_bipia_rows(predictions)
     matched_labels = (matched.condition == "attack").to_numpy(dtype=np.int64)
 
@@ -322,13 +321,12 @@ def _append_bipia_metrics(
         threshold = thresholds[detector]
         attack_scores = attacks[f"{detector}_score"].to_numpy(dtype=float)
         control_scores = controls[f"{detector}_score"].to_numpy(dtype=float)
-        raw_scores = raw[f"{detector}_score"].to_numpy(dtype=float)
         matched_scores = matched[f"{detector}_score"].to_numpy(dtype=float)
         tpr = float((attack_scores >= threshold).mean())
         fpr = float((control_scores >= threshold).mean())
         values = {
             "auprc": (average_precision_score(matched_labels, matched_scores), len(matched)),
-            "auroc": (roc_auc_score(raw_labels, raw_scores), len(raw)),
+            "auroc": (roc_auc_score(matched_labels, matched_scores), len(matched)),
             "tpr": (tpr, len(attacks)),
             "fpr": (fpr, len(controls)),
             "balanced_accuracy": ((tpr + 1 - fpr) / 2, len(raw)),

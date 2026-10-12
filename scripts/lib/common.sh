@@ -29,6 +29,16 @@ jspace_repo_root() {
 }
 
 JSPACE_REPO_ROOT="$(jspace_repo_root)"
+# Load credentials stored outside the shared project folder.
+JSPACE_ENV_FILE="${JSPACE_ENV_FILE:-${JSPACE_REPO_ROOT}/.env.local}"
+if [[ -f "${JSPACE_ENV_FILE}" ]]; then
+  source "${JSPACE_ENV_FILE}"
+fi
+# Keep dependency and model caches on the workspace disk.
+export PATH="${JSPACE_REPO_ROOT}/../jspace-tools/bin:${PATH}"
+export UV_PYTHON_INSTALL_DIR="${UV_PYTHON_INSTALL_DIR:-${JSPACE_REPO_ROOT}/../jspace-tools/python}"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-${JSPACE_REPO_ROOT}/.uv-cache}"
+export HF_HOME="${HF_HOME:-${JSPACE_REPO_ROOT}/.hf-cache}"
 
 JSPACE_CONFIG_PATH="${JSPACE_CONFIG_PATH:-${JSPACE_REPO_ROOT}/configs/phase1_qwen35_9b_smoke.yaml}"
 JSPACE_PHYSICAL_GPU_INDEX="${JSPACE_PHYSICAL_GPU_INDEX:-0}"
@@ -122,9 +132,9 @@ jspace_ensure_checkout() {
 
 jspace_ensure_bipia() {
   local checkout="${JSPACE_REPO_ROOT}/BIPIA"
-  if [[ -f "${JSPACE_REPO_ROOT}/.gitmodules" ]]; then
+  if git -C "${JSPACE_REPO_ROOT}" ls-files --stage BIPIA | rg -q '^160000 '; then
     git -C "${JSPACE_REPO_ROOT}" submodule update --init BIPIA
-  elif [[ ! -d "${checkout}/.git" ]]; then
+  elif [[ ! -e "${checkout}/.git" ]]; then
     jspace_ensure_checkout "BIPIA" "https://github.com/microsoft/BIPIA.git" \
       "${BIPIA_REVISION}" "${checkout}"
   else

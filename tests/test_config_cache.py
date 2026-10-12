@@ -318,10 +318,10 @@ def test_checked_in_configs_use_descriptive_sweep_keys(path, tmp_path):
     import yaml
 
     raw = yaml.safe_load(path.read_text())
-    assert raw["sparsity_k_values"] == [20, 25, 30, 35, 40]
-    assert raw["output_token_windows"] == [1, 5, 10, 15]
+    assert raw["sparsity_k_values"] == [20, 25, 30]
+    assert raw["output_token_windows"] == [1, 10, 20]
     assert "K" not in raw and "W" not in raw
     config = load_phase2_config(
         path, phase1_selected_path=tmp_path / "selected_layers.json", output_dir=tmp_path / "p2"
     )
-    assert len(config.phase1.k_values) * len(config.windows) == 20
+    assert len(config.phase1.k_values) * len(config.windows) == 9

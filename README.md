@@ -30,7 +30,7 @@ The repository pins:
 
 Gemma and the released lens may require accepting their licenses and authenticating with Hugging Face. BIPIA semantic attack scoring requires an `OPENROUTER_API_KEY`; it uses `openai/gpt-4.1-mini` through OpenRouter and stores no credential in artifacts. The smoke run uses the EmailQA files already in BIPIA. The full run additionally requires researcher-provided WebQA and Summarization `train.jsonl` files for Phase 1 and `test.jsonl` files under the corresponding BIPIA benchmark directories for Phase 4. In accordance with the experiment plan, the pipeline does not download or reconstruct those licensed source datasets.
 
-Always start with the end-to-end smoke run. The checked-in configurations now sweep five K values and four W values (20 combinations). For a quick integration check, set `sparsity_k_values: [20, 25]` and `output_token_windows: [1, 5]` in a copy of the smoke YAML. It uses EmailQA, 12 training pairs, 6 validation pairs, six fitted layers, and the three Phase 2 conditions: intact (`0.0`), partial removal (`0.5`), and full removal (`1.0`). It also requires exact token equality between ordinary no-hook generation and the zero-strength hook. It verifies the pipeline but is not the final scientific experiment. The full configuration uses all five tasks and all fitted layers.
+Always start with the end-to-end smoke run. The checked-in configurations now sweep three K values and three W values (nine combinations). For a quick integration check, set `sparsity_k_values: [20, 25]` and `output_token_windows: [1, 5]` in a copy of the smoke YAML. It uses EmailQA, 12 training pairs, 6 validation pairs, six fitted layers, and the three Phase 2 conditions: intact (`0.0`), partial removal (`0.5`), and full removal (`1.0`). It also requires exact token equality between ordinary no-hook generation and the zero-strength hook. It verifies the pipeline but is not the final scientific experiment. The full configuration uses all five tasks and all fitted layers.
 
 ## Option A: Google Colab
 
@@ -341,8 +341,8 @@ pytest
 The shared YAML controls both phases. `sparsity_k_values` lists the maximum number of dictionary atoms used in each J-space reconstruction. `output_token_windows` lists how many initial output-token states receive the Phase 2 intervention:
 
 ```yaml
-sparsity_k_values: [20, 25, 30, 35, 40]
-output_token_windows: [1, 5, 10, 15]
+sparsity_k_values: [20, 25, 30]
+output_token_windows: [1, 10, 20]
 phase2:
   alphas: [0.0, 0.5, 1.0]
   max_new_tokens: 512
@@ -410,3 +410,30 @@ jspace-phase2-plot \
 ```
 
 No GPU, model loading, Phase 1 caches, or OpenRouter calls are required to redraw exported data. Runs analyzed before this export feature need their analysis stage rerun once to create the JSON files; complete matching judgment caches are reused.
+
+## Repository Structure
+
+```text
+jspace-research/
+├── configs/               # Experiment configurations for smoke and full sweeps
+├── notebooks/             # End-to-end interactive execution notebooks
+├── scripts/               # Launcher and setup shell scripts
+│   └── lib/               # Shared path resolution and environment utilities
+├── src/jspace_research/   # Core experimental pipeline and research codebase
+│   ├── phase1/            # Layer selection and sparse dictionary decomposition
+│   ├── phase2/            # Output-token intervention and quality evaluation
+│   ├── phase3/            # Linear/logistic prompt-injection detector training
+│   ├── phase4/            # Cross-benchmark held-out transfer (BIPIA, AgentDojo, InjecAgent)
+│   ├── analysis/          # Offline feature and causal intervention analysis
+│   │   ├── token_weights.py     # Detector top-token feature attribution extraction
+│   │   └── stronger_ablation.py # Multi-layer prefill & generation direction ablation
+│   ├── model.py           # Model abstraction and Hugging Face adapters
+│   └── runtime.py         # Hardware detection and memory management
+└── tests/                 # Unit and regression test suite
+```
+
+### Analysis Tools
+
+- **Top-Token Analysis (`jspace_research.analysis.token_weights`)**: Extracts logistic regression weights associated with dictionary token atoms to identify top positive attack and negative clean indicators, computing per-example token attribution scores.
+- **Stronger Multi-Layer Ablation (`jspace_research.analysis.stronger_ablation`)**: Performs causal direction ablation by removing projection components across all prompt tokens during prefill and the initial generated tokens during decoding across multiple candidate layers (e.g., layers 14, 15, and 16), bench-marking against matched random control directions.
+

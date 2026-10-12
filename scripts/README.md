@@ -52,6 +52,8 @@ JSPACE_PHYSICAL_GPU_INDEX=2 ./scripts/phase1.sh
 
 ## K/W experiments
 
+Current defaults: K = `[20, 25, 30]`, W = `[1, 10, 20]` (nine combinations).
+
 Edit `sparsity_k_values`, `output_token_windows`, and `phase2.alphas` in the shared YAML. The Phase 1 launcher captures prompts once and selects one layer per K. The Phase 2 launcher automatically follows `selected_layers.json` and runs the Cartesian product of K and W, with all alphas inside each combination. A scalar legacy handoff is also supported.
 
 Results for individual combinations are in `phase2/k{K}/w{W}/`; combined results and plots are at `phase2/`. Quality judging runs for both clean and attack outputs and uses the same OpenRouter key as attack judging. Use a new run root when changing the sweep.
@@ -63,3 +65,15 @@ Phase 3 and 4 remain single-K stages. Set `JSPACE_K=20` for both launchers to se
 After analysis, `phase2_plot_data.json` stores all plotted values and denominators, and `phase2_results.jsonl` stores per-output details. The new whole-run overview and per-task utility heatmaps sit at the Phase 2 root.
 
 Use `jspace-phase2-plot --runs <run-a>/phase2 <run-b>/phase2 --output-dir <plots>` to compare runs without a GPU or API key. Filter with `--sparsity-k-values 20 30`, `--output-token-windows 1 5`, and `--alphas 0 0.5 1`. Add `--labels "Run A" "Run B"` to name runs. `python -m jspace_research.phase2.plots` works with the same arguments without reinstalling the CLI entry point. See the root README for per-task utility curves and comparison semantics.
+
+## Local datasets and caches
+
+The Qwen configs use `BIPIA/benchmark/qa/train.jsonl` and `BIPIA/benchmark/abstract/train.jsonl` for full-run preparation. Official test files belong in the same task directories as `test.jsonl`. The shell launchers keep uv and Hugging Face caches under `.uv-cache/` and `.hf-cache/` on the workspace disk.
+
+For a full Qwen run after smoke succeeds:
+
+```bash
+JSPACE_CONFIG_PATH="$PWD/configs/phase1_qwen35_9b_full.yaml" \
+JSPACE_RUN_ROOT="$PWD/artifacts/jspace-qwen35_9b-full-gpu0" \
+./scripts/phase1.sh
+```
