@@ -15,7 +15,7 @@ from ..phase1.data import hash_messages, render_ids
 from ..runtime import append_jsonl
 from .common import content_hash, require_generation_context, save_record
 
-HARNESS_VERSION = 5
+HARNESS_VERSION = 6
 
 _GEMMA_CALL_STARTS = (
     re.compile(r"call:([A-Za-z_][A-Za-z0-9_]*)\s*\{"),
@@ -29,6 +29,9 @@ _JSON_ESCAPE = re.compile(r"\\(.)", re.DOTALL)
 _BARE_KEY = re.compile(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*:")
 _NATIVE_CALL_OPEN = re.compile(r"<function\s*=\s*[^>]+>")
 _NATIVE_CALL_CLOSE = "</function>"
+_EMPTY_NATIVE_CALL = re.compile(
+    r"(<function\s*=\s*[A-Za-z_][A-Za-z0-9_]*\s*>)\s*(</function>)"
+)
 
 
 def _repair_escapes(string: str) -> str:
@@ -169,6 +172,17 @@ def _normalize_gemma_tool_call(completion: str, raw_completion: str | None = Non
         f"{json.dumps(arguments, ensure_ascii=False, separators=(',', ':'))}"
         "</function>"
     )
+
+
+def _fill_empty_native_tool_call(completion: str) -> str:
+    """Give Qwen's argument-free calls the JSON object AgentDojo requires.
+
+    Qwen writes ``<function=list_files></function>`` for tools that take no
+    arguments. AgentDojo parses only a JSON object between the tags, so those
+    calls were dropped and the tool never ran.
+    """
+
+    return _EMPTY_NATIVE_CALL.sub(r"\1{}\2", completion)
 
 
 def _through_first_tool_call(completion: str) -> str:
@@ -348,10 +362,12 @@ def _make_llm(
             if eligible:
                 self.captured_completion = self.last_completion
             raw_completion = model.tokenizer.decode(tokens, skip_special_tokens=False)
-            parsed_text = _through_first_tool_call(
-                _normalize_gemma_tool_call(
-                    self.last_completion,
-                    model.tokenizer.decode(visible, skip_special_tokens=False),
+            parsed_text = _fill_empty_native_tool_call(
+                _through_first_tool_call(
+                    _normalize_gemma_tool_call(
+                        self.last_completion,
+                        model.tokenizer.decode(visible, skip_special_tokens=False),
+                    )
                 )
             )
             output = _parse_model_output(parsed_text)

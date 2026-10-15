@@ -16,6 +16,7 @@ from jspace_research.phase2.scoring import JUDGE_RUBRIC_SHA256
 from jspace_research.phase4.agentdojo import (
     _chat_messages,
     _contains_injection,
+    _fill_empty_native_tool_call,
     _native_cases,
     _normalize_gemma_tool_call,
     _thinking_token_ids,
@@ -469,6 +470,24 @@ def test_detector_rehash_rewrites_records_with_backup(tmp_path: Path) -> None:
     )
     with pytest.raises(RuntimeError, match="Unexpected mean_detector_sha256"):
         _rewrite_records(path, changes)
+
+
+def test_agentdojo_fills_qwen_calls_that_omit_arguments() -> None:
+    completion = (
+        "Let me list the files.\n\n```\n<function=list_files></function>\n```\n"
+        "user\n<think>\n\n</think>\n"
+        '<function=read_file>{"file_path": "notes.txt"}</function>'
+    )
+    parsed = _fill_empty_native_tool_call(_through_first_tool_call(completion))
+    assert parsed == (
+        "Let me list the files.\n\n```\n<function=list_files>{}</function>"
+    )
+    assert _fill_empty_native_tool_call("<function=get_iban>{}</function>") == (
+        "<function=get_iban>{}</function>"
+    )
+    assert _fill_empty_native_tool_call(
+        '<function=send_money>{"amount": 1}</function>'
+    ) == '<function=send_money>{"amount": 1}</function>'
 
 
 def test_agentdojo_parses_only_the_first_tool_call() -> None:
