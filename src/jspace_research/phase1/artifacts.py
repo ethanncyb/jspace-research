@@ -27,7 +27,7 @@ def load_selected_layer(path: str | Path) -> tuple[dict[str, Any], dict[str, Any
 
     selected_path = Path(path).expanduser().resolve()
     metadata = read_json(selected_path)
-    if metadata.get("schema_version") != 1 or metadata.get("phase") != 1:
+    if metadata.get("schema_version") not in {1, 2} or metadata.get("phase") != 1:
         raise ValueError(f"Unsupported selected-layer artifact schema: {selected_path}")
     if metadata.get("frozen") is not True:
         raise ValueError(f"Selected layer is not marked frozen: {selected_path}")
@@ -65,8 +65,13 @@ def load_selected_layer(path: str | Path) -> tuple[dict[str, Any], dict[str, Any
     if not isinstance(activations, dict) or not isinstance(decomposition, dict):
         raise ValueError("Selected-layer cache references are incomplete")
     activation_metadata = read_json(_resolve_artifact(root, activations["metadata"]))
-    if activation_metadata.get("config_sha256") != metadata.get(
-        "config_sha256"
+    activation_config_key = (
+        "capture_config_sha256"
+        if "capture_config_sha256" in activation_metadata
+        else "config_sha256"
+    )
+    if activation_metadata.get(activation_config_key) != metadata.get(
+        activation_config_key
     ) or activation_metadata.get("manifest_sha256") != metadata.get("manifest_sha256"):
         raise RuntimeError("Selected-layer activation cache identity does not match")
     _resolve_artifact(root, activations["residuals"])
