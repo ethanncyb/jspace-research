@@ -6,6 +6,7 @@ import pytest
 import torch
 
 from jspace_research.phase1.jspace import (
+    build_normalized_dictionary,
     compute_layer_metrics,
     direction_scores,
     learn_task_balanced_direction,
@@ -44,6 +45,78 @@ def test_sparse_pursuit_excludes_nonpositive_screen_candidates() -> None:
         hidden, dictionary, sparsity_k=2, screen_candidates=2
     )
     assert token_ids[0].tolist() == [0, -1]
+
+
+def test_streamed_screening_matches_full_dictionary() -> None:
+    generator = torch.Generator().manual_seed(42)
+    dictionary = torch.nn.functional.normalize(
+        torch.randn(23, 7, generator=generator), dim=1
+    )
+    hidden = torch.randn(2, 7, generator=generator)
+    full = screened_nonnegative_pursuit(
+        hidden, dictionary, sparsity_k=3, screen_candidates=6
+    )
+    streamed = screened_nonnegative_pursuit(
+        hidden,
+        dictionary,
+        sparsity_k=3,
+        screen_candidates=6,
+        scoring_device=torch.device("cpu"),
+        screen_chunk_size=5,
+    )
+    torch.testing.assert_close(streamed[0], full[0], atol=1e-5, rtol=1e-5)
+    torch.testing.assert_close(streamed[1], full[1])
+    torch.testing.assert_close(streamed[2], full[2], atol=1e-5, rtol=1e-5)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+def test_dictionary_can_be_built_directly_on_cpu() -> None:
+    generator = torch.Generator().manual_seed(42)
+    jacobian = torch.randn(7, 7, generator=generator)
+    unembedding = torch.randn(23, 7, generator=generator)
+    kwargs = {
+        "jacobian": jacobian,
+        "unembedding": unembedding,
+        "layer": 0,
+        "device": torch.device("cuda:0"),
+        "chunk_size": 5,
+    }
+    gpu_dictionary = build_normalized_dictionary(**kwargs)
+    cpu_dictionary = build_normalized_dictionary(
+        **kwargs, storage_device=torch.device("cpu")
+    )
+    assert cpu_dictionary.device.type == "cpu"
+    torch.testing.assert_close(cpu_dictionary, gpu_dictionary.cpu(), atol=0, rtol=0)
+    hidden = torch.randn(1, 7, generator=generator)
+    full = screened_nonnegative_pursuit(
+        hidden, gpu_dictionary, sparsity_k=3, screen_candidates=6
+    )
+    streamed = screened_nonnegative_pursuit(
+        hidden,
+        cpu_dictionary,
+        sparsity_k=3,
+        screen_candidates=6,
+        scoring_device=torch.device("cuda:0"),
+        screen_chunk_size=5,
+    )
+    torch.testing.assert_close(streamed[0], full[0], atol=1e-4, rtol=1e-4)
+    torch.testing.assert_close(streamed[1], full[1])
+    torch.testing.assert_close(streamed[2], full[2], atol=1e-4, rtol=1e-4)
+    repeated_gpu = torch.cat((gpu_dictionary, gpu_dictionary[:3]), dim=0)
+    repeated_cpu = repeated_gpu.cpu()
+    tied_hidden = repeated_cpu[0:1].float()
+    tied_full = screened_nonnegative_pursuit(
+        tied_hidden, repeated_gpu, sparsity_k=3, screen_candidates=6
+    )
+    tied_streamed = screened_nonnegative_pursuit(
+        tied_hidden,
+        repeated_cpu,
+        sparsity_k=3,
+        screen_candidates=6,
+        scoring_device=torch.device("cuda:0"),
+        screen_chunk_size=5,
+    )
+    torch.testing.assert_close(tied_streamed[1], tied_full[1])
 
 
 def test_task_balanced_direction_and_scores() -> None:

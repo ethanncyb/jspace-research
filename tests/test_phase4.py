@@ -74,9 +74,11 @@ def test_frozen_scoring_does_not_expand_logistic_vocabulary() -> None:
     assert result["logistic_prediction"] is False
 
 
-def test_frozen_scoring_copies_host_dictionary_to_scoring_device() -> None:
+def test_frozen_scoring_streams_host_dictionary_to_scoring_device() -> None:
     frozen = detectors()
-    hosted = frozen.with_dictionary(frozen.dictionary, scoring_device=torch.device("cpu"))
+    hosted = frozen.with_dictionary(
+        frozen.dictionary, scoring_device=torch.device("cpu"), screen_chunk_size=2
+    )
     residual = torch.tensor([0.0, 0.0, 1.0])
     assert hosted.score(residual, hosted.dictionary) == frozen.score(residual, frozen.dictionary)
 

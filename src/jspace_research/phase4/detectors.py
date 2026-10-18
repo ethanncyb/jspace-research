@@ -17,6 +17,7 @@ class FrozenDetectors:
     logistic: dict[str, Any]
     dictionary: torch.Tensor | None = None
     scoring_device: torch.device | None = None
+    screen_chunk_size: int | None = None
 
     @classmethod
     def load(cls, phase3_dir: str | Path, phase1_metadata: dict[str, Any]) -> FrozenDetectors:
@@ -34,27 +35,31 @@ class FrozenDetectors:
         return cls(mean=mean, logistic=logistic)
 
     def with_dictionary(
-        self, dictionary: torch.Tensor, scoring_device: torch.device | None = None
+        self,
+        dictionary: torch.Tensor,
+        scoring_device: torch.device | None = None,
+        screen_chunk_size: int | None = None,
     ) -> FrozenDetectors:
-        """Attach the dictionary; with ``scoring_device`` it is copied there only to score."""
+        """Attach the dictionary and optionally stream screening chunks to a device."""
 
         return FrozenDetectors(
             mean=self.mean,
             logistic=self.logistic,
             dictionary=dictionary,
             scoring_device=scoring_device,
+            screen_chunk_size=screen_chunk_size,
         )
 
     def score(self, residual: torch.Tensor, dictionary: torch.Tensor) -> dict[str, Any]:
         if dictionary is None:
             raise RuntimeError("J-space dictionary is required for Phase 4 scoring")
-        if self.scoring_device is not None:
-            dictionary = dictionary.to(self.scoring_device)
         reconstruction, support_ids, coefficients = screened_nonnegative_pursuit(
             residual.reshape(1, -1),
             dictionary,
             sparsity_k=int(self.mean["decomposition"]["sparsity_k"]),
             screen_candidates=int(self.mean["decomposition"]["screen_candidates"]),
+            scoring_device=self.scoring_device,
+            screen_chunk_size=self.screen_chunk_size,
         )
         h_j = reconstruction[0].float()
         mean_score = float(

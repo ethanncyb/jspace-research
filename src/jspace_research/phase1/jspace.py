@@ -27,11 +27,13 @@ def build_normalized_dictionary(
     layer: int,
     device: torch.device,
     chunk_size: int,
+    storage_device: torch.device | None = None,
 ) -> torch.Tensor:
     jacobian = jacobian.to(device=device, dtype=torch.float32)
     vocabulary, width = unembedding.shape
     storage_dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
-    dictionary = torch.empty((vocabulary, width), dtype=storage_dtype, device=device)
+    storage_device = device if storage_device is None else storage_device
+    dictionary = torch.empty((vocabulary, width), dtype=storage_dtype, device=storage_device)
     for start in tqdm(
         range(0, vocabulary, chunk_size),
         desc=f"Build dictionary L{layer}",
@@ -41,7 +43,7 @@ def build_normalized_dictionary(
         weights = unembedding[start:end].to(device=device, dtype=torch.float32)
         atoms = weights @ jacobian
         atoms = atoms / atoms.norm(dim=1, keepdim=True).clamp_min(1e-8)
-        dictionary[start:end] = atoms.to(storage_dtype)
+        dictionary[start:end] = atoms.to(device=storage_device, dtype=storage_dtype)
     return dictionary
 
 
@@ -52,6 +54,8 @@ def screened_nonnegative_pursuit(
     *,
     sparsity_k: int = 25,
     screen_candidates: int = 512,
+    scoring_device: torch.device | None = None,
+    screen_chunk_size: int | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Approximate activations with sparse nonnegative dictionary combinations.
 
@@ -65,16 +69,35 @@ def screened_nonnegative_pursuit(
         raise ValueError("activation and dictionary widths must match")
     if sparsity_k <= 0 or screen_candidates < sparsity_k:
         raise ValueError("Require 0 < sparsity_k <= screen_candidates")
+    if screen_chunk_size is not None and screen_chunk_size <= 0:
+        raise ValueError("screen_chunk_size must be positive")
 
-    device = dictionary.device
+    device = dictionary.device if scoring_device is None else scoring_device
     hidden = activations.to(device=device, dtype=torch.float32)
     batch_size = hidden.shape[0]
     candidate_count = min(screen_candidates, dictionary.shape[0])
-    screen_scores = hidden.to(dictionary.dtype) @ dictionary.T
-    top_values, top_ids = torch.topk(screen_scores, k=candidate_count, dim=1)
+    if screen_chunk_size is None:
+        if dictionary.device != device:
+            dictionary = dictionary.to(device)
+        screen_scores = hidden.to(dictionary.dtype) @ dictionary.T
+        top_values, top_ids = torch.topk(screen_scores, k=candidate_count, dim=1)
+        del screen_scores
+        candidate_atoms = dictionary[top_ids].float()
+    else:
+        screen_scores = torch.empty(
+            (batch_size, dictionary.shape[0]), dtype=dictionary.dtype, device=device
+        )
+        for start in range(0, dictionary.shape[0], screen_chunk_size):
+            end = min(start + screen_chunk_size, dictionary.shape[0])
+            chunk = dictionary[start:end].to(device)
+            screen_scores[:, start:end] = hidden.to(chunk.dtype) @ chunk.T
+        top_values, top_ids = torch.topk(screen_scores, k=candidate_count, dim=1)
+        del screen_scores
+        candidate_atoms = dictionary[top_ids.to(dictionary.device)].to(
+            device=device, dtype=torch.float32
+        )
     candidate_valid = top_values > 0
-    candidate_atoms = dictionary[top_ids].float()
-    del screen_scores, top_values
+    del top_values
 
     residual = hidden.clone()
     chosen = torch.zeros((batch_size, candidate_count), dtype=torch.bool, device=device)
